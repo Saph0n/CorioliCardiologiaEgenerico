@@ -54,8 +54,10 @@ export const CATEGORIA_RISCHIO_LABELS: Record<CategoriaRischioCv, string> = {
  * che dichiara "rischio molto alto" senza mostrarle chiede di essere creduto
  * sulla parola.
  *
- * Il fumo non e' in elenco: sta nel campo "Fumatore" della visita, che ha tre
- * stati perche' alimenta SCORE2, dove "non rilevato" e "no" non coincidono.
+ * Il fumo non e' in questo elenco pur stando nello stesso pannello della
+ * maschera: e' il campo "Fumatore" della visita, tenuto a tre stati perche'
+ * alimenta SCORE2, dove "non rilevato" e "no" non coincidono. Una casella qui
+ * dentro ne avrebbe due e perderebbe la differenza.
  */
 export const FATTORI_RISCHIO_CV: {
   chiave: keyof FattoriRischioCvData;

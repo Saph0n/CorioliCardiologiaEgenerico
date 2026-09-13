@@ -22,11 +22,12 @@ Un solo tipo di visita, come in ambulatorio. Il referto segue quest'ordine:
    abitudini di vita + sezioni personalizzate)
 3. Motivo della visita
 4. Esame obiettivo
-5. **Esami strumentali** — elettrocardiogramma, ecocardiogramma, TC coronarica,
-   test ergometrico, Holter ECG e pressorio, **Doppler TSA**
+5. **Esami strumentali**, una fascia ciascuno — **pressione arteriosa**,
+   elettrocardiogramma, ecocardiogramma, TC coronarica, test ergometrico,
+   Holter ECG e pressorio, **Doppler TSA**
 6. **Esami ematochimici**
-7. **Inquadramento clinico** — scompenso, fibrillazione atriale, rischio
-   cardiovascolare
+7. **Inquadramento clinico**, sotto un titolo solo — scompenso, fibrillazione
+   atriale, rischio cardiovascolare
 8. Accertamenti
 9. Conclusioni e terapia
 10. Immagini allegate
@@ -52,9 +53,11 @@ laboratorio:
   cioè la parte della placca che i lipidi non misurano. Stavano sparsi fra il
   pannello lipidico e «altri esami».
 - **Metabolismo glucidico**: glicemia, insulinemia, HbA1c, con **HOMA-IR**
-  calcolato.
+  calcolato. La «i» in alto a destra del pannello apre la tabella delle sei
+  fasce di lettura, con evidenziata quella del paziente.
 - **Funzione renale**: creatinina, albuminuria, con eGFR calcolato.
-- **Altri esami**: emocromo, transaminasi, uricemia, TSH.
+- **Altri esami**: emocromo, transaminasi, uricemia e **azotemia** (senza
+  soglia finché il cardiologo non la indica), TSH.
 
 L'**ATS carotidea** del burden aterogeno e la **stenosi massima** del modulo
 Doppler TSA sono lo stesso campo, non due copie: si scrive da tutte e due le
@@ -72,16 +75,24 @@ tabella degli esami ematochimici compaiono anche LDL secondo Friedewald (quando
 manca il dosaggio diretto) ed eGFR: che siano calcolati lo dice l'etichetta
 della cella, e tanto basta a chi legge il referto.
 
-ECG, ecocardiogramma, TC coronarica, test ergometrico e Holter stanno sotto
-un'unica barra **"Esami strumentali"**, con il nome del modulo come sottotitolo
-più leggero: sono tutti esami strumentali, e cinque barre di pari livello
-facevano sembrare il referto un elenco di blocchi scollegati. La barra del
-gruppo compare solo se almeno un modulo ha qualcosa da stampare.
+**Ogni esame ha la sua fascia**, come anamnesi ed esame obiettivo:
+«Elettrocardiogramma», «Ecocardiogramma color-Doppler transtoracico», «TC
+coronarica» e così via, tutti allo stesso livello. C'è stato un titolo unico
+«Esami strumentali» con i moduli come sottotitoli sottolineati: il cardiologo
+l'ha fatto togliere l'11 settembre 2026 («meglio evidenziare in grigio le
+singole voci»). **«Inquadramento clinico»** invece resta un gruppo, con
+scompenso, fibrillazione atriale e rischio cardiovascolare come sottotitoli:
+nella call dello stesso giorno ha detto di lasciarlo così, e deve ancora
+decidere cosa ci entra (per esempio la cardiopatia ischemica).
 
-Stessa cosa per **"Inquadramento clinico"**, che raccoglie scompenso,
-fibrillazione atriale e rischio cardiovascolare: non sono esami, sono le
-conclusioni che il cardiologo trae dopo averli letti, e aprivano tre sezioni di
-primo livello in fila con lo stesso peso di una barra che ne raccoglie sei.
+La **pressione arteriosa** apre gli esami con una fascia sua, prima
+dell'elettrocardiogramma, come nei referti del cardiologo, e porta la
+posizione della misurazione: *clinostatismo* o *ortostatismo*. Si può
+aggiungere una seconda misurazione, di solito in ortostatismo, per documentare
+un'ipotensione ortostatica. Nella maschera resta fra le variabili cliniche,
+con la posizione sotto il campo; «150 85» diventa «150/85» appena si esce dal
+campo. Fra le variabili cliniche del referto resta la frequenza, e una colonna
+senza valori non si stampa, nemmeno l'intestazione.
 
 ### Doppler TSA
 
@@ -117,9 +128,9 @@ che usciva nel referto mentre gli altri sette restavano nella maschera.
 
 Tutto il referto è in **bastoni** (Helvetica): carta intestata, prosa clinica,
 etichette, numeri e tabelle. Il racconto clinico — anamnesi, motivo della
-visita, esame obiettivo, referti testuali dei moduli, conclusioni — resta a
-10,5 pt con interlinea di 6,1 mm, che è la stessa aria di prima: il corpo del
-testo si distingue dai dati per dimensione e interlinea, non per famiglia.
+visita, esame obiettivo, referti testuali dei moduli, conclusioni — è a
+10,5 pt con interlinea di 5,2 mm: il corpo del testo si distingue dai dati per
+dimensione e interlinea, non per famiglia.
 
 C'erano due voci, tondo con grazie per la prosa e bastoni per i dati. La
 distinzione si leggeva, ma due famiglie su un foglio sono anche due misure, due
@@ -129,11 +140,17 @@ che è poi l'unico segnale che il referto usa per il resto.
 
 ### Carta intestata
 
-In alto a sinistra chi firma (nome in bastoni neretto), a destra dove lo si
-trova (ambulatorio, indirizzo, telefono e
-e-mail secondo le preferenze di stampa). Sotto, un **filetto doppio** —
+In alto a sinistra chi firma — il nome in neretto, in corpo 11 come il titolo,
+e sotto la specializzazione scritta nel profilo — a destra dove lo si trova
+(ambulatorio, indirizzo, telefono e e-mail secondo le preferenze di stampa).
+A corpo 15 il nome pesava più di «VISITA CARDIOLOGICA», e la specializzazione
+era stata tolta perché ripeteva il titolo: il cardiologo l'ha rivoluta, e con
+due specialità dice una cosa che il titolo non dice. Sotto, un **filetto doppio** —
 0,7 mm e 0,15 mm a poco più di un millimetro di distanza — e poi il titolo
-del documento, centrato in maiuscoletto spaziato.
+del documento, centrato in maiuscoletto spaziato su una **fascia grigia** come
+quelle delle sezioni, un po' più alta. L'ha proposta il cardiologo l'11
+settembre 2026; la carta intestata è la stessa di ricetta, certificato e
+richiesta di esame, e la fascia vale anche per loro.
 
 I recapiti stavano nel piede in corpo 6,5: è il primo posto dove si cerca chi
 ha scritto il referto, non l'ultimo. Nel piede restano la numerazione di
@@ -141,7 +158,9 @@ pagina e la firma dell'applicazione.
 
 L'anagrafica del paziente è una fascia di celle con l'etichetta piccola sopra
 e il valore in grassetto sotto — lo stesso linguaggio con cui il referto
-scrive tutti gli altri dati. Erano righe «Etichetta: valore» su due colonne,
+scrive tutti gli altri dati. Nel referto le celle sono **centrate**: sotto un
+titolo centrato, allineate a sinistra «Data di nascita» e «Sesso» non cadevano
+simmetriche e il cardiologo le vedeva storte. Erano righe «Etichetta: valore» su due colonne,
 cioè la grafica di un modulo da compilare.
 
 ### Il grassetto vuol dire una cosa sola
@@ -200,20 +219,32 @@ maiuscolo per farlo sembrare piu importante.
 
 ### Gerarchia della pagina
 
-Tre livelli, un trattamento ciascuno, senza eccezioni:
+Tre livelli, un trattamento ciascuno, più il titolo del documento su una
+fascia più alta in testa al foglio:
 
 1. **Sezione** — maiuscoletto spaziato su una **fascia grigio chiaro** da
-   margine a margine. Vale per tutte: Anamnesi, Esame obiettivo, Esami
-   strumentali, Esami ematochimici, Inquadramento clinico, Conclusioni.
-2. **Modulo dentro una sezione** — grassetto piccolo sottolineato
-   (Elettrocardiogramma, TC coronarica, Fibrillazione atriale).
+   margine a margine. Vale per tutte: Anamnesi, Esame obiettivo, Pressione
+   arteriosa, ogni esame strumentale (Elettrocardiogramma, TC coronarica…),
+   Esami ematochimici, Inquadramento clinico, Conclusioni.
+2. **Modulo dentro «Inquadramento clinico»** — grassetto piccolo sottolineato
+   (Scompenso cardiaco, Fibrillazione atriale, Rischio cardiovascolare).
 3. **Colonna dentro una griglia** — etichetta grigia piccola in maiuscolo
    (Parametri vitali, Antropometria).
 
-Prima la barra grigia significava due cose — sezione del referto *e* colonna
-di una griglia — e le sezioni di prosa avevano un titolo tutto loro: in mezza
-pagina si contavano quattro trattamenti diversi per intestazioni dello stesso
-livello.
+Il secondo livello valeva anche per gli esami, sotto «Esami strumentali»:
+l'11 settembre 2026 il cardiologo ha preferito una fascia per esame, e per
+l'inquadramento clinico ha detto di lasciarlo com'è. Prima ancora la barra
+grigia significava due cose — sezione del referto *e* colonna di una griglia —
+e le sezioni di prosa avevano un titolo tutto loro.
+
+**L'aria fra i blocchi è l'interlinea.** Una fascia comincia dove finisce
+l'ultima riga del blocco sopra, senza margini aggiunti, e il contenuto parte
+poco più di un millimetro sotto la fascia. Le righe della tabella a griglia
+sono da 8,4 mm, quelle della tabella a due colonne da 6,4. Con le spaziature
+di prima il referto di prova, con tutti i moduli compilati, faceva cinque
+pagine; il cardiologo le ha trovate eccessive e ora sono quattro.
+Interlinea della prosa e altezza della fascia sono costanti in cima a
+`PdfService.ts`; l'altezza delle righe sta nelle due funzioni delle tabelle.
 
 Il foglio è **A4 dichiarato** (non sottinteso, così i visualizzatori sanno che
 scala applicare in stampa) con margini di **18 mm per lato**. I tre millimetri
@@ -221,8 +252,9 @@ in più rispetto ai 15 di prima sono tolleranza: fra l'area non stampabile
 della macchina e il trascinamento del foglio, una stampa leggermente fuori
 centro con margini stretti mangia del testo; con 18 mangia solo bianco.
 
-**L'unico fondino è la fascia dei titoli di sezione**, grigio 235 su 255 (circa
-l'8% di nero); il resto del referto è tipografia e filetti. Per qualche giorno
+**Gli unici fondini sono le fasce dei titoli**, del documento e delle sezioni,
+grigio 235 su 255 (circa l'8% di nero); il resto del referto è tipografia e
+filetti. Per qualche giorno
 i titoli sono stati solo un filetto sotto la parola, perché un retino chiaro
 stampato in bianco e nero può sparire o sporcarsi a seconda della macchina. Il
 cardiologo, guardando i referti stampati, ha preferito la fascia e l'ha voluta
@@ -306,6 +338,37 @@ Impostazioni → Modelli. La **TC coronarica** fa eccezione e non ne ha: il suo
 referto lo scrive il cardiologo leggendo quello del radiologo, e un testo
 precompilato su un esame che si chiede ogni cinque anni non fa risparmiare
 tempo.
+
+### Una barra di scorrimento sola
+
+A sinistra i parametri, a destra il referto, e le due colonne sono **alte
+uguale** per il solo `align-items: stretch` del flex: nessuna altezza in `vh`,
+nessuna colonna agganciata, nessuno `overflow` interno. Funziona perché le tre
+card in alto — variabili cliniche, laboratorio, rischio cardiovascolare — si
+richiudono, e chiuse tengono la colonna sotto i 900px, quindi più corta del
+referto. L'ultima card, le immagini allegate, si prende lo spazio che avanza
+ma **al massimo fino a 240px**: senza tetto, coi moduli del referto aperti la
+zona di caricamento si allungava per centinaia di pixel e sembrava un errore
+di impaginazione, non un bersaglio per il trascinamento.
+
+La regola da non rompere è **una barra di scorrimento sola, quella della
+pagina.** La colonna agganciata con scroll proprio era stata provata e
+scartata: con due barre la rotella fa una cosa diversa a seconda di dove sta
+il mouse e di quanto si è scorsa la pagina, e chi compila lo paga a ogni
+visita. Per la stessa ragione la card delle immagini usa `grow` con
+`basis-auto` e `shrink-0` invece di `flex-1`, e perde il tetto quando contiene
+miniature: entrambe le scorciatoie la strizzerebbero sotto l'altezza del suo
+contenuto, e il `CardBody` di NextUI — che ha `overflow-y: auto` di serie —
+tirerebbe su la seconda barra.
+
+A card chiusa la testata porta una riga di sintesi (`LDL 112 · 14 valori ·
+prelievo 10/09`), perché richiudere non deve costare la lettura del dato:
+senza quella riga il medico lascia tutto aperto e le card richiudibili non
+servono a niente. Quali valori meritino quella riga è una domanda aperta per
+il cardiologo. Lo stato aperto/chiuso sta in `localStorage` e non sulla
+visita, perché è una preferenza di chi compila e non un dato clinico; e una
+card piena **non** si riapre da sola, al contrario dei moduli collassabili del
+referto, che partono aperti se contengono dati.
 
 ### Quello che la maschera non chiede
 

@@ -578,6 +578,12 @@ export interface LaboratorioData {
   alt?: number;
   /** Acido urico (mg/dL). */
   uricemia?: number;
+  /**
+   * Azotemia, cioe' urea ematica (mg/dL). Chiesta dal cardiologo accanto
+   * all'uricemia (call dell'11 settembre 2026): e' fra i primi valori del rene
+   * che si guardano. Senza soglia finche' non la indica lui.
+   */
+  azotemia?: number;
   /** Ormone tireostimolante (mU/L). */
   tsh?: number;
   /** Proteina C reattiva ad alta sensibilità (mg/L). */
@@ -631,6 +637,17 @@ export interface Visit {
     pesoCorporeo?: number;
     /** Pressione arteriosa (es. "120/80"). */
     pressioneArteriosa?: string;
+    /**
+     * Posizione in cui e' stata misurata `pressioneArteriosa`. Senza, e' in
+     * clinostatismo: la misurazione di ogni visita.
+     */
+    posizionePa?: "clino" | "orto";
+    /**
+     * Seconda misurazione, facoltativa: serve a documentare un'ipotensione
+     * ortostatica. Senza `posizionePa2` si intende in ortostatismo.
+     */
+    pressioneArteriosa2?: string;
+    posizionePa2?: "clino" | "orto";
     /** Frequenza cardiaca (bpm). */
     frequenzaCardiaca?: string;
     /** Fumatore attuale: input del rischio cardiovascolare. */

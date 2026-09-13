@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  FASCE_ETA_CONFERMA_ACUTO,
+  FENOTIPI_SCOMPENSO,
   FENOTIPO_DA_DEFINIRE,
+  INCREMENTO_MINIMO_HFIMPEF,
+  SOGLIA_FE_HFIMPEF,
+  SOGLIA_FE_RIDOTTA,
   confondentiNtProBnp,
   fenotipoConStorico,
   fenotipoDaFe,
+  riferimentoNtProBnp,
   sogliaConfermaAcuto,
   valutaNtProBnp,
 } from "../scompenso";
@@ -203,5 +209,77 @@ describe("fenotipo non attribuibile", () => {
   it("dichiara il motivo invece di lasciare il campo vuoto", () => {
     expect(FENOTIPO_DA_DEFINIRE.label).toBe("Da definire");
     expect(FENOTIPO_DA_DEFINIRE.motivo).toContain("ecocardiogramma");
+  });
+});
+
+describe("valori di riferimento dell'NT-proBNP", () => {
+  it("senza contesto non nomina nessuna soglia", () => {
+    // Chi ha scritto un valore senza contesto ha gia' il suo avviso nella
+    // maschera: due frasi che dicono la stessa cosa sono una di troppo.
+    expect(riferimentoNtProBnp(undefined)).toBeNull();
+  });
+
+  it("in ambulatorio dice la sola esclusione", () => {
+    const testo = riferimentoNtProBnp("ambulatoriale") ?? "";
+    expect(testo).toContain("125");
+    expect(testo).toContain("ecocardiogramma");
+    expect(testo).not.toContain("300");
+  });
+
+  it("in urgenza dice esclusione e conferma per l'eta'", () => {
+    const testo = riferimentoNtProBnp("acuto", 80) ?? "";
+    expect(testo).toContain("300");
+    expect(testo).toContain("1800");
+  });
+
+  it("in urgenza senza eta' non inventa la soglia di conferma", () => {
+    const testo = riferimentoNtProBnp("acuto") ?? "";
+    expect(testo).toContain("300");
+    expect(testo).not.toContain("900");
+  });
+
+  it("la tabella delle fasce d'eta' da' le soglie della funzione", () => {
+    expect(
+      FASCE_ETA_CONFERMA_ACUTO.map((f) => sogliaConfermaAcuto(f.etaRappresentativa)),
+    ).toEqual([450, 900, 1800]);
+  });
+});
+
+describe("tabella dei fenotipi per il prontuario", () => {
+  it("elenca i tre fenotipi", () => {
+    expect(FENOTIPI_SCOMPENSO.map((f) => f.chiave)).toEqual([
+      "HFrEF",
+      "HFpEF",
+      "HFimpEF",
+    ]);
+  });
+
+  it("scrive gli stessi confini che applica fenotipoDaFe", () => {
+    // Una tabella che dicesse 45 mentre il codice taglia a 50 sarebbe peggio
+    // di nessuna tabella.
+    expect(
+      FENOTIPI_SCOMPENSO.find((f) => f.chiave === "HFrEF")?.intervallo,
+    ).toContain(String(SOGLIA_FE_RIDOTTA));
+    expect(
+      FENOTIPI_SCOMPENSO.find((f) => f.chiave === "HFpEF")?.intervallo,
+    ).toContain(String(SOGLIA_FE_RIDOTTA));
+    expect(fenotipoDaFe(SOGLIA_FE_RIDOTTA - 1)?.chiave).toBe("HFrEF");
+    expect(fenotipoDaFe(SOGLIA_FE_RIDOTTA)?.chiave).toBe("HFpEF");
+  });
+
+  it("l'HFimpEF porta la soglia e l'incremento che lo definiscono", () => {
+    const imp = FENOTIPI_SCOMPENSO.find((f) => f.chiave === "HFimpEF");
+    expect(imp?.intervallo).toContain(String(SOGLIA_FE_HFIMPEF));
+    expect(imp?.intervallo).toContain(String(INCREMENTO_MINIMO_HFIMPEF));
+    // E sono le soglie che la funzione applica davvero.
+    expect(
+      fenotipoConStorico(SOGLIA_FE_HFIMPEF + INCREMENTO_MINIMO_HFIMPEF, [
+        { valore: SOGLIA_FE_HFIMPEF, data: "2026-01-01" },
+      ])?.chiave,
+    ).toBe("HFimpEF");
+    expect(
+      fenotipoConStorico(SOGLIA_FE_HFIMPEF, [{ valore: 30, data: "2026-01-01" }])
+        ?.chiave,
+    ).toBe("HFrEF");
   });
 });

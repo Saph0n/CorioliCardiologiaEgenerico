@@ -104,6 +104,12 @@ export interface FePrecedente {
 export const INCREMENTO_MINIMO_HFIMPEF = 10;
 
 /**
+ * Frazione di eiezione da cui l'HFimpEF deve essere uscito: si parte da qui o
+ * piu' in basso e la si deve superare.
+ */
+export const SOGLIA_FE_HFIMPEF = 40;
+
+/**
  * Fenotipo tenendo conto delle frazioni di eiezione precedenti.
  *
  * Riconosce l'**HFimpEF**, che le altre tre categorie non possono esprimere
@@ -127,14 +133,14 @@ export function fenotipoConStorico(
   if (!base || feAttuale == null) return base;
   // Sotto il 41% non c'e' miglioramento da dichiarare: il paziente e' ancora
   // nella fascia da cui l'HFimpEF dovrebbe essere uscito.
-  if (feAttuale <= 40) return base;
+  if (feAttuale <= SOGLIA_FE_HFIMPEF) return base;
 
   const partenza = fePrecedenti
     .filter(
       (p) =>
         Number.isFinite(p.valore) &&
         p.valore > 0 &&
-        p.valore <= 40 &&
+        p.valore <= SOGLIA_FE_HFIMPEF &&
         feAttuale - p.valore >= INCREMENTO_MINIMO_HFIMPEF,
     )
     .sort((a, b) => a.valore - b.valore || a.data.localeCompare(b.data))[0];
@@ -144,7 +150,7 @@ export function fenotipoConStorico(
   return {
     chiave: "HFimpEF",
     label: "HFimpEF — frazione di eiezione migliorata",
-    intervallo: `da FE ≤ 40% a FE > 40%, con incremento ≥ ${INCREMENTO_MINIMO_HFIMPEF} punti`,
+    intervallo: `da FE ≤ ${SOGLIA_FE_HFIMPEF}% a FE > ${SOGLIA_FE_HFIMPEF}%, con incremento ≥ ${INCREMENTO_MINIMO_HFIMPEF} punti`,
     avvertenza:
       "La frazione di eiezione risalita non equivale a guarigione: il fenotipo resta di scompenso e la terapia di fondo non va sospesa in automatico.",
     riferimento: `FE precedente ${partenza.valore}% (${formattaData(
@@ -158,6 +164,35 @@ function formattaData(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso ?? "");
 }
+
+/**
+ * I tre fenotipi come tabella di consultazione, per il prontuario.
+ *
+ * Gli intervalli si scrivono dalle stesse costanti che li decidono in
+ * `fenotipoDaFe` e `fenotipoConStorico`: una tabella che dicesse 45 mentre il
+ * codice taglia a 50 sarebbe peggio di nessuna tabella.
+ */
+export const FENOTIPI_SCOMPENSO: {
+  chiave: FenotipoScompenso;
+  intervallo: string;
+  nota: string;
+}[] = [
+  {
+    chiave: "HFrEF",
+    intervallo: `FE < ${SOGLIA_FE_RIDOTTA}%`,
+    nota: "Frazione di eiezione ridotta. Da ESC 2026 comprende anche la fascia 41-49%, che ESC 2021 teneva separata come HFmrEF.",
+  },
+  {
+    chiave: "HFpEF",
+    intervallo: `FE ≥ ${SOGLIA_FE_RIDOTTA}%`,
+    nota: "Frazione di eiezione conservata. La sola FE non basta: servono sintomi, alterazioni strutturali o funzionali e peptidi natriuretici elevati.",
+  },
+  {
+    chiave: "HFimpEF",
+    intervallo: `da FE ≤ ${SOGLIA_FE_HFIMPEF}% a FE > ${SOGLIA_FE_HFIMPEF}%, con incremento ≥ ${INCREMENTO_MINIMO_HFIMPEF} punti`,
+    nota: "Frazione di eiezione migliorata: e' un percorso, non una fascia, e non equivale a guarigione. La terapia di fondo non va sospesa in automatico.",
+  },
+];
 
 // ─── Classe funzionale NYHA ──────────────────────────────────────────────────
 
@@ -281,6 +316,45 @@ export function valutaNtProBnp(
     titolo: "Fascia grigia",
     nota: `Fra ${SOGLIA_ESCLUSIONE_NTPROBNP.acuto} e ${conferma} pg/mL: lo scompenso non è né escluso né confermato dal solo peptide.`,
   };
+}
+
+/**
+ * Fasce d'eta' della soglia di conferma in urgenza, per la tabella del
+ * prontuario. Il numero lo da' `sogliaConfermaAcuto`, cosi' la tabella e il
+ * giudizio accanto al valore non possono divergere.
+ */
+export const FASCE_ETA_CONFERMA_ACUTO: {
+  fascia: string;
+  /** Un'eta' dentro la fascia, con cui chiedere la soglia alla funzione. */
+  etaRappresentativa: number;
+}[] = [
+  { fascia: "Sotto i 50 anni", etaRappresentativa: 40 },
+  { fascia: "Da 50 a 75 anni", etaRappresentativa: 60 },
+  { fascia: "Oltre i 75 anni", etaRappresentativa: 80 },
+];
+
+/**
+ * Valori di riferimento da mostrare accanto al campo, prima ancora che ci sia
+ * un valore da giudicare: chi scrive un NT-proBNP vuole sapere contro che
+ * soglia lo sta leggendo (richiesta del cardiologo, 12 settembre 2026).
+ *
+ * Senza contesto non c'e' una soglia sola da nominare, e chi ha gia' scritto
+ * un valore lo legge nell'avviso che chiede il contesto: qui si restituisce
+ * `null` per non dire due volte la stessa cosa.
+ */
+export function riferimentoNtProBnp(
+  contesto: ContestoBnp | undefined,
+  eta?: number,
+): string | null {
+  if (!contesto) return null;
+  const esclusione = SOGLIA_ESCLUSIONE_NTPROBNP[contesto];
+  if (contesto === "ambulatoriale") {
+    return `Riferimento: scompenso improbabile sotto ${esclusione} pg/mL. Sopra, le linee guida non fissano una soglia di conferma: si prosegue con l'ecocardiogramma.`;
+  }
+  const conferma = sogliaConfermaAcuto(eta);
+  return conferma == null
+    ? `Riferimento: esclusione sotto ${esclusione} pg/mL. La soglia di conferma dipende dall'età, che qui manca.`
+    : `Riferimento: esclusione sotto ${esclusione} pg/mL, conferma sopra ${conferma} pg/mL per questa età.`;
 }
 
 // ─── Confondenti ─────────────────────────────────────────────────────────────

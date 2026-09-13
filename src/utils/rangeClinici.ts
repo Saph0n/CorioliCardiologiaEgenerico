@@ -138,6 +138,71 @@ export function valutaPressioneScritta(testo: string | undefined): Segnale {
 }
 
 /**
+ * Fasce di lettura dell'HOMA-IR, dalla piu' bassa alla piu' alta.
+ *
+ * Le ha indicate il cardiologo e non sono universali: il valore di taglio
+ * dipende dal metodo di dosaggio dell'insulina, dalla popolazione e dal
+ * laboratorio, e in letteratura oscilla fra 2 e 2,9. Per questo l'indice si
+ * presenta con la fascia scritta accanto e non come un si'/no.
+ *
+ * Sono una tabella e non solo un `switch` perche' il medico le vuole vedere
+ * tutte insieme, dal pulsante "i" del pannello glucidico (call dell'11
+ * settembre 2026): la stessa tabella da' la fascia al valore e la mostra,
+ * cosi' le due cose non possono andare per conto loro.
+ */
+export const FASCE_HOMA_IR: readonly {
+  /** Limite inferiore della fascia, incluso. */
+  da: number;
+  intervallo: string;
+  etichetta: string;
+  lettura: string;
+  livello: LivelloSegnale;
+}[] = [
+  {
+    da: 0,
+    intervallo: "< 1,0",
+    etichetta: "ottimale",
+    lettura: "sensibilità insulinica molto buona",
+    livello: "nella-norma",
+  },
+  {
+    da: 1,
+    intervallo: "1,0-1,9",
+    etichetta: "nella norma",
+    lettura: "generalmente nella norma",
+    livello: "nella-norma",
+  },
+  {
+    da: 2,
+    intervallo: "2,0-2,4",
+    etichetta: "borderline",
+    lettura: "fascia borderline, possibile iniziale riduzione della sensibilità insulinica",
+    livello: "attenzione",
+  },
+  {
+    da: 2.5,
+    intervallo: "2,5-2,9",
+    etichetta: "IR probabile",
+    lettura: "insulino-resistenza probabile",
+    livello: "attenzione",
+  },
+  {
+    da: 3,
+    intervallo: "3,0-4,9",
+    etichetta: "IR verosimile",
+    lettura: "insulino-resistenza verosimile e clinicamente più rilevante",
+    livello: "alterato",
+  },
+  {
+    da: 5,
+    intervallo: "≥ 5,0",
+    etichetta: "marcatamente elevato",
+    lettura: "valore marcatamente elevato, richiede un inquadramento clinico complessivo",
+    livello: "alterato",
+  },
+];
+
+/**
  * Valuta una misura rispetto ai limiti di riferimento correnti.
  *
  * Restituisce sempre un `Segnale`: quando il valore manca o e' nella norma il
@@ -274,35 +339,16 @@ export function valutaMisura(
       if (n >= 1) return attenzione("1-3 mg/L: fascia di rischio intermedio", "intermedio");
       return nellaNorma("< 1 mg/L: fascia di rischio basso", "basso");
 
-    case "lab.homa":
-      // Fasce indicate dal cardiologo. Non sono universali: il valore di
-      // taglio dipende dal metodo di dosaggio dell'insulina, dalla popolazione
-      // e dal laboratorio, e in letteratura oscilla fra 2 e 2,9. Per questo
-      // l'indice si presenta con la fascia scritta accanto e non come un
-      // sì/no.
-      if (n >= 5) {
-        return alterato(
-          "≥ 5,0: valore marcatamente elevato, richiede un inquadramento clinico complessivo",
-          "marcatamente elevato",
-        );
-      }
-      if (n >= 3) {
-        return alterato(
-          "≥ 3,0: insulino-resistenza verosimile e clinicamente più rilevante",
-          "IR verosimile",
-        );
-      }
-      if (n >= 2.5) {
-        return attenzione("2,5-2,9: insulino-resistenza probabile", "IR probabile");
-      }
-      if (n >= 2) {
-        return attenzione(
-          "2,0-2,4: fascia borderline, possibile iniziale riduzione della sensibilità insulinica",
-          "borderline",
-        );
-      }
-      if (n >= 1) return nellaNorma("1,0-1,9: generalmente nella norma", "nella norma");
-      return nellaNorma("< 1,0: sensibilità insulinica molto buona", "ottimale");
+    case "lab.homa": {
+      // Fasce e motivazione in `FASCE_HOMA_IR`.
+      const fascia =
+        [...FASCE_HOMA_IR].reverse().find((f) => n >= f.da) ?? FASCE_HOMA_IR[0];
+      return {
+        livello: fascia.livello,
+        nota: `${fascia.intervallo}: ${fascia.lettura}`,
+        etichetta: fascia.etichetta,
+      };
+    }
 
     case "lab.trigliceridi":
       if (n >= 500) return alterato("≥ 500 mg/dL: ipertrigliceridemia severa");

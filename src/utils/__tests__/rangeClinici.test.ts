@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FASCE_HOMA_IR,
   ordinaSegnalati,
   scomponiPressione,
   valutaMisura,
@@ -323,5 +324,14 @@ describe("HOMA-IR", () => {
   it("le due fasce basse non accendono il semaforo", () => {
     expect(valutaMisura("lab.homa", 1.5).livello).toBe("nella-norma");
     expect(valutaMisura("lab.homa", 3).livello).toBe("alterato");
+  });
+
+  it("la tabella del pulsante i e' quella che assegna la fascia", () => {
+    // Il medico legge lo schema dalla tabella e il valore riceve la fascia dal
+    // semaforo: se le due cose divergessero, la tabella direbbe una soglia e
+    // il campo ne applicherebbe un'altra.
+    for (const fascia of FASCE_HOMA_IR) {
+      expect(valutaMisura("lab.homa", fascia.da).etichetta).toBe(fascia.etichetta);
+    }
   });
 });

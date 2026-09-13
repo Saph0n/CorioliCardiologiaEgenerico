@@ -73,6 +73,15 @@ const PW = MR - ML;   // 174 mm
 const PAGE_H = 297;
 const FOOT_Y = PAGE_H - 14;
 const LH = 4.8;
+// Interlinea della prosa clinica in corpo 10,5: circa 1,4 volte il corpo.
+// Era 6,1 mm e, con l'aria sotto le fasce e fra le righe delle tabelle, un
+// referto normale arrivava a tre pagine: "spaziature eccessive", il
+// cardiologo l'11 settembre 2026.
+const LH_PROSA = 5.2;
+/** Dal filo del contenuto alla linea di base della prima riga di prosa. */
+const PRIMA_RIGA_PROSA = 3.9;
+/** Altezza della fascia grigia dei titoli di sezione. */
+const FASCIA_H = 5.6;
 
 // ─── B&W palette ─────────────────────────────────────────────────────────────
 const K0 = [0, 0, 0] as const;
@@ -85,7 +94,7 @@ const K235: [number, number, number] = [235, 235, 235];
 
 /**
  * Apre l'intestazione di un gruppo di sezioni. Restituisce la `y` aggiornata e
- * disegna la barra solo alla prima chiamata: i moduli decidono da soli se
+ * disegna la fascia solo alla prima chiamata: i moduli decidono da soli se
  * hanno qualcosa da stampare, e il gruppo deve comparire solo se almeno uno lo
  * fa. Vedi `PdfService.gruppo`.
  */
@@ -302,11 +311,17 @@ export class PdfService {
       items: { label?: string; value: string; forte?: boolean }[];
     }[],
   ): number {
-    const cols = columns.map((c) => ({
-      header: c.header,
-      items: c.items.filter((it) => !isInquadramentoValueEmpty(it.value)),
-    }));
-    if (!cols.some((c) => c.items.length > 0)) return y;
+    // Le colonne vuote non si stampano, nemmeno l'intestazione: "PARAMETRI
+    // VITALI" senza niente sotto diceva che i parametri non erano stati
+    // rilevati, quando era solo che la pressione ha una sezione sua. Le
+    // colonne che restano si dividono la larghezza.
+    const cols = columns
+      .map((c) => ({
+        header: c.header,
+        items: c.items.filter((it) => !isInquadramentoValueEmpty(it.value)),
+      }))
+      .filter((c) => c.items.length > 0);
+    if (cols.length === 0) return y;
 
     const colW = PW / cols.length;
 
@@ -328,13 +343,16 @@ export class PdfService {
         return { lbl, lblW, linee };
       }),
     );
-    const altezza = 10 + Math.max(
+    // Voci a 4,2 mm in corpo 8. Erano a 4,8, l'interlinea della prosa, e in
+    // tre colonne di voci brevi era solo bianco.
+    const RIGA = 4.2;
+    const altezza = 8.6 + Math.max(
       ...misurate.map((items) =>
-        items.reduce((h, it) => h + it.linee.length * LH, 0),
+        items.reduce((h, it) => h + it.linee.length * RIGA, 0),
       ),
     );
 
-    y = this.sezione(doc, y, title, altezza + 12);
+    y = this.sezione(doc, y, title, FASCIA_H + 1.3 + altezza + 1);
     let maxY = y;
 
     for (let c = 0; c < cols.length; c++) {
@@ -344,7 +362,7 @@ export class PdfService {
       doc.text(san(cols[c].header).toUpperCase(), cx, y + 3);
       this.rule(doc, y + 4.6, cx, cx + colW - 4, 0.2);
 
-      let cy = y + 10;
+      let cy = y + 8.6;
       doc.setFontSize(8);
 
       cols[c].items.forEach((item, i) => {
@@ -360,13 +378,13 @@ export class PdfService {
         const valueX = lbl ? cx + lblW + 1 : cx;
         for (const line of linee) {
           doc.text(line, valueX, cy);
-          cy += LH;
+          cy += RIGA;
         }
       });
       maxY = Math.max(maxY, cy);
     }
 
-    return maxY + 2;
+    return maxY + 0.8;
   }
 
   private static heading(doc: jsPDF, y: number, text: string): number {
@@ -395,12 +413,21 @@ export class PdfService {
       const nome = doctor
         ? `Dott. ${doctor.nome} ${doctor.cognome}`.trim()
         : "Studio medico";
-      // Solo il nome: la qualifica stava due centimetri sopra al titolo del
-      // documento e diceva la stessa cosa — "Specialista in Cardiologia" sopra
-      // "VISITA CARDIOLOGICA". Resta nel blocco firma di ricette e
-      // certificati, dove non ha un titolo che la ripete.
-      doc.setFont("helvetica", "bold"); doc.setFontSize(15); this.tc(doc, K0);
+      // Il nome in corpo 11, lo stesso del titolo del documento: a 15 pesava
+      // piu' di "VISITA CARDIOLOGICA", e il cardiologo l'ha trovato
+      // sproporzionato (call dell'11 settembre 2026).
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); this.tc(doc, K0);
       doc.text(san(nome), ML, y);
+      // Sotto, la specializzazione come e' scritta nel profilo. Era stata
+      // tolta perche' ripeteva il titolo del documento; il cardiologo la
+      // rivuole, e con due specialita' ("cardiologia e geriatria") dice una
+      // cosa che il titolo non dice. La riga si allinea con l'ultima dei
+      // recapiti a destra.
+      const specializzazione = doctor?.specializzazione?.trim();
+      if (specializzazione) {
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);
+        doc.text(san(specializzazione), ML, y + 4.2);
+      }
 
       const recapiti: string[] = [];
       const amb = doctor?.ambulatori?.find((x) => x.isPrimario)
@@ -426,7 +453,10 @@ export class PdfService {
         doc.text(riga, MR, y - 2.6 + i * 3.4, { align: "right" });
       });
 
-      y = Math.max(y + 4, y - 2.6 + recapiti.length * 3.4 + 3);
+      y = Math.max(
+        y + (specializzazione ? 7.4 : 4),
+        y - 2.6 + recapiti.length * 3.4 + 3,
+      );
     }
 
     // Filetto doppio, grosso e sottile: separa la carta intestata dal
@@ -435,17 +465,24 @@ export class PdfService {
     this.dc(doc, K0); doc.setLineWidth(0.7);
     doc.line(ML, y, MR, y);
     this.rule(doc, y + 1.1, ML, MR, 0.15);
-    y += 7.5;
+    y += 4;
 
+    // Il titolo del documento sulla stessa fascia grigia delle sezioni, piu'
+    // alta e in corpo piu' grande: e' il primo livello della stessa
+    // gerarchia. Proposta dal cardiologo l'11 settembre 2026, "come gia' fai
+    // con i paragrafi anamnesi".
+    const TITOLO_H = 7.4;
+    doc.setFillColor(...K235);
+    doc.rect(ML, y, PW, TITOLO_H, "F");
     doc.setFont("helvetica", "bold"); doc.setFontSize(11); this.tc(doc, K0);
-    doc.text(san(title).toUpperCase(), 105, y, { align: "center", charSpace: 0.7 });
-    y += 4.6;
+    doc.text(san(title).toUpperCase(), 105, y + 5.1, { align: "center", charSpace: 0.7 });
+    y += TITOLO_H;
     if (subtitle) {
       doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);
-      doc.text(san(subtitle), 105, y, { align: "center" });
-      y += 4;
+      doc.text(san(subtitle), 105, y + 4.2, { align: "center" });
+      y += 4.2;
     }
-    return y + 2.5;
+    return y + 4;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -453,7 +490,7 @@ export class PdfService {
   // ─────────────────────────────────────────────────────────────────────────────
   private static drawPatientBlock(
     doc: jsPDF, patient: Patient, visitDate: string,
-    y: number, dateLabel = "Data visita", opts?: { showDate?: boolean; showSesso?: boolean; showBirthDate?: boolean; extraRight?: { label: string; value: string }[] }
+    y: number, dateLabel = "Data visita", opts?: { showDate?: boolean; showSesso?: boolean; showBirthDate?: boolean; extraRight?: { label: string; value: string }[]; centrato?: boolean }
   ): number {
     const a = calcAge(patient.dataNascita);
     const nascita = patient.dataNascita
@@ -499,7 +536,7 @@ export class PdfService {
     ];
 
     this.rule(doc, y - 1, ML, MR, 0.2);
-    y = this.drawMisureTable(doc, y, voci, 4);
+    y = this.drawMisureTable(doc, y, voci, 4, undefined, opts?.centrato);
     return y + 3;
   }
 
@@ -517,8 +554,10 @@ export class PdfService {
     // Il titolo si porta dietro due righe di testo, non una: con una sola,
     // "Conclusioni e Terapia" poteva aprire in fondo alla pagina con un rigo
     // orfano e proseguire su quella dopo.
-    y = this.sezione(doc, y, title, 16 + LH + 1.3);
-    y = this.block(doc, content, ML, y, PW, LH + 1.3, {
+    y = this.sezione(
+      doc, y, title, FASCIA_H + 1.3 + PRIMA_RIGA_PROSA + 2 * LH_PROSA + 1,
+    );
+    y = this.block(doc, content, ML, y + PRIMA_RIGA_PROSA, PW, LH_PROSA, {
       font: "helvetica", style: "normal", fontSize: 10.5, color: K0,
     });
     if (note) {
@@ -528,7 +567,9 @@ export class PdfService {
         font: "helvetica", style: "italic", fontSize: 7, color: K140,
       });
     }
-    return y + 4;
+    // Nessun margine in coda: l'aria prima della fascia successiva e'
+    // l'interlinea dell'ultima riga.
+    return y;
   }
 
   /**
@@ -558,7 +599,9 @@ export class PdfService {
       .filter((r) => r.value !== "");
     if (rows.length === 0) return y;
 
-    y = this.sezione(doc, y, "Anamnesi");
+    // La prima riga si scrive sulla sua linea di base, un corpo 9,5 sotto il
+    // filo del contenuto.
+    y = this.sezione(doc, y, "Anamnesi") + 3.6;
 
     for (const r of rows) {
       const lbl = san(r.label) + ": ";
@@ -578,7 +621,9 @@ export class PdfService {
       });
       y += 1.2; // gap tra categorie
     }
-    return y + 2;
+    // Il gap dopo l'ultima categoria si restituisce: l'aria prima della
+    // fascia successiva e' gia' l'interlinea.
+    return y - 1.2;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -899,12 +944,23 @@ export class PdfService {
     items: { label: string; value: string; forte?: boolean; span?: number }[],
     colonne = 3,
     titolo?: string,
+    /**
+     * Celle centrate invece che a bandiera. Serve all'anagrafica del referto,
+     * che sta sotto il titolo centrato: allineate a sinistra, "Data di
+     * nascita" e "Sesso" non cadevano simmetriche rispetto a "VISITA
+     * CARDIOLOGICA" e il cardiologo lo vedeva storto (call dell'11 settembre
+     * 2026). Centrate, la riga e' simmetrica sull'asse del foglio.
+     */
+    centrato = false,
   ): number {
     const presenti = items.filter((i) => i.value && i.value !== "-");
     if (presenti.length === 0) return y;
 
     const colW = PW / colonne;
-    const RIGA_BASE = 9;
+    // 8,4 mm per riga: etichetta, valore e filetto con un millimetro d'aria
+    // fra l'uno e l'altro. Erano 9, e con quattro righe di ecocardiogramma e
+    // sei di ematochimici il mezzo millimetro si vedeva in fondo al foglio.
+    const RIGA_BASE = 8.4;
 
     // Le celle si dispongono per larghezza, non contandole: una voce puo'
     // chiedere piu' colonne con `span`, e quando nella riga non ci sta piu' si
@@ -950,16 +1006,20 @@ export class PdfService {
       if (y !== prima) y = this.segue(doc, y, titolo);
 
       riga.forEach((cella, i) => {
-        const cx = ML + cella.col * colW + 2;
         const maxW = cella.span * colW - 4;
+        // Centrata, la cella si scrive dal suo asse invece che dal filo.
+        const cx = centrato
+          ? ML + (cella.col + cella.span / 2) * colW
+          : ML + cella.col * colW + 2;
+        const allinea = centrato ? "center" : "left";
 
         doc.setFont("helvetica", "normal"); doc.setFontSize(7); this.tc(doc, K80);
-        doc.text(san(cella.item.label), cx, y + 3.4, { maxWidth: maxW });
+        doc.text(san(cella.item.label), cx, y + 3.2, { maxWidth: maxW, align: allinea });
 
         doc.setFont("helvetica", cella.item.forte ? "bold" : "normal");
         doc.setFontSize(9); this.tc(doc, K0);
         spezzate[i].forEach((linea, n) => {
-          doc.text(linea, cx, y + 7.6 + n * LH);
+          doc.text(linea, cx, y + 7.0 + n * LH, { align: allinea });
         });
       });
 
@@ -992,18 +1052,18 @@ export class PdfService {
       const linee: string[] = doc.splitTextToSize(
         san(item.value), PW - labelW - 4,
       );
-      const h = Math.max(LH + 2.4, linee.length * LH + 2.4);
+      const h = Math.max(1, linee.length) * LH + 1.6;
       const prima = y;
       y = this.pb(doc, y, h + 2);
       if (y !== prima) y = this.segue(doc, y, titolo);
 
       doc.setFont("helvetica", "normal"); doc.setFontSize(7); this.tc(doc, K80);
-      doc.text(san(item.label), ML + 2, y + 4);
+      doc.text(san(item.label), ML + 2, y + 4.1);
 
       doc.setFont("helvetica", item.forte ? "bold" : "normal");
       doc.setFontSize(9); this.tc(doc, K0);
       linee.forEach((linea, i) => {
-        doc.text(linea, ML + labelW, y + 4 + i * LH);
+        doc.text(linea, ML + labelW, y + 4.1 + i * LH);
       });
 
       y += h;
@@ -1013,38 +1073,46 @@ export class PdfService {
   }
 
   /**
-   * Intestazione di sezione su barra grigia: con otto sezioni per referto,
-   * il titolo in grassetto su fondo bianco non bastava a far trovare i blocchi.
+   * Intestazione di sezione su fascia grigia.
+   *
+   * Restituisce la quota da cui comincia il contenuto, cioe' il bordo
+   * inferiore della fascia piu' un soffio: le tabelle partono da li', la prosa
+   * ci aggiunge la distanza della sua prima linea di base. Prima restituiva la
+   * linea di base della prosa, e una tabella sotto la fascia aggiungeva la sua
+   * distanza a quella: sette millimetri di bianco fra il titolo e i dati.
+   *
+   * La fascia comincia dove finisce il blocco precedente: l'aria fra i due la
+   * lascia chi sta sopra, con l'interlinea della sua ultima riga.
+   *
+   * `need` e' quello che il titolo si porta dietro, la fascia e la prima riga
+   * di contenuto, perche' non resti da solo in fondo alla pagina.
    */
-  //
-  // `need` di 14 mm e la somma reale di quello che il titolo si porta dietro:
-  // 6,4 di intestazione piu una riga di testo piu un margine. Con i 16 tondi di
-  // prima una sezione da una riga sola scivolava alla pagina dopo per mezzo
-  // millimetro, e ci finiva da sola.
-  private static sezione(doc: jsPDF, y: number, titolo: string, need = 16): number {
+  private static sezione(doc: jsPDF, y: number, titolo: string, need = 22): number {
     y = this.pb(doc, y, need);
-    y += 3.5;
     // Fascia grigio chiaro da margine a margine, uguale per tutte le sezioni:
     // prosa e dati pesano lo stesso. L'ha scelta il cardiologo sui referti
     // stampati (mail del 9 settembre 2026) al posto del filetto sotto la
-    // parola, e la voleva estesa da ECG, ecocardiogramma ed ematochimici ad
-    // anamnesi, esame obiettivo e conclusioni.
+    // parola, e l'11 settembre l'ha voluta anche su ogni esame, al posto del
+    // titolo "Esami strumentali" che li raccoglieva: una fascia per voce e
+    // nessun gruppo sopra.
     doc.setFillColor(...K235);
-    doc.rect(ML, y - 3.9, PW, 5.8, "F");
+    doc.rect(ML, y, PW, FASCIA_H, "F");
 
     doc.setFont("helvetica", "bold"); doc.setFontSize(8.6); this.tc(doc, K0);
     // La spaziatura fra le lettere fa leggere il maiuscoletto come
     // un'intestazione e non come una parola urlata.
-    doc.text(san(titolo).toUpperCase(), ML + 2, y, { charSpace: 0.35 });
+    doc.text(san(titolo).toUpperCase(), ML + 2, y + 3.9, { charSpace: 0.35 });
 
-    return y + 7.6;
+    return y + FASCIA_H + 1.3;
   }
 
   /**
-   * Titolo di un modulo dentro un gruppo di sezioni. Piu' leggero della barra
-   * grigia: se "ESAMI STRUMENTALI" ed "ELETTROCARDIOGRAMMA" avessero lo stesso
-   * peso tipografico il raggruppamento non si leggerebbe, e il referto
-   * tornerebbe a sembrare un elenco di blocchi tutti di pari livello.
+   * Titolo di un modulo dentro un gruppo di sezioni. Piu' leggero della
+   * fascia: se "INQUADRAMENTO CLINICO" e "Scompenso cardiaco" avessero lo
+   * stesso peso tipografico il raggruppamento non si leggerebbe.
+   *
+   * Resta per l'inquadramento clinico soltanto: gli esami strumentali hanno
+   * ciascuno la sua fascia dall'11 settembre 2026.
    */
   private static sottosezione(doc: jsPDF, y: number, titolo: string): number {
     y = this.pb(doc, y, 16);
@@ -1053,25 +1121,26 @@ export class PdfService {
     const t = san(titolo);
     doc.text(t, ML + 1, y);
     this.rule(doc, y + 1.1, ML + 1, ML + 1 + doc.getTextWidth(t), 0.25);
-    return y + 6.5;
+    return y + 3;
   }
 
   /**
    * Intestazione di gruppo disegnata alla prima chiamata e mai piu'.
    *
-   * Ogni modulo strumentale si salta da solo quando e' vuoto, e nella maggior
-   * parte delle visite ne viene compilato uno o nessuno: senza questa apertura
-   * pigra una visita senza esami lascerebbe la barra del gruppo sospesa sopra
-   * il nulla.
+   * Ogni modulo si salta da solo quando e' vuoto: senza questa apertura pigra
+   * una visita senza scompenso, fibrillazione ne' classe di rischio lascerebbe
+   * la fascia del gruppo sospesa sopra il nulla.
    */
   private static gruppo(doc: jsPDF, titolo: string): ApriGruppo {
     let aperto = false;
     return (y: number) => {
       if (aperto) return y;
       aperto = true;
-      // Spazio per la barra, il titolo del modulo e la sua prima riga: il
-      // gruppo non deve restare orfano in fondo alla pagina.
-      return this.sezione(doc, y, titolo, 34);
+      // Spazio per la fascia, il titolo del modulo e la sua prima riga: il
+      // gruppo non deve restare orfano in fondo alla pagina. I due millimetri
+      // in piu' staccano il nome del modulo dalla fascia, come il cardiologo
+      // aveva chiesto l'8 settembre.
+      return this.sezione(doc, y, titolo, 34) + 2;
     };
   }
 
@@ -1123,17 +1192,48 @@ export class PdfService {
     if (!testo?.trim()) return y;
     // Due righe insieme o si va a capo pagina: il referto testuale di un
     // modulo non deve lasciare un rigo solo sotto la sua tabella.
-    y = this.pb(doc, y, 4.5 + 2 * (LH + 1.3));
-    return this.block(doc, testo, ML, y + 4.5, PW, LH + 1.3, {
+    y = this.pb(doc, y, 3.6 + 2 * LH_PROSA + 1);
+    return this.block(doc, testo, ML, y + 3.6, PW, LH_PROSA, {
       font: "helvetica", style: "normal", fontSize: 10.5, color: K0,
     });
+  }
+
+  /**
+   * Pressione arteriosa, con la sua fascia prima dell'elettrocardiogramma.
+   *
+   * Stava fra i parametri vitali, in testa al referto. Il cardiologo la vuole
+   * con gli esami, come nei suoi referti, e con la posizione in cui e' stata
+   * misurata (call dell'11 settembre 2026): la seconda misurazione, di solito
+   * in ortostatismo, e' quella che documenta un'ipotensione ortostatica.
+   *
+   * Senza posizione dichiarata la prima misurazione e' in clinostatismo e la
+   * seconda in ortostatismo: e' come la maschera le presenta.
+   */
+  private static drawPressioneArteriosa(
+    doc: jsPDF, y: number, vis: NonNullable<Visit["visita"]>,
+  ): number {
+    const misurazioni = [
+      { valore: vis.pressioneArteriosa, posizione: vis.posizionePa ?? "clino" },
+      { valore: vis.pressioneArteriosa2, posizione: vis.posizionePa2 ?? "orto" },
+    ].filter((m) => m.valore?.trim());
+    if (misurazioni.length === 0) return y;
+
+    y = this.sezione(doc, y, "Pressione arteriosa");
+    return this.drawMisureTable(
+      doc, y,
+      misurazioni.map((m) => ({
+        label: m.posizione === "orto" ? "Ortostatismo" : "Clinostatismo",
+        value: `${(m.valore ?? "").trim()} mmHg`,
+        forte: valutaPressioneScritta(m.valore).livello !== "nella-norma",
+      })),
+      3, "Pressione arteriosa",
+    );
   }
 
   private static drawEcg(
     doc: jsPDF, y: number,
     ecg: NonNullable<Visit["visita"]>["ecg"],
     frequenzaCardiaca: string | undefined,
-    apriGruppo: ApriGruppo,
   ): number {
     if (!ecg) return y;
     const qtc = calcolaQtcBazett(
@@ -1164,17 +1264,15 @@ export class PdfService {
     const haMisure = misure.some((m) => m.value);
     if (!haMisure && !ecg.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Elettrocardiogramma");
+    y = this.sezione(doc, y, "Elettrocardiogramma");
     y = this.drawMisureTable(doc, y, misure, 3, "Elettrocardiogramma");
     y = this.drawRefertoModulo(doc, y, ecg.referto);
-    return y + 4;
+    return y;
   }
 
   private static drawEcocardiogramma(
     doc: jsPDF, y: number,
     eco: NonNullable<Visit["visita"]>["ecocardiogramma"],
-    apriGruppo: ApriGruppo,
   ): number {
     if (!eco) return y;
     const mm = (n: number | undefined) => (n != null ? `${n} mm` : "");
@@ -1246,18 +1344,16 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !eco.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Ecocardiogramma color-Doppler transtoracico");
+    y = this.sezione(doc, y, "Ecocardiogramma color-Doppler transtoracico");
     y = this.drawMisureTable(doc, y, misure, 4, "Ecocardiogramma");
     y = this.drawRefertoModulo(doc, y, eco.referto);
-    return y + 4;
+    return y;
   }
 
   private static drawTcCoronarica(
     doc: jsPDF, y: number,
     tc: NonNullable<Visit["visita"]>["tcCoronarica"],
     sogliaCac: SogliaCacSevera,
-    apriGruppo: ApriGruppo,
   ): number {
     if (!tc) return y;
     const esitoCac = categoriaCac(tc.cacScore, sogliaCac);
@@ -1290,15 +1386,14 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !tc.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "TC coronarica");
+    y = this.sezione(doc, y, "TC coronarica");
     y = this.drawMisureTable(doc, y, misure, 3, "TC coronarica");
     // L'avvertenza sul CAC resta nella maschera e non entra nel referto: "il
     // punteggio CAC non equivale a stenosi ostruttiva" e' una cosa che il
     // cardiologo sa, e nel referto occupa due righe per non dire niente. Il
     // giudizio lo formula lui qui sotto.
     y = this.drawRefertoModulo(doc, y, tc.referto);
-    return y + 4;
+    return y;
   }
 
   /**
@@ -1399,7 +1494,7 @@ export class PdfService {
     // Il confronto fra le due frazioni resta dove serve: e' quello che fa
     // comparire la sigla HFimpEF nella riga del fenotipo.
     y = this.drawRefertoModulo(doc, y, sc.referto);
-    return y + 4;
+    return y;
   }
 
   /**
@@ -1527,7 +1622,7 @@ export class PdfService {
     y = this.sottosezione(doc, y, "Fibrillazione atriale");
     y = this.drawDettagliTable(doc, y, misure, "Fibrillazione atriale");
     y = this.drawRefertoModulo(doc, y, fa.referto);
-    return y + 4;
+    return y;
   }
 
   /**
@@ -1540,7 +1635,6 @@ export class PdfService {
     doc: jsPDF, y: number,
     erg: NonNullable<Visit["visita"]>["testErgometrico"],
     patient: Patient,
-    apriGruppo: ApriGruppo,
   ): number {
     if (!erg) return y;
     const eta = Number(calcAge(patient.dataNascita));
@@ -1565,17 +1659,15 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !erg.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Test ergometrico");
+    y = this.sezione(doc, y, "Test ergometrico");
     y = this.drawMisureTable(doc, y, misure, 3, "Test ergometrico");
     y = this.drawRefertoModulo(doc, y, erg.referto);
-    return y + 4;
+    return y;
   }
 
   private static drawHolterEcg(
     doc: jsPDF, y: number,
     h: NonNullable<Visit["visita"]>["holterEcg"],
-    apriGruppo: ApriGruppo,
   ): number {
     if (!h) return y;
     const bpm = (n: number | undefined) => (n != null ? `${n} bpm` : "");
@@ -1595,11 +1687,10 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !h.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "ECG dinamico secondo Holter");
+    y = this.sezione(doc, y, "ECG dinamico secondo Holter");
     y = this.drawMisureTable(doc, y, misure, 3, "ECG dinamico secondo Holter");
     y = this.drawRefertoModulo(doc, y, h.referto);
-    return y + 4;
+    return y;
   }
 
   /**
@@ -1610,7 +1701,6 @@ export class PdfService {
   private static drawHolterPressorio(
     doc: jsPDF, y: number,
     h: NonNullable<Visit["visita"]>["holterPressorio"],
-    apriGruppo: ApriGruppo,
   ): number {
     if (!h) return y;
     const coppia = (s?: number, d?: number) =>
@@ -1644,11 +1734,10 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !h.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Monitoraggio pressorio delle 24 ore");
+    y = this.sezione(doc, y, "Monitoraggio pressorio delle 24 ore");
     y = this.drawMisureTable(doc, y, misure, 3, "Monitoraggio pressorio delle 24 ore");
     y = this.drawRefertoModulo(doc, y, h.referto);
-    return y + 4;
+    return y;
   }
 
   /**
@@ -1688,7 +1777,7 @@ export class PdfService {
       if (!sintesi?.trim()) return y;
       y = apriGruppo(y);
       y = this.sottosezione(doc, y, "Sintesi del rischio");
-      return this.drawRefertoModulo(doc, y, sintesi) + 4;
+      return this.drawRefertoModulo(doc, y, sintesi);
     }
 
     // LDL dosato quando c'e', altrimenti quello di Friedewald: e' il valore su
@@ -1730,7 +1819,7 @@ export class PdfService {
     y = this.sottosezione(doc, y, "Rischio cardiovascolare");
     y = this.drawDettagliTable(doc, y, misure, "Rischio cardiovascolare");
     y = this.drawRefertoModulo(doc, y, sintesi);
-    return y + 4;
+    return y;
   }
 
   /**
@@ -1744,7 +1833,6 @@ export class PdfService {
   private static drawDopplerTsa(
     doc: jsPDF, y: number,
     tsa: NonNullable<Visit["visita"]>["dopplerTsa"],
-    apriGruppo: ApriGruppo,
   ): number {
     if (!tsa) return y;
 
@@ -1768,11 +1856,10 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !tsa.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "EcoColorDoppler dei tronchi sovraaortici");
+    y = this.sezione(doc, y, "EcoColorDoppler dei tronchi sovraaortici");
     y = this.drawDettagliTable(doc, y, misure, "Doppler TSA");
     y = this.drawRefertoModulo(doc, y, tsa.referto);
-    return y + 4;
+    return y;
   }
 
   private static drawLaboratorio(
@@ -1891,6 +1978,9 @@ export class PdfService {
         value: mg(lab.uricemia),
         forte: this.fuoriNorma("lab.uricemia", lab.uricemia, sesso),
       },
+      // Accanto all'uricemia come nella maschera. Senza grassetto finche' il
+      // cardiologo non indica la soglia.
+      { label: "Azotemia", value: mg(lab.azotemia) },
       {
         label: "TSH",
         value: lab.tsh != null ? `${lab.tsh} mU/L` : "",
@@ -1906,7 +1996,7 @@ export class PdfService {
     y = this.drawMisureTable(doc, y, misure, 3, "Esami ematochimici");
     // Niente nota sui valori calcolati: che l'LDL sia di Friedewald e l'eGFR
     // una stima lo dice l'etichetta della cella, e chi legge il referto lo sa.
-    return y + 4;
+    return y;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1971,7 +2061,10 @@ export class PdfService {
     const bmi = altezzaCm > 0 && peso > 0
       ? (peso / Math.pow(altezzaCm / 100, 2)).toFixed(1)
       : "-";
-    y = this.drawPatientBlock(doc, patient, visit.dataVisita, y, "Data visita");
+    // Anagrafica centrata sotto il titolo centrato: vedi `drawMisureTable`.
+    y = this.drawPatientBlock(doc, patient, visit.dataVisita, y, "Data visita", {
+      centrato: true,
+    });
 
     // I fattori di rischio dichiarati dal medico nella maschera. Il referto
     // stampa piu' sotto la classe di rischio e l'obiettivo lipidico che ne
@@ -1994,14 +2087,10 @@ export class PdfService {
     // ogni controllo, ed e' il confronto con il valore precedente che si guarda.
     y = this.drawInquadramentoGrid(doc, y, "Variabili cliniche", [
       {
+        // La pressione non sta piu' qui: ha la sua sezione prima
+        // dell'elettrocardiogramma, con la posizione della misurazione.
         header: "Parametri vitali",
         items: [
-          {
-            label: "P.A.",
-            value: v(vis.pressioneArteriosa ? `${vis.pressioneArteriosa} mmHg` : ""),
-            forte:
-              valutaPressioneScritta(vis.pressioneArteriosa).livello !== "nella-norma",
-          },
           {
             label: "F.C.",
             value: v(vis.frequenzaCardiaca ? `${vis.frequenzaCardiaca} bpm` : ""),
@@ -2051,30 +2140,31 @@ export class PdfService {
 
     y = this.drawTextSection(doc, y, "Esame Obiettivo", vis.esameObiettivo);
 
-    // ECG, ecocardiogramma, TC, ergometrico e Holter stanno sotto un unico
-    // titolo: sono tutti esami strumentali, e cinque barre di pari livello
-    // facevano sembrare il referto un elenco di blocchi scollegati.
-    const strumentali = this.gruppo(doc, "Esami strumentali");
-    y = this.drawEcg(doc, y, vis.ecg, vis.frequenzaCardiaca, strumentali);
-    y = this.drawEcocardiogramma(doc, y, vis.ecocardiogramma, strumentali);
+    // Ogni esame con la sua fascia, come anamnesi ed esame obiettivo. C'e'
+    // stato un titolo "Esami strumentali" che li raccoglieva, con i moduli
+    // come sottotitoli sottolineati: il cardiologo l'ha fatto togliere l'11
+    // settembre 2026 ("meglio evidenziare in grigio le singole voci").
+    //
+    // La pressione apre la serie, prima dell'elettrocardiogramma.
+    y = this.drawPressioneArteriosa(doc, y, vis);
+    y = this.drawEcg(doc, y, vis.ecg, vis.frequenzaCardiaca);
+    y = this.drawEcocardiogramma(doc, y, vis.ecocardiogramma);
     y = this.drawTcCoronarica(
       doc, y, vis.tcCoronarica,
       Number(prefs?.sogliaCacSevera) === 400 ? 400 : SOGLIA_CAC_PREDEFINITA,
-      strumentali,
     );
-    y = this.drawTestErgometrico(doc, y, vis.testErgometrico, patient, strumentali);
-    y = this.drawHolterEcg(doc, y, vis.holterEcg, strumentali);
-    y = this.drawHolterPressorio(doc, y, vis.holterPressorio, strumentali);
-    y = this.drawDopplerTsa(doc, y, vis.dopplerTsa, strumentali);
+    y = this.drawTestErgometrico(doc, y, vis.testErgometrico, patient);
+    y = this.drawHolterEcg(doc, y, vis.holterEcg);
+    y = this.drawHolterPressorio(doc, y, vis.holterPressorio);
+    y = this.drawDopplerTsa(doc, y, vis.dopplerTsa);
     y = this.drawLaboratorio(doc, y, vis.laboratorio, patient);
 
-    // Scompenso, fibrillazione atriale e rischio cardiovascolare aprivano tre
-    // sezioni di primo livello in fila, con lo stesso peso di "Esami
-    // strumentali" che invece ne raccoglie sei. Non sono esami: sono i tre
-    // inquadramenti che il cardiologo formula dopo averli letti, e stanno
-    // insieme sotto un titolo solo per la stessa ragione per cui ci stanno i
-    // moduli strumentali. Il gruppo si apre da solo al primo che ha qualcosa
-    // da dire.
+    // Scompenso, fibrillazione atriale e rischio cardiovascolare restano sotto
+    // un titolo solo, con i moduli come sottotitoli: sono i tre inquadramenti
+    // che il cardiologo formula dopo aver letto gli esami. Qui la fascia per
+    // voce non l'ha voluta ("lascia così", call dell'11 settembre 2026), e sta
+    // ancora decidendo cosa ci debba entrare, per esempio la cardiopatia
+    // ischemica. Il gruppo si apre da solo al primo che ha qualcosa da dire.
     const inquadramento = this.gruppo(doc, "Inquadramento clinico");
     y = this.drawScompenso(
       doc, y, vis.scompenso, vis.ecocardiogramma?.fe, patient, inquadramento,

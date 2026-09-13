@@ -84,28 +84,28 @@ function dalTitolo(testo: string, titolo: string): string {
 }
 
 describe("referto di visita: esami strumentali", () => {
-  it("raggruppa i moduli strumentali sotto un titolo solo", async () => {
+  // I titoli su fascia si scrivono in maiuscolo, ed e' cosi' che si ritrovano
+  // nel flusso del PDF: cercarli in minuscolo farebbe passare per vuoto anche
+  // un "non contiene".
+
+  it("da' a ogni esame la sua fascia, senza un titolo di gruppo sopra", async () => {
+    // Il cardiologo, 11 settembre 2026: via la voce "Esami strumentali", in
+    // grigio le singole voci come gia' anamnesi ed esame obiettivo.
     const testo = await testoDelPdf(
       visita({
-        ecg: { ritmo: "Sinusale", referto: "Nei limiti" },
+        ecg: { pr: 180, referto: "Nei limiti" },
         ecocardiogramma: { fe: 60 },
       }),
     );
-    expect(testo).toContain("ESAMI STRUMENTALI");
-    // I moduli restano, ma come sottotitoli: il gruppo non li sostituisce.
-    expect(testo).toContain("Elettrocardiogramma");
-    expect(testo).toContain("Ecocardiogramma");
-  });
-
-  it("non apre il gruppo quando non c'e' nessun esame", async () => {
-    const testo = await testoDelPdf(visita({}));
     expect(testo).not.toContain("ESAMI STRUMENTALI");
+    expect(testo).toContain("ELETTROCARDIOGRAMMA");
+    expect(testo).toContain("ECOCARDIOGRAMMA");
   });
 
-  it("apre il gruppo anche se il primo modulo della serie e' vuoto", async () => {
+  it("non stampa la fascia di un esame vuoto", async () => {
     const testo = await testoDelPdf(visita({ holterEcg: { fcMedia: 68 } }));
-    expect(testo).toContain("ESAMI STRUMENTALI");
-    expect(testo).toContain("Holter");
+    expect(testo).toContain("HOLTER");
+    expect(testo).not.toContain("ELETTROCARDIOGRAMMA");
   });
 });
 
@@ -123,9 +123,9 @@ describe("referto di visita: fibrillazione atriale", () => {
 
   it("stampa il totale del punteggio", async () => {
     const testo = await testoDelPdf(conFa);
-    // Non e' piu' una sezione di primo livello: sta sotto "Inquadramento
-    // clinico" con lo scompenso e il rischio, come i moduli strumentali
-    // stanno sotto "Esami strumentali".
+    // Sta sotto "Inquadramento clinico" con lo scompenso e il rischio: li' il
+    // cardiologo non ha voluto la fascia per voce ("lascia così", call
+    // dell'11 settembre 2026).
     expect(testo).toContain("INQUADRAMENTO CLINICO");
     expect(testo).toContain("Fibrillazione atriale");
     expect(testo).toContain("CHA2DS2-VASc");
@@ -189,7 +189,7 @@ describe("referto di visita: fibrillazione atriale", () => {
 });
 
 describe("referto di visita: Doppler TSA", () => {
-  it("sta fra gli esami strumentali", async () => {
+  it("esce con la sua fascia, come gli altri esami", async () => {
     // Lo referta il chirurgo vascolare, ma il cardiologo lo legge e lo usa:
     // la placca carotidea e' aterosclerosi documentata.
     const testo = await testoDelPdf(
@@ -202,8 +202,7 @@ describe("referto di visita: Doppler TSA", () => {
         },
       }),
     );
-    expect(testo).toContain("ESAMI STRUMENTALI");
-    expect(testo).toContain("EcoColorDoppler dei tronchi sovraaortici");
+    expect(testo).toContain("ECOCOLORDOPPLER DEI TRONCHI SOVRAAORTICI");
     expect(testo).toContain("1.1 mm");
     // La stenosi porta con se' la sede: un 45% senza vaso non e' refertabile.
     // Le parentesi tonde nel flusso del PDF sono protette da una barra
@@ -214,7 +213,7 @@ describe("referto di visita: Doppler TSA", () => {
 
   it("resta fuori dal referto se il modulo non e' compilato", async () => {
     const testo = await testoDelPdf(visita({ ecg: { pr: 160 } }));
-    expect(testo).not.toContain("sovraaortici");
+    expect(testo).not.toContain("SOVRAAORTICI");
   });
 
   it("esce anche con la sola ATS carotidea delle variabili cliniche", async () => {
@@ -222,7 +221,7 @@ describe("referto di visita: Doppler TSA", () => {
     // aterogeno, dove si chiama "ATS carotidea": e' lo stesso campo, e da solo
     // basta a far comparire il modulo.
     const testo = await testoDelPdf(visita({ dopplerTsa: { stenosiCarotidea: 60 } }));
-    expect(testo).toContain("sovraaortici");
+    expect(testo).toContain("SOVRAAORTICI");
     expect(testo).toContain("60%");
   });
 });
@@ -232,7 +231,7 @@ describe("referto di visita: misure nuove e tolte", () => {
     const testo = await testoDelPdf(
       visita({ ecg: { ritmo: "Sinusale", pr: 180, referto: "Nei limiti." } }),
     );
-    expect(testo).toContain("Elettrocardiogramma");
+    expect(testo).toContain("ELETTROCARDIOGRAMMA");
     expect(testo).toContain("180 ms");
     expect(testo).not.toContain("RITMO");
   });
@@ -427,8 +426,8 @@ describe("referto di visita: impaginazione da referto ospedaliero", () => {
 describe("referto di visita: inquadramento clinico", () => {
   it("raccoglie i tre inquadramenti sotto un titolo solo", async () => {
     // Scompenso, fibrillazione e rischio non sono esami: sono le conclusioni
-    // che il cardiologo trae dopo averli letti, e aprivano tre sezioni di
-    // primo livello in fila.
+    // che il cardiologo trae dopo averli letti. Gli esami hanno perso il loro
+    // gruppo l'11 settembre 2026, questi no: "lascia così".
     const testo = await testoDelPdf(
       visita({
         scompenso: { nyha: "II" },
@@ -474,7 +473,11 @@ describe("referto di visita: fattori di rischio dichiarati", () => {
     // Il fumo non e' mai stato un segno vitale, ed era anche l'unico fattore
     // di rischio che usciva nel referto mentre gli altri sette restavano
     // nella maschera.
-    const testo = await testoDelPdf(visita({ fumatore: "no" }));
+    // Con la frequenza, perche' la colonna dei parametri vitali ci sia: vuota
+    // non si stampa.
+    const testo = await testoDelPdf(
+      visita({ fumatore: "no", frequenzaCardiaca: "72" }),
+    );
     const vitali = testo.slice(
       testo.indexOf("PARAMETRI VITALI"), testo.indexOf("FATTORI DI RISCHIO"),
     );
@@ -732,5 +735,83 @@ describe("referto di visita: nomi lunghi", () => {
     const testo = await blob!.text();
     expect(testo).toContain("Data visita");
     expect(testo).toContain("Codice fiscale");
+  });
+});
+
+describe("referto di visita: pressione arteriosa", () => {
+  it("ha la sua fascia prima dell'elettrocardiogramma", async () => {
+    // Call dell'11 settembre 2026: "fammi una voce pressione come
+    // elettrocardiogramma", al posto della riga fra i parametri vitali.
+    const testo = await testoDelPdf(
+      visita({ pressioneArteriosa: "135/85", ecg: { pr: 160 } }),
+    );
+    expect(testo).toContain("PRESSIONE ARTERIOSA");
+    expect(testo.indexOf("PRESSIONE ARTERIOSA")).toBeLessThan(
+      testo.indexOf("ELETTROCARDIOGRAMMA"),
+    );
+    expect(testo).toContain("(135/85 mmHg)");
+  });
+
+  it("non la ripete fra i parametri vitali", async () => {
+    const testo = await testoDelPdf(
+      visita({ pressioneArteriosa: "135/85", frequenzaCardiaca: "72" }),
+    );
+    expect(testo).toContain("PARAMETRI VITALI");
+    expect(testo).not.toContain("P.A.:");
+  });
+
+  it("dice la posizione di ogni misurazione", async () => {
+    const testo = await testoDelPdf(
+      visita({
+        pressioneArteriosa: "130/80",
+        pressioneArteriosa2: "105/65",
+        posizionePa2: "orto",
+      }),
+    );
+    expect(testo).toContain("Clinostatismo");
+    expect(testo).toContain("Ortostatismo");
+    expect(testo).toContain("(105/65 mmHg)");
+  });
+
+  it("senza posizione dichiarata la prima e' in clinostatismo", async () => {
+    // Come la maschera la presenta: tutte le visite misurano in clinostatismo,
+    // l'ortostatismo e' la seconda misurazione, quando serve.
+    const testo = await testoDelPdf(visita({ pressioneArteriosa: "130/80" }));
+    expect(testo).toContain("Clinostatismo");
+    expect(testo).not.toContain("Ortostatismo");
+  });
+
+  it("senza pressione la sezione non c'e'", async () => {
+    const testo = await testoDelPdf(visita({ ecg: { pr: 160 } }));
+    expect(testo).not.toContain("PRESSIONE ARTERIOSA");
+  });
+});
+
+describe("referto di visita: intestazione", () => {
+  it("porta la specializzazione sotto il nome del medico", async () => {
+    // Tolta perche' ripeteva il titolo, rimessa su richiesta del cardiologo:
+    // con due specialita' dice qualcosa che il titolo non dice.
+    const testo = await testoDelPdf(visita({}));
+    expect(testo).toContain("(Cardiologia)");
+  });
+});
+
+describe("referto di visita: variabili cliniche", () => {
+  it("non stampa l'intestazione di una colonna vuota", async () => {
+    // Con la pressione nella sua sezione, una visita senza frequenza lasciava
+    // "PARAMETRI VITALI" sopra il nulla.
+    const testo = await testoDelPdf(visita({ fumatore: "no" }));
+    expect(testo).toContain("FATTORI DI RISCHIO");
+    expect(testo).not.toContain("PARAMETRI VITALI");
+  });
+});
+
+describe("referto di visita: azotemia", () => {
+  it("la stampa con gli ematochimici", async () => {
+    const testo = await testoDelPdf(
+      visita({ laboratorio: { uricemia: 6.1, azotemia: 42 } }),
+    );
+    expect(testo).toContain("Azotemia");
+    expect(testo).toContain("42 mg/dL");
   });
 });

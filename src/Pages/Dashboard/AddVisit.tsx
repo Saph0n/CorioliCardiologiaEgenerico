@@ -83,6 +83,8 @@ import {
   X,
   Ruler,
   BookOpen,
+  Info,
+  Plus,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -94,11 +96,15 @@ import {
 } from "../../utils/doctorProfile";
 import { AppModal } from "../../components/AppModal";
 import { ProntuarioModal } from "../../components/cardio/ProntuarioModal";
+import { ProntuarioImagingModal } from "../../components/cardio/ProntuarioImagingModal";
 import { applicaBozze } from "../../utils/bozzeMisure";
 import {
   CalcSuggestion,
+  CardColonna,
   GruppoCampi,
+  InfoTabella,
   MisuraInput,
+  PosizionePaSelettore,
   RigaCalcolata,
   StrisciaCalcolati,
   ModuloCollassabile,
@@ -153,6 +159,7 @@ import {
   fenotipoConStorico,
   valutaNtProBnp,
   type ContestoBnp,
+  riferimentoNtProBnp,
 } from "../../utils/scompenso";
 import {
   BURDEN_PLACCA,
@@ -178,6 +185,7 @@ import {
   type FattoreHasBled,
 } from "../../utils/fibrillazioneAtriale";
 import {
+  FASCE_HOMA_IR,
   scomponiPressione,
   valutaMisura,
   valutaPressione,
@@ -281,6 +289,9 @@ const createDefaultVisitaData = () => ({
   terapiaSpecifica: "",
   pesoCorporeo: 0,
   pressioneArteriosa: "",
+  posizionePa: "" as "" | "clino" | "orto",
+  pressioneArteriosa2: "",
+  posizionePa2: "" as "" | "clino" | "orto",
   frequenzaCardiaca: "",
   fumatore: "" as "" | "si" | "no",
   categoriaRischioCv: "" as "" | CategoriaRischioCv,
@@ -451,6 +462,13 @@ function visitaPerSalvataggio(
     terapiaSpecifica: v.terapiaSpecifica,
     pesoCorporeo: v.pesoCorporeo,
     pressioneArteriosa: v.pressioneArteriosa,
+    ...(v.posizionePa ? { posizionePa: v.posizionePa } : {}),
+    ...(v.pressioneArteriosa2?.trim()
+      ? {
+          pressioneArteriosa2: v.pressioneArteriosa2,
+          ...(v.posizionePa2 ? { posizionePa2: v.posizionePa2 } : {}),
+        }
+      : {}),
     frequenzaCardiaca: v.frequenzaCardiaca,
     ...(v.fumatore === "si" || v.fumatore === "no"
       ? { fumatore: v.fumatore }
@@ -476,6 +494,15 @@ function visitaPerSalvataggio(
       : { holterPressorio: v.holterPressorio }),
     ...(vuoto(v.dopplerTsa) ? {} : { dopplerTsa: v.dopplerTsa }),
   };
+}
+
+/**
+ * Errore della seconda pressione, detto come tale: con due misurazioni il
+ * messaggio da solo non direbbe quale delle due correggere.
+ */
+function validateSecondaPressione(value?: string): string | null {
+  const errore = validatePressioneArteriosa(value);
+  return errore ? `Seconda misurazione: ${errore}` : null;
 }
 
 /**
@@ -508,6 +535,8 @@ const MISURE: Record<string, { path: string; range?: ChiaveMisura }> = {
   "lab.ast": { path: "laboratorio.ast", range: "lab.ast" },
   "lab.alt": { path: "laboratorio.alt", range: "lab.alt" },
   "lab.uric": { path: "laboratorio.uricemia", range: "lab.uricemia" },
+  // Nessuna soglia finche' non la indica il cardiologo.
+  "lab.azot": { path: "laboratorio.azotemia" },
   "lab.tsh": { path: "laboratorio.tsh", range: "lab.tsh" },
   "lab.hspcr": { path: "laboratorio.hsPcr", range: "lab.hsPcr" },
   "lab.fibr": { path: "laboratorio.fibrinogeno" },
@@ -609,8 +638,45 @@ const GRUPPI_LABORATORIO = {
   infiammatorio: ["lab.hspcr", "lab.oxldl", "lab.fibr"],
   glucidico: ["lab.gli", "lab.ins", "lab.hba1c"],
   renale: ["lab.crea", "lab.alb"],
-  altri: ["lab.ast", "lab.alt", "lab.uric", "lab.tsh", "lab.hb"],
+  altri: ["lab.ast", "lab.alt", "lab.uric", "lab.azot", "lab.hb", "lab.tsh"],
 } as const;
+
+/** Tutte le voci del laboratorio, per il conteggio in testata alla card. */
+const CHIAVI_LABORATORIO = Object.values(GRUPPI_LABORATORIO).flat();
+
+/**
+ * Quali card della colonna dei parametri restano aperte.
+ *
+ * Sta in `localStorage` e non sulla visita: e' una preferenza di chi compila,
+ * non un dato clinico. Chi apre venti visite di fila non deve richiudere venti
+ * volte le stesse card. Per la stessa ragione una card che contiene dati
+ * **non** si riapre da sola, come fa invece `ModuloCollassabile` nel referto:
+ * qui la sintesi in testata dice cosa c'e' dentro senza bisogno di aprirla.
+ */
+const CHIAVE_CARD_COLONNA = "corioli_visita_card_colonna";
+
+type CardColonnaChiave = "cliniche" | "laboratorio" | "rischio";
+
+const CARD_COLONNA_DEFAULT: Record<CardColonnaChiave, boolean> = {
+  cliniche: true,
+  laboratorio: false,
+  rischio: false,
+};
+
+function leggiCardColonnaAperte(): Record<CardColonnaChiave, boolean> {
+  try {
+    const salvato = localStorage.getItem(CHIAVE_CARD_COLONNA);
+    if (!salvato) return CARD_COLONNA_DEFAULT;
+    return {
+      ...CARD_COLONNA_DEFAULT,
+      ...(JSON.parse(salvato) as Partial<Record<CardColonnaChiave, boolean>>),
+    };
+  } catch {
+    // Storage negato o JSON rovinato: si riparte dai default. Non e' un dato
+    // da cui dipenda niente.
+    return CARD_COLONNA_DEFAULT;
+  }
+}
 
 /**
  * Chiave scelta in una tendina, con "nessuna menzione" tradotta in campo vuoto.
@@ -800,6 +866,9 @@ export default function AddVisit() {
                 ...visit.visita,
                 pesoCorporeo: visit.visita?.pesoCorporeo ?? 0,
                 pressioneArteriosa: visit.visita?.pressioneArteriosa ?? "",
+                posizionePa: visit.visita?.posizionePa ?? "",
+                pressioneArteriosa2: visit.visita?.pressioneArteriosa2 ?? "",
+                posizionePa2: visit.visita?.posizionePa2 ?? "",
                 frequenzaCardiaca: visit.visita?.frequenzaCardiaca ?? "",
                 fumatore: visit.visita?.fumatore ?? "",
                 categoriaRischioCv: visit.visita?.categoriaRischioCv ?? "",
@@ -944,6 +1013,9 @@ export default function AddVisit() {
     pressioneArteriosa: normalizzaPressioneArteriosa(
       visitaData.pressioneArteriosa,
     ),
+    pressioneArteriosa2: normalizzaPressioneArteriosa(
+      visitaData.pressioneArteriosa2,
+    ),
   });
 
   const handleSubmit = async (
@@ -978,6 +1050,7 @@ export default function AddVisit() {
       const paramErr =
         validateBodyWeight(visitaForSave.pesoCorporeo) ??
         validatePressioneArteriosa(visitaForSave.pressioneArteriosa) ??
+        validateSecondaPressione(visitaForSave.pressioneArteriosa2) ??
         validateFrequenzaCardiaca(visitaForSave.frequenzaCardiaca);
       if (paramErr) {
         setError(paramErr);
@@ -1091,6 +1164,9 @@ export default function AddVisit() {
         // I parametri rilevati nella singola visita vanno reinseriti.
         pesoCorporeo: 0,
         pressioneArteriosa: "",
+        posizionePa: "",
+        pressioneArteriosa2: "",
+        posizionePa2: "",
         frequenzaCardiaca: "",
       }));
     } else {
@@ -1354,6 +1430,19 @@ export default function AddVisit() {
   const handleVisitaChange = (field: string, value: string | number) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     setVisitaData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /**
+   * "150 85" diventa "150/85" appena si esce dal campo, e non solo al
+   * salvataggio: il cardiologo lo scriveva con lo spazio e vedeva restare lo
+   * spazio (call dell'11 settembre 2026).
+   */
+  const normalizzaCampoPa = (
+    campo: "pressioneArteriosa" | "pressioneArteriosa2",
+  ) => {
+    const attuale = visitaData[campo] ?? "";
+    const normalizzata = normalizzaPressioneArteriosa(attuale);
+    if (normalizzata !== attuale) handleVisitaChange(campo, normalizzata);
   };
 
   /** Aggiorna un campo dentro ECG / ecocardiogramma / TC coronarica / laboratorio. */
@@ -1654,6 +1743,12 @@ export default function AddVisit() {
     );
     return valutaPressione(sistolica, diastolica);
   }, [visitaData.pressioneArteriosa]);
+  const pressione2Segnale = useMemo(() => {
+    const { sistolica, diastolica } = scomponiPressione(
+      visitaData.pressioneArteriosa2,
+    );
+    return valutaPressione(sistolica, diastolica);
+  }, [visitaData.pressioneArteriosa2]);
   /**
    * Fenotipo dello scompenso: si ricava dalla FE dell'ecocardiogramma di questa
    * visita e non viene salvato, così se la FE viene corretta il fenotipo non
@@ -1696,6 +1791,16 @@ export default function AddVisit() {
   );
 
   /**
+   * La soglia contro cui si legge il valore, appena il contesto e' scelto e
+   * anche prima che ci sia un valore: chiesta dal cardiologo il 12 settembre
+   * 2026. Le fasce per esteso stanno nel prontuario.
+   */
+  const riferimentoBnp = riferimentoNtProBnp(
+    visitaData.scompenso.contestoBnp,
+    etaPaziente,
+  );
+
+  /**
    * Condizioni che spostano il peptide. Si mostrano solo quando c'e' un valore
    * da leggere: fuori da quel contesto sarebbero avvisi senza oggetto.
    */
@@ -1722,6 +1827,71 @@ export default function AddVisit() {
 
   const fa = visitaData.fibrillazioneAtriale;
   const fattoriRischio = visitaData.fattoriRischio;
+
+  // ── Card della colonna dei parametri ──────────────────────────────────────
+  const [cardColonnaAperte, setCardColonnaAperte] = useState(
+    leggiCardColonnaAperte,
+  );
+
+  const impostaCardColonna = (chiave: CardColonnaChiave, aperto: boolean) => {
+    const aggiornate = { ...cardColonnaAperte, [chiave]: aperto };
+    setCardColonnaAperte(aggiornate);
+    try {
+      localStorage.setItem(CHIAVE_CARD_COLONNA, JSON.stringify(aggiornate));
+    } catch {
+      // Storage pieno o negato: la preferenza vale per questa sessione.
+    }
+  };
+
+  /**
+   * Le righe che si leggono a card chiusa. Corte di proposito — due o tre
+   * valori, non un riassunto — perche' stanno sotto al titolo in una colonna
+   * larga 300px. Niente `useMemo`: sono concatenazioni di stringhe su una
+   * colonna che si ridisegna comunque a ogni tasto.
+   */
+  const fattoriRischioDichiarati = FATTORI_RISCHIO_CV.filter(
+    (f) => fattoriRischio[f.chiave] === true,
+  ).length;
+
+  const sintesiCliniche =
+    [
+      visitaData.pressioneArteriosa
+        ? `P.A. ${visitaData.pressioneArteriosa}`
+        : null,
+      visitaData.frequenzaCardiaca
+        ? `${visitaData.frequenzaCardiaca} bpm`
+        : null,
+      bmi != null ? `BMI ${bmi.toFixed(1).replace(".", ",")}` : null,
+      visitaData.fumatore === "si" ? "fumatore" : null,
+      fattoriRischioDichiarati > 0
+        ? `${fattoriRischioDichiarati} ${
+            fattoriRischioDichiarati === 1 ? "fattore" : "fattori"
+          } CV`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "da compilare";
+
+  const esamiCompilati = compilatiTra(CHIAVI_LABORATORIO);
+
+  const sintesiLaboratorio =
+    esamiCompilati === 0
+      ? "nessun valore"
+      : [
+          ldlEffettivo ? `LDL ${Math.round(ldlEffettivo.valore)}` : null,
+          `${esamiCompilati} ${esamiCompilati === 1 ? "valore" : "valori"}`,
+          lab.dataPrelievo
+            ? `prelievo ${dataBreve(lab.dataPrelievo)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+  const sintesiRischio = categoriaRischio
+    ? `${CATEGORIA_RISCHIO_LABELS[categoriaRischio]} · obiettivo LDL < ${
+        TARGET_LDL[categoriaRischio].mgdl
+      }`
+    : "classe non attribuita";
 
   /** Categoria del calcium score, con la soglia severa impostata dal centro. */
   const esitoCac = useMemo(
@@ -1784,6 +1954,23 @@ export default function AddVisit() {
     visitData.dataVisita,
   ]);
   const [isProntuarioOpen, setIsProntuarioOpen] = useState(false);
+  /** Scheda su cui aprire il prontuario: dallo scompenso si va alle classi. */
+  const [tabProntuario, setTabProntuario] = useState<string | undefined>();
+  const apriProntuario = (tab?: string) => {
+    setTabProntuario(tab);
+    setIsProntuarioOpen(true);
+  };
+  const [isProntuarioImagingOpen, setIsProntuarioImagingOpen] = useState(false);
+  // La seconda misurazione della pressione si apre a richiesta, e resta aperta
+  // finche' ha un valore.
+  const [mostraPa2, setMostraPa2] = useState(false);
+  const mostraSecondaPa =
+    mostraPa2 || Boolean(visitaData.pressioneArteriosa2?.trim());
+  const togliSecondaPa = () => {
+    handleVisitaChange("pressioneArteriosa2", "");
+    handleVisitaChange("posizionePa2", "");
+    setMostraPa2(false);
+  };
   const tc = visitaData.tcCoronarica;
 
   /**
@@ -2090,36 +2277,74 @@ export default function AddVisit() {
           </div>
         )}
 
+        {/* Le due colonne sono alte uguale per il solo `align-items:
+            stretch` di default, senza una riga di CSS in piu'. Funziona
+            perche' le card richiudibili tengono il rail sotto i ~900px,
+            quindi piu' corto del referto: quando un figlio flex e' piu' corto
+            della riga, lo stretch lo porta all'altezza della riga da solo — e
+            l'ultima card del rail si prende lo spazio che avanza (vedi la
+            card delle immagini). Non funzionava prima, con 3.168px di
+            contenuto nel rail: era il rail a dettare l'altezza della riga, e
+            lo stretch non accorcia un figlio sotto il suo contenuto.
+
+            Da qui anche la rinuncia a `sticky` e a `overflow-y: auto` sul
+            rail, provati entrambi il 12 settembre 2026: una seconda barra di
+            scorrimento nella stessa pagina e' un fastidio continuo per chi
+            compila, perche' la rotella fa una cosa diversa a seconda di dove
+            hai il mouse e di quanto hai scorso la pagina. Una sola barra,
+            quella della pagina.
+
+            Se il medico apre tutte le card il rail torna piu' alto del
+            referto ed e' di nuovo lui a dare l'altezza: il referto resta in
+            alto e sotto avanza bianco. E' il prezzo, accettato, di non avere
+            la seconda barra. */}
         <div className="flex flex-col lg:flex-row gap-6">
           {/* LEFT COLUMN: Variabili cliniche & Immagini */}
-          <div className="w-full lg:w-[29%] min-w-[300px] space-y-6">
-            <Card className="shadow-sm border border-default-200 bg-white">
-              <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                <span>Variabili cliniche</span>
-              </CardHeader>
+          {/* `flex flex-col` e non `space-y-6`: serve a `grow` sull'ultima
+              card. Il `gap-6` da' la stessa aria di prima fra le card. */}
+          <div className="w-full min-w-[300px] flex flex-col gap-6 lg:w-[29%]">
+            <CardColonna
+              titolo="Variabili cliniche"
+              sintesi={sintesiCliniche}
+              aperto={cardColonnaAperte.cliniche}
+              onApertoChange={(a) => impostaCardColonna("cliniche", a)}
+            >
               <CardBody className="px-4 py-6 gap-6">
+                {/* Pressione con la posizione della misurazione e, se serve,
+                    una seconda misurazione: in clinostatismo per tutti, in
+                    ortostatismo per documentare un'ipotensione ortostatica.
+                    Nel referto escono con la loro fascia prima
+                    dell'elettrocardiogramma (call dell'11 settembre 2026). */}
                 <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="P.A. (mmHg)"
-                    type="text"
-                    inputMode="numeric"
-                    size="sm"
-                    variant="bordered"
-                    labelPlacement="outside"
-                    placeholder="Es. 120/80"
-                    value={visitaData.pressioneArteriosa ?? ""}
-                    onValueChange={(v) =>
-                      handleVisitaChange("pressioneArteriosa", v)
-                    }
-                    description={
-                      <NoteCampo
-                        segnale={pressioneSegnale}
-                        precedente={precedenti["visita.pressioneArteriosa"]}
-                        corrente={visitaData.pressioneArteriosa}
-                      />
-                    }
-                    classNames={{ description: "m-0" }}
-                  />
+                  <div className="flex flex-col gap-1.5">
+                    <Input
+                      label="P.A. (mmHg)"
+                      type="text"
+                      inputMode="numeric"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      placeholder="Es. 120/80"
+                      value={visitaData.pressioneArteriosa ?? ""}
+                      onValueChange={(v) =>
+                        handleVisitaChange("pressioneArteriosa", v)
+                      }
+                      onBlur={() => normalizzaCampoPa("pressioneArteriosa")}
+                      description={
+                        <NoteCampo
+                          segnale={pressioneSegnale}
+                          precedente={precedenti["visita.pressioneArteriosa"]}
+                          corrente={visitaData.pressioneArteriosa}
+                        />
+                      }
+                      classNames={{ description: "m-0" }}
+                    />
+                    <PosizionePaSelettore
+                      ariaLabel="Posizione della misurazione della pressione"
+                      valore={visitaData.posizionePa || "clino"}
+                      onChange={(p) => handleVisitaChange("posizionePa", p)}
+                    />
+                  </div>
                   <Input
                     label="F.C. (bpm)"
                     type="text"
@@ -2144,26 +2369,59 @@ export default function AddVisit() {
                     }
                     classNames={{ description: "m-0" }}
                   />
+                  {mostraSecondaPa ? (
+                    <div className="flex flex-col gap-1.5">
+                      <Input
+                        label="P.A. 2ª (mmHg)"
+                        type="text"
+                        inputMode="numeric"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        placeholder="Es. 110/70"
+                        value={visitaData.pressioneArteriosa2 ?? ""}
+                        onValueChange={(v) =>
+                          handleVisitaChange("pressioneArteriosa2", v)
+                        }
+                        onBlur={() => normalizzaCampoPa("pressioneArteriosa2")}
+                        description={<NoteCampo segnale={pressione2Segnale} />}
+                        classNames={{ description: "m-0" }}
+                      />
+                      <div className="flex items-center gap-1">
+                        <PosizionePaSelettore
+                          ariaLabel="Posizione della seconda misurazione"
+                          valore={visitaData.posizionePa2 || "orto"}
+                          onChange={(p) => handleVisitaChange("posizionePa2", p)}
+                        />
+                        <Button
+                          type="button"
+                          isIconOnly
+                          size="sm"
+                          variant="light"
+                          aria-label="Togli la seconda misurazione"
+                          className="h-6 w-6 min-w-0 text-default-400"
+                          onPress={togliSecondaPa}
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="col-span-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="light"
+                        color="primary"
+                        className="h-6 min-w-0 px-1.5 text-xs"
+                        startContent={<Plus size={13} />}
+                        onPress={() => setMostraPa2(true)}
+                      >
+                        Seconda misurazione
+                      </Button>
+                    </div>
+                  )}
                 </div>
-
-                <Select
-                  label="Fumatore"
-                  size="sm"
-                  variant="bordered"
-                  labelPlacement="outside"
-                  placeholder="Non rilevato"
-                  selectedKeys={visitaData.fumatore ? [visitaData.fumatore] : []}
-                  onSelectionChange={(keys) =>
-                    handleVisitaChange(
-                      "fumatore",
-                      (Array.from(keys)[0] as string) ?? "",
-                    )
-                  }
-                  description="Entra nel calcolo del rischio cardiovascolare"
-                >
-                  <SelectItem key="si">Si'</SelectItem>
-                  <SelectItem key="no">No</SelectItem>
-                </Select>
 
                 <Divider className="my-2" />
 
@@ -2176,6 +2434,43 @@ export default function AddVisit() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Fattori di rischio CV
                   </p>
+
+                  {/* Il fumo sta fra i fattori di rischio, che e' il suo posto,
+                      ma **resta una tendina e non una casella**: ha tre stati e
+                      non due. Per SCORE2 "non rilevato" e "no" sono due cose
+                      diverse — una casella non spuntata non dice se il paziente
+                      non fuma o se nessuno gliel'ha chiesto — e anche il referto
+                      stampa il fumo in negativo, perche' "non fumatore" e' un
+                      dato clinico (vedi `PdfService.drawFattoriRischio`). Sta in
+                      testa e non in mezzo alle caselle: un controllo diverso
+                      infilato nella lista sembrerebbe un errore. */}
+                  {/* `mt-9` e non `mt-3`: l'etichetta esterna di NextUI sta
+                      fuori dal riquadro del campo e si mangia quasi tutto il
+                      margine sopra, cosi' "Fumatore" finiva incollato al
+                      titolo del pannello — misurati 0px fra i due, 6 con
+                      `mt-7`, 14 con questo. */}
+                  <div className="mt-9">
+                    <Select
+                      label="Fumatore"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      placeholder="Non rilevato"
+                      selectedKeys={
+                        visitaData.fumatore ? [visitaData.fumatore] : []
+                      }
+                      onSelectionChange={(keys) =>
+                        handleVisitaChange(
+                          "fumatore",
+                          (Array.from(keys)[0] as string) ?? "",
+                        )
+                      }
+                      description="Tre stati: «non rilevato» non vale «no» nel calcolo del rischio"
+                    >
+                      <SelectItem key="si">Si'</SelectItem>
+                      <SelectItem key="no">No</SelectItem>
+                    </Select>
+                  </div>
                   {/* Una casella per riga, con abbastanza aria fra loro.
                       Due insidie del Checkbox di NextUI, che qui portavano
                       entrambe a spuntare il fattore sbagliato con un clic:
@@ -2207,9 +2502,8 @@ export default function AddVisit() {
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-default-500">
-                    Il fumo si indica nel campo qui sopra. Ipertensione e diabete
-                    alimentano anche il CHA&#8322;DS&#8322;-VASc del modulo
-                    Fibrillazione atriale.
+                    Ipertensione e diabete alimentano anche il
+                    CHA&#8322;DS&#8322;-VASc del modulo Fibrillazione atriale.
                   </p>
                 </div>
 
@@ -2338,17 +2632,19 @@ export default function AddVisit() {
                   color="primary"
                   className="w-full"
                   startContent={<BookOpen size={15} />}
-                  onPress={() => setIsProntuarioOpen(true)}
+                  onPress={() => apriProntuario()}
                 >
-                  Prontuario — pilastri, farmaci, CAD-RADS
+                  Prontuario — pilastri e farmaci
                 </Button>
               </CardBody>
-            </Card>
+            </CardColonna>
 
-            <Card className="shadow-sm border border-default-200 bg-white">
-              <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                Laboratorio
-              </CardHeader>
+            <CardColonna
+              titolo="Laboratorio"
+              sintesi={sintesiLaboratorio}
+              aperto={cardColonnaAperte.laboratorio}
+              onApertoChange={(a) => impostaCardColonna("laboratorio", a)}
+            >
               <CardBody className="px-4 py-6 gap-4">
                 <Input
                   type="date"
@@ -2542,6 +2838,19 @@ export default function AddVisit() {
                   titolo="Metabolismo glucidico"
                   compilati={compilatiTra(GRUPPI_LABORATORIO.glucidico)}
                   totale={GRUPPI_LABORATORIO.glucidico.length}
+                  azione={
+                    <InfoTabella
+                      titolo="HOMA-IR: fasce di lettura"
+                      colonne={["HOMA-IR", "Lettura"]}
+                      righe={FASCE_HOMA_IR.map((f) => ({
+                        chiave: f.etichetta,
+                        intervallo: f.intervallo,
+                        lettura: f.lettura,
+                      }))}
+                      evidenziata={homaCalc.ok ? homaSegnale.etichetta : undefined}
+                      nota="Il valore di taglio dipende dal metodo di dosaggio dell'insulina e dal laboratorio."
+                    />
+                  }
                 >
                   <div className="grid grid-cols-2 gap-3">
                     <MisuraInput
@@ -2675,16 +2984,20 @@ export default function AddVisit() {
                       onDraftChange={(d) => setDraft("lab.uric", d)}
                       {...misura("lab.uric")}
                     />
+                    {/* Accanto all'uricemia, con emoglobina e TSH sotto: la
+                        disposizione l'ha data il cardiologo nella call dell'11
+                        settembre 2026. */}
                     <MisuraInput
-                      label="TSH"
-                      unit="mU/L"
-                      value={visitaData.laboratorio.tsh}
+                      label="Azotemia"
+                      unit="mg/dL"
+                      decimals={false}
+                      value={visitaData.laboratorio.azotemia}
                       onValueChange={(v) =>
-                        handleBloccoChange("laboratorio", "tsh", v)
+                        handleBloccoChange("laboratorio", "azotemia", v)
                       }
-                      draft={draftOf("lab.tsh")}
-                      onDraftChange={(d) => setDraft("lab.tsh", d)}
-                      {...misura("lab.tsh")}
+                      draft={draftOf("lab.azot")}
+                      onDraftChange={(d) => setDraft("lab.azot", d)}
+                      {...misura("lab.azot")}
                     />
                     <MisuraInput
                       label="Emoglobina"
@@ -2697,15 +3010,28 @@ export default function AddVisit() {
                       onDraftChange={(d) => setDraft("lab.hb", d)}
                       {...misura("lab.hb")}
                     />
+                    <MisuraInput
+                      label="TSH"
+                      unit="mU/L"
+                      value={visitaData.laboratorio.tsh}
+                      onValueChange={(v) =>
+                        handleBloccoChange("laboratorio", "tsh", v)
+                      }
+                      draft={draftOf("lab.tsh")}
+                      onDraftChange={(d) => setDraft("lab.tsh", d)}
+                      {...misura("lab.tsh")}
+                    />
                   </div>
                 </GruppoCampi>
               </CardBody>
-            </Card>
+            </CardColonna>
 
-            <Card className="shadow-sm border border-default-200 bg-white">
-              <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                Rischio cardiovascolare
-              </CardHeader>
+            <CardColonna
+              titolo="Rischio cardiovascolare"
+              sintesi={sintesiRischio}
+              aperto={cardColonnaAperte.rischio}
+              onApertoChange={(a) => impostaCardColonna("rischio", a)}
+            >
               {/* `gap` e non `space-y`: le etichette `labelPlacement="outside"`
                   sono posizionate in modo assoluto e NextUI riserva loro spazio
                   con un margine sul campo, che `space-y-*` sovrascriverebbe
@@ -2859,9 +3185,23 @@ export default function AddVisit() {
                     calcolato: sono due cose diverse e affiancarle sotto la
                     stessa etichetta inviterebbe a sommarle. I valori si
                     leggono dal modulo TC coronarica, non si reinseriscono. */}
-                <p className="text-xs font-semibold uppercase tracking-wider text-default-500">
-                  Rischio osservato da imaging
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-default-500">
+                    Rischio osservato da imaging
+                  </p>
+                  <Button
+                    type="button"
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    radius="full"
+                    aria-label="Prontuario imaging: calcium score e CAD-RADS"
+                    className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                    onPress={() => setIsProntuarioImagingOpen(true)}
+                  >
+                    <Info size={15} />
+                  </Button>
+                </div>
                 {esitoCac || tc.cadRads ? (
                   <div className="rounded-lg border border-default-200 bg-default-50/60 px-3 py-2 space-y-1">
                     {esitoCac && (
@@ -2924,21 +3264,50 @@ export default function AddVisit() {
                   sua motivazione stanno in questo campo.
                 </p>
               </CardBody>
-            </Card>
+            </CardColonna>
 
-            <Card className="shadow-sm border border-default-200 bg-white">
+            {/* La card delle immagini si prende l'altezza che avanza nel
+                rail, ma **al massimo fino a 240px**. Senza tetto assorbiva
+                tutto: aprendo i moduli del referto (TC coronarica, eco,
+                scompenso…) la colonna di destra arriva a tre o quattro
+                schermate e la zona tratteggiata si allungava per centinaia di
+                pixel — "sembra buggato", ed e' vero, non si legge come un
+                bersaglio per il trascinamento ma come un errore di
+                impaginazione. Oltre il tetto lo spazio che resta e' bianco in
+                fondo al rail, come in qualunque form a due colonne.
+
+                Il tetto vale solo a card vuota. Con le miniature dentro la
+                card chiede anche piu' di 1.000px di suo, e un `max-height`
+                sotto l'altezza del contenuto lo taglierebbe dentro al
+                CardBody di NextUI, che ha `overflow-y: auto` di serie: cioe'
+                la seconda barra di scorrimento che stiamo evitando.
+
+                `grow` con `basis-auto` e `shrink-0` e non `flex-1`: `flex-1`
+                azzera la base e rende la card comprimibile, e col rail piu'
+                alto del referto la strizzerebbe — stessa barra. */}
+            <Card
+              className={`shadow-sm border border-default-200 bg-white${
+                immagini.length === 0
+                  ? " lg:grow lg:shrink-0 lg:basis-auto lg:max-h-[240px]"
+                  : ""
+              }`}
+            >
               <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
                 Immagini allegate
               </CardHeader>
-              <CardBody className="px-4 py-6 space-y-3">
+              <CardBody className="px-4 py-6 space-y-3 flex-1">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">
                     {immagini.length}/{MAX_IMAGES} immagini
                   </span>
                 </div>
 
-                <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 hover:border-primary cursor-pointer text-sm">
-                  <ImagePlus size={16} />
+                {/* `flex-1` con un minimo suo: quando il rail ha spazio da
+                    distribuire la zona diventa un bersaglio grande per il
+                    trascinamento, quando non ne ha resta la striscia di
+                    prima. */}
+                <label className="flex flex-1 min-h-[60px] flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 hover:border-primary cursor-pointer text-sm text-default-500">
+                  <ImagePlus size={18} />
                   Carica immagini
                   <input
                     type="file"
@@ -3118,24 +3487,29 @@ export default function AddVisit() {
                   />
                 </div>
 
-                {/* Sezione 5: Ecocardiogramma */}
-                <div className="space-y-2 relative group">
-                  <ModuloHeader
-                    numero="5"
-                    titolo="Ecocardiogramma"
-                    azione={
-                      <TemplateSelector
-                        templates={allTemplates.filter(
-                          (t) =>
-                            t.category === "visita" &&
-                            t.section === "ecocardiogramma",
-                        )}
-                        onSelect={(t) =>
-                          applyBloccoTemplate("ecocardiogramma", t)
-                        }
-                      />
-                    }
-                  />
+                {/* Sezione 5: Ecocardiogramma.
+                    Collassabile come la TC: si apre da solo quando e'
+                    compilato, e in una visita nuova non occupa mezza pagina
+                    finche' non serve. Proposta nella call dell'11 settembre
+                    2026. */}
+                <ModuloCollassabile
+                  numero="5"
+                  titolo="Ecocardiogramma"
+                  sottotitolo="non eseguito"
+                  compilato={bloccoCompilato("ecocardiogramma")}
+                  azione={
+                    <TemplateSelector
+                      templates={allTemplates.filter(
+                        (t) =>
+                          t.category === "visita" &&
+                          t.section === "ecocardiogramma",
+                      )}
+                      onSelect={(t) =>
+                        applyBloccoTemplate("ecocardiogramma", t)
+                      }
+                    />
+                  }
+                >
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <MisuraInput
                       label="DTD VS"
@@ -3360,7 +3734,7 @@ export default function AddVisit() {
                     minRows={5}
                     placeholder="Camere, cinesi, valvole, sezioni destre, pericardio..."
                   />
-                </div>
+                </ModuloCollassabile>
 
                 {/* Sezione 6: TC coronarica.
                     Collassabile come i moduli 7-11: i campi sono molti, ma una
@@ -3375,6 +3749,20 @@ export default function AddVisit() {
                   titolo="TC coronarica"
                   sottotitolo="non eseguita"
                   compilato={bloccoCompilato("tcCoronarica")}
+                  azione={
+                    <Button
+                      type="button"
+                      isIconOnly
+                      size="sm"
+                      variant="light"
+                      radius="full"
+                      aria-label="Prontuario imaging: calcium score e CAD-RADS"
+                      className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                      onPress={() => setIsProntuarioImagingOpen(true)}
+                    >
+                      <Info size={15} />
+                    </Button>
+                  }
                 >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <Input
@@ -4418,13 +4806,27 @@ export default function AddVisit() {
                   sottotitolo="non valutato"
                   compilato={bloccoCompilato("scompenso")}
                   azione={
-                    <TemplateSelector
-                      templates={allTemplates.filter(
-                        (t) =>
-                          t.category === "visita" && t.section === "scompenso",
-                      )}
-                      onSelect={(t) => applyBloccoTemplate("scompenso", t)}
-                    />
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        isIconOnly
+                        size="sm"
+                        variant="light"
+                        radius="full"
+                        aria-label="Prontuario: classi di scompenso"
+                        className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                        onPress={() => apriProntuario("classi")}
+                      >
+                        <Info size={15} />
+                      </Button>
+                      <TemplateSelector
+                        templates={allTemplates.filter(
+                          (t) =>
+                            t.category === "visita" && t.section === "scompenso",
+                        )}
+                        onSelect={(t) => applyBloccoTemplate("scompenso", t)}
+                      />
+                    </div>
                   }
                 >
                   {/* Il fenotipo non è un campo: arriva dalla FE inserita
@@ -4540,6 +4942,10 @@ export default function AddVisit() {
                       )}
                     </Select>
                   </div>
+
+                  {riferimentoBnp && (
+                    <p className="text-xs text-default-500">{riferimentoBnp}</p>
+                  )}
 
                   {visitaData.scompenso.ntProBnp != null && !esitoBnp && (
                     <p className="text-xs text-warning-700">
@@ -5034,12 +5440,20 @@ export default function AddVisit() {
         </ModalContent>
       </AppModal>
 
+      <ProntuarioImagingModal
+        isOpen={isProntuarioImagingOpen}
+        onClose={() => setIsProntuarioImagingOpen(false)}
+        sogliaCac={sogliaCac}
+        categoriaCorrente={esitoCac?.categoria}
+      />
       <ProntuarioModal
         isOpen={isProntuarioOpen}
         onClose={() => setIsProntuarioOpen(false)}
         fe={visitaData.ecocardiogramma.fe}
         trigliceridi={visitaData.laboratorio.trigliceridi}
         categoriaRischio={visitaData.categoriaRischioCv}
+        nyha={visitaData.scompenso.nyha}
+        tabIniziale={tabProntuario}
       />
 
       {doctorProfileIncompleteModal}

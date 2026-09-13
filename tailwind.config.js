@@ -61,21 +61,48 @@ export default {
     extend: {
       fontFamily: {
         /**
-         * Un carattere solo, in tutta l'applicazione e in tutto il referto.
+         * Due caratteri con due mestieri diversi: l'interfaccia prende quello
+         * di sistema, il referto resta su quello della stampa.
          *
-         * Nel PDF il testo e' in Helvetica, che e' uno dei caratteri standard
-         * del formato e quindi non viene incorporato nel file: a disegnarla e'
-         * il lettore, e su Windows la sostituisce con Arial. Per far vedere a
-         * schermo quello che esce dalla stampante l'ordine e' quello, Arial
-         * prima: su Mac si ferma su Helvetica in tutti e due i posti.
+         * L'Arial che l'interfaccia aveva prima non era una scelta
+         * tipografica ma un riflesso del PDF. Nel referto ha una ragione — il
+         * testo e' in Helvetica, uno dei caratteri standard del formato, che
+         * non viene incorporato nel file: a disegnarla e' il lettore, e su
+         * Windows la sostituisce con Arial, quindi scrivendo si vede quello
+         * che esce dalla stampante. Come carattere di interfaccia invece
+         * Arial e' fuori posto: a 12-14px in una maschera fitta di campi
+         * stretti sta largo, e le sue cifre sono il punto debole proprio in
+         * un'applicazione che e' quasi tutta numeri.
          *
-         * `sans` e' la famiglia predefinita di Tailwind, quindi sostituirla qui
-         * cambia il carattere di ogni schermata; `referto` resta separata anche
-         * se oggi contiene la stessa cosa, perche' i campi in cui si scrive il
-         * referto devono seguire la stampa comunque, anche se un domani
-         * l'interfaccia tornasse al carattere di sistema.
+         * `Segoe UI Variable Text` sta **prima** di `system-ui` di proposito:
+         * misurato in Chromium su Windows 11, `system-ui` risolve al Segoe UI
+         * normale e non alla variabile (306,79px contro 302,31px sulla stessa
+         * stringa a 14px). La variabile e' disegnata per i corpi piccoli ed e'
+         * quella che serve qui. Su Mac quel nome non esiste, la riga scivola
+         * su `system-ui` e prende San Francisco.
+         *
+         * Nessun carattere scaricato dalla rete: l'applicazione deve
+         * funzionare offline — e' la stessa ragione per cui le icone Tabler
+         * sono in `node_modules` e non su un CDN. Se un domani serve la stessa
+         * identita' su Mac e Windows si impacchetta un carattere vero (Inter,
+         * IBM Plex Sans) come dipendenza, non come link.
          */
-        sans: ["Arial", "Helvetica", "sans-serif"],
+        sans: [
+          "Segoe UI Variable Text",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        /**
+         * Solo i campi in cui si scrive il referto (`RefertoTextarea`): devono
+         * seguire la stampa, non l'interfaccia. Se cambia questa riga cambia
+         * anche quello che il medico vede mentre scrive rispetto a quello che
+         * stampa.
+         */
         referto: ["Arial", "Helvetica", "sans-serif"],
       },
       colors: {

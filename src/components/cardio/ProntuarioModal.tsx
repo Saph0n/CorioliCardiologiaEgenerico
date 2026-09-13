@@ -22,11 +22,25 @@ import {
   type Criterio,
   type StatoCriterio,
 } from "../../utils/terapieCardio";
-import { CAD_RADS_PASSI } from "../../utils/tcCoronarica";
+import {
+  CLASSI_NYHA,
+  CONTESTO_BNP_LABELS,
+  FASCE_ETA_CONFERMA_ACUTO,
+  FENOTIPI_SCOMPENSO,
+  NYHA_LABELS,
+  NYHA_SIGLE,
+  SOGLIA_ESCLUSIONE_NTPROBNP,
+  fenotipoDaFe,
+  sogliaConfermaAcuto,
+  type ClasseNyha,
+  type ContestoBnp,
+} from "../../utils/scompenso";
 
 /**
  * Prontuario di consultazione: quattro pilastri dello scompenso, icosapent
- * etile, colchicina.
+ * etile, colchicina. Le tabelle della TC coronarica stanno in un prontuario a
+ * parte, `ProntuarioImagingModal`: il cardiologo le ha volute separate dai
+ * farmaci (call dell'11 settembre 2026).
  *
  * Sta in un modal e non fra le sezioni del referto perche' non e' contenuto del
  * referto: e' materiale da guardare mentre si scrive, come si aprirebbe un
@@ -42,6 +56,8 @@ export function ProntuarioModal({
   fe,
   trigliceridi,
   categoriaRischio,
+  nyha,
+  tabIniziale,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -49,6 +65,13 @@ export function ProntuarioModal({
   fe?: number;
   trigliceridi?: number;
   categoriaRischio?: CategoriaRischioCv | "";
+  /** Classe NYHA della visita: evidenzia la riga nelle classi di scompenso. */
+  nyha?: ClasseNyha | "";
+  /**
+   * Scheda da cui partire: chi apre il prontuario dal modulo dello scompenso
+   * vuole le classi, non i pilastri.
+   */
+  tabIniziale?: string;
 }) {
   const colonna = colonnaPilastri(fe);
   const criteri = criteriIcosapentEtile({ trigliceridi, categoriaRischio });
@@ -64,9 +87,18 @@ export function ProntuarioModal({
           </span>
         </ModalHeader>
         <ModalBody className="pb-2">
-          <Tabs aria-label="Schede del prontuario" size="sm" variant="underlined">
+          <Tabs
+            key={tabIniziale}
+            defaultSelectedKey={tabIniziale}
+            aria-label="Schede del prontuario"
+            size="sm"
+            variant="underlined"
+          >
             <Tab key="pilastri" title="Scompenso: 4 pilastri">
               <Pilastri colonna={colonna} />
+            </Tab>
+            <Tab key="classi" title="Scompenso: classi">
+              <ClassiScompenso fe={fe} nyha={nyha} />
             </Tab>
             <Tab key="icosapent" title="Icosapent etile">
               <Icosapent criteri={criteri} />
@@ -79,9 +111,6 @@ export function ProntuarioModal({
             </Tab>
             <Tab key="rischio" title="Classi di rischio">
               <ClassiRischio />
-            </Tab>
-            <Tab key="cadrads" title="CAD-RADS">
-              <CadRads />
             </Tab>
           </Tabs>
         </ModalBody>
@@ -167,6 +196,143 @@ function Riga({ termine, testo }: { termine: string; testo: string }) {
     <div className="grid grid-cols-[7.5rem_1fr] gap-2">
       <dt className="text-xs font-semibold text-default-500">{termine}</dt>
       <dd className="text-xs text-default-700">{testo}</dd>
+    </div>
+  );
+}
+
+// ─── Scompenso: classi ───────────────────────────────────────────────────────
+
+/**
+ * Le classi con cui si descrive uno scompenso: fenotipo per frazione di
+ * eiezione, classe funzionale NYHA e soglie dell'NT-proBNP.
+ *
+ * Chieste dal cardiologo il 12 settembre 2026. Sono le stesse fasce che
+ * l'applicazione applica nella maschera, prese dalle stesse costanti: qui si
+ * leggono tutte insieme, comprese quelle che il paziente in visita non ha.
+ */
+function ClassiScompenso({ fe, nyha }: { fe?: number; nyha?: ClasseNyha | "" }) {
+  const fenotipoCorrente = fenotipoDaFe(fe)?.chiave;
+  const contesti = Object.keys(CONTESTO_BNP_LABELS) as ContestoBnp[];
+
+  return (
+    <div className="space-y-4">
+      <section>
+        <p className="text-sm font-semibold text-gray-800">
+          Fenotipo per frazione di eiezione
+        </p>
+        <p className="text-xs text-default-500">
+          {fenotipoCorrente
+            ? "La riga del paziente in visita è evidenziata."
+            : "Senza frazione di eiezione nell'ecocardiogramma nessuna riga è evidenziata."}
+        </p>
+        <table className="mt-2 w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-default-200">
+              <th className="py-1.5 pr-3 text-xs font-semibold text-default-500">
+                Fenotipo
+              </th>
+              <th className="py-1.5 pr-3 text-xs font-semibold text-gray-800">
+                Frazione di eiezione
+              </th>
+              <th className="py-1.5 text-xs font-semibold text-gray-800">Nota</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FENOTIPI_SCOMPENSO.map((f) => (
+              <tr
+                key={f.chiave}
+                className={`border-b border-default-100 align-top ${
+                  f.chiave === fenotipoCorrente ? "bg-primary-50" : ""
+                }`}
+              >
+                <td className="whitespace-nowrap py-2 pl-1 pr-3 text-xs font-semibold text-default-500">
+                  {f.chiave}
+                </td>
+                <td className="py-2 pr-3 text-xs text-default-700">{f.intervallo}</td>
+                <td className="py-2 text-xs text-default-600">{f.nota}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <p className="text-sm font-semibold text-gray-800">Classe funzionale NYHA</p>
+        <table className="mt-2 w-full border-collapse text-left">
+          <tbody>
+            {CLASSI_NYHA.map((c) => (
+              <tr
+                key={c}
+                className={`border-b border-default-100 align-top ${
+                  c === nyha ? "bg-primary-50" : ""
+                }`}
+              >
+                <td className="whitespace-nowrap py-2 pl-1 pr-3 text-xs font-semibold text-default-500">
+                  {NYHA_SIGLE[c]}
+                </td>
+                {/* L'etichetta porta davanti il numero romano, che sta già
+                    nella colonna a sinistra. */}
+                <td className="py-2 text-xs text-default-700">
+                  {NYHA_LABELS[c].replace(/^[IV]+ — /, "")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <p className="text-sm font-semibold text-gray-800">NT-proBNP</p>
+        <p className="text-xs text-default-500">
+          Sotto la soglia di esclusione lo scompenso è improbabile. In
+          ambulatorio non c&apos;è una soglia di conferma: sopra si prosegue con
+          l&apos;ecocardiogramma.
+        </p>
+        <table className="mt-2 w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-default-200">
+              <th className="py-1.5 pr-3 text-xs font-semibold text-default-500">
+                Contesto del prelievo
+              </th>
+              <th className="py-1.5 text-xs font-semibold text-gray-800">
+                Soglia di esclusione
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {contesti.map((c) => (
+              <tr key={c} className="border-b border-default-100 align-top">
+                <td className="py-2 pl-1 pr-3 text-xs text-default-700">
+                  {CONTESTO_BNP_LABELS[c]}
+                </td>
+                <td className="py-2 text-xs font-semibold text-gray-800">
+                  &lt; {SOGLIA_ESCLUSIONE_NTPROBNP[c]} pg/mL
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <table className="mt-3 w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-default-200">
+              <th className="py-1.5 pr-3 text-xs font-semibold text-default-500">
+                Conferma in urgenza, per età
+              </th>
+              <th className="py-1.5 text-xs font-semibold text-gray-800">Soglia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FASCE_ETA_CONFERMA_ACUTO.map((f) => (
+              <tr key={f.fascia} className="border-b border-default-100 align-top">
+                <td className="py-2 pl-1 pr-3 text-xs text-default-700">{f.fascia}</td>
+                <td className="py-2 text-xs font-semibold text-gray-800">
+                  &gt; {sogliaConfermaAcuto(f.etaRappresentativa)} pg/mL
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
 }
@@ -287,47 +453,6 @@ function Confronto() {
                 </td>
                 <td className="py-2 pr-3 text-xs text-default-700">{r.icosapent}</td>
                 <td className="py-2 text-xs text-default-700">{r.colchicina}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ─── CAD-RADS: passo successivo ─────────────────────────────────────────────
-
-function CadRads() {
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-default-500">
-        Solo a titolo informativo: il passo tipico per categoria, non una
-        proposta per il paziente in visita.
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-default-200">
-              <th className="py-1.5 pr-3 text-xs font-semibold text-default-500">
-                Categoria
-              </th>
-              <th className="py-1.5 pr-3 text-xs font-semibold text-gray-800">
-                Significato clinico orientativo
-              </th>
-              <th className="py-1.5 text-xs font-semibold text-gray-800">
-                Passo successivo tipico
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {CAD_RADS_PASSI.map((r) => (
-              <tr key={r.categoria} className="border-b border-default-100 align-top">
-                <td className="whitespace-nowrap py-2 pr-3 text-xs font-semibold text-default-500">
-                  {r.categoria}
-                </td>
-                <td className="py-2 pr-3 text-xs text-default-700">{r.significato}</td>
-                <td className="py-2 text-xs text-default-700">{r.passo}</td>
               </tr>
             ))}
           </tbody>

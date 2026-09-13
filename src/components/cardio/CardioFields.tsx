@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from "react";
 import {
   Button,
+  Card,
   Chip,
   Input,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Tab,
+  Tabs,
   Tooltip,
 } from "@nextui-org/react";
 import { ChevronDown, ChevronRight, Info } from "lucide-react";
@@ -573,27 +576,138 @@ export function GruppoCampi({
   titolo,
   compilati,
   totale,
+  azione,
   children,
 }: {
   titolo: string;
   compilati: number;
   totale: number;
+  /** In alto a destra, dopo il conteggio: il pulsante "i" di una tabella. */
+  azione?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2 border-b border-default-200 pb-1">
+      <div className="flex items-center justify-between gap-2 border-b border-default-200 pb-1">
         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-default-600">
           {titolo}
         </h4>
-        {compilati > 0 && (
-          <span className="text-[10px] tabular-nums text-default-500">
-            {compilati}/{totale}
-          </span>
-        )}
+        <span className="flex items-center gap-1">
+          {compilati > 0 && (
+            <span className="text-[10px] tabular-nums text-default-500">
+              {compilati}/{totale}
+            </span>
+          )}
+          {azione}
+        </span>
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * Pulsante "i" che apre una tabella di consultazione.
+ *
+ * Chiesto dal cardiologo per l'HOMA-IR (call dell'11 settembre 2026): il
+ * tooltip dice la fascia del valore in esame, ma per ricordarsi dove cadono le
+ * altre voleva cliccare e avere davanti tutto lo schema, come nel prontuario.
+ * La riga in cui cade il valore della visita e' evidenziata.
+ */
+export function InfoTabella({
+  titolo,
+  colonne,
+  righe,
+  evidenziata,
+  nota,
+}: {
+  titolo: string;
+  colonne: [string, string];
+  righe: { chiave: string; intervallo: string; lettura: string }[];
+  /** Chiave della riga in cui cade il valore della visita. */
+  evidenziata?: string;
+  nota?: string;
+}) {
+  return (
+    <Popover placement="bottom-end" showArrow>
+      <PopoverTrigger>
+        <Button
+          type="button"
+          isIconOnly
+          size="sm"
+          variant="light"
+          radius="full"
+          aria-label={`Tabella: ${titolo}`}
+          className="h-5 w-5 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+        >
+          <Info size={14} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="max-w-sm items-start p-3">
+        <p className="text-xs font-semibold text-gray-800">{titolo}</p>
+        <table className="mt-2 w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-default-200">
+              <th className="py-1 pr-3 text-[11px] font-semibold text-default-500">
+                {colonne[0]}
+              </th>
+              <th className="py-1 text-[11px] font-semibold text-default-500">
+                {colonne[1]}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {righe.map((r) => (
+              <tr
+                key={r.chiave}
+                className={`border-b border-default-100 align-top ${
+                  r.chiave === evidenziata ? "bg-primary-50" : ""
+                }`}
+              >
+                <td className="whitespace-nowrap py-1.5 pl-1 pr-3 text-xs font-semibold tabular-nums text-gray-700">
+                  {r.intervallo}
+                </td>
+                <td className="py-1.5 pr-1 text-xs text-default-700">{r.lettura}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {nota && (
+          <p className="mt-2 text-[10px] leading-snug text-default-500">{nota}</p>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Clinostatismo o ortostatismo per una misurazione della pressione.
+ *
+ * Due voci e nient'altro, a un clic: quasi tutte le visite misurano la
+ * pressione una volta, in clinostatismo, e scegliere la posizione non deve
+ * costare piu' della misura (call dell'11 settembre 2026).
+ */
+export function PosizionePaSelettore({
+  valore,
+  onChange,
+  ariaLabel,
+}: {
+  valore: "clino" | "orto";
+  onChange: (posizione: "clino" | "orto") => void;
+  ariaLabel: string;
+}) {
+  return (
+    <Tabs
+      aria-label={ariaLabel}
+      size="sm"
+      radius="sm"
+      selectedKey={valore}
+      onSelectionChange={(k) => onChange(k === "orto" ? "orto" : "clino")}
+      classNames={{ tabList: "gap-0.5 p-0.5", tab: "h-6 px-2", tabContent: "text-xs" }}
+    >
+      <Tab key="clino" title="Clino" />
+      <Tab key="orto" title="Orto" />
+    </Tabs>
   );
 }
 
@@ -691,5 +805,82 @@ export function ModuloCollassabile({
           margini dei figli e lascia il ritmo verticale invariato. */}
       {aperto && <div className="flex flex-col gap-2">{children}</div>}
     </div>
+  );
+}
+
+
+/**
+ * Card della colonna dei parametri, che si richiude sulla sua riga di sintesi.
+ *
+ * La colonna arrivava a 3.168px di contenuto — cinque schermate — contro i
+ * ~1.450px della scheda del referto accanto. Le vie erano due: tenerla lunga,
+ * o darle uno scroll suo. La seconda l'ha scartata Pablo il 12 settembre 2026
+ * ("piu' scroll bar nella stessa pagina sono stressanti per l'utente"), e la
+ * prova a schermo gli dava ragione: con due barre la rotella fa una cosa
+ * diversa a seconda di dove hai il mouse e di quanto hai scorso la pagina.
+ * Quindi si accorcia il contenuto invece di contenerlo: chiuse, le card
+ * portano il rail sotto i ~900px e la pagina resta con la sua unica barra.
+ *
+ * `sintesi` non e' un ornamento. A card chiusa deve dare i due o tre valori
+ * che servono a colpo d'occhio mentre si scrive il referto: se richiudere
+ * costa la lettura del dato, il medico lascia tutto aperto e la card
+ * richiudibile non serve a niente.
+ */
+export function CardColonna({
+  titolo,
+  sintesi,
+  aperto,
+  onApertoChange,
+  className,
+  children,
+}: {
+  titolo: string;
+  /** Riga sotto al titolo quando la card e' chiusa. */
+  sintesi?: string;
+  aperto: boolean;
+  onApertoChange: (aperto: boolean) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card
+      className={`shadow-sm border border-default-200 bg-white${
+        className ? ` ${className}` : ""
+      }`}
+    >
+      {/* Un `button` normale e non quello di NextUI: qui serve una riga larga
+          quanto la card, e il Button va disfatto a mano (altezza, `min-width`,
+          padding, ripple) ogni volta per ottenerla — vedi ModuloCollassabile
+          qui sopra. `pb-0` da aperta perche' la spaziatura sotto al titolo la
+          da' il `py-6` del CardBody, come faceva il CardHeader di prima. */}
+      {/* `ring-inset` e non l'anello normale come altrove: la Card di NextUI
+          ha `overflow: hidden` e un anello disegnato fuori dal bordo sparirebbe
+          sotto il taglio, lasciando la testata senza segno di fuoco. */}
+      <button
+        type="button"
+        onClick={() => onApertoChange(!aperto)}
+        aria-expanded={aperto}
+        className={`w-full px-4 pt-4 text-left transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-400 ${
+          aperto ? "pb-0" : "pb-4"
+        }`}
+      >
+        <span className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-gray-700 uppercase text-xs tracking-wider">
+            {titolo}
+          </span>
+          {aperto ? (
+            <ChevronDown size={16} className="shrink-0 text-default-400" />
+          ) : (
+            <ChevronRight size={16} className="shrink-0 text-default-400" />
+          )}
+        </span>
+        {!aperto && sintesi && (
+          <span className="mt-1.5 block text-xs font-normal normal-case tracking-normal text-default-500">
+            {sintesi}
+          </span>
+        )}
+      </button>
+      {aperto && children}
+    </Card>
   );
 }
