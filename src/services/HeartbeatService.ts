@@ -27,13 +27,7 @@ const getAppVersion = async (): Promise<string> => {
 
 /**
  * Telemetria di licenza verso la dashboard.
- *
- * `app` identifica l'edizione. Il backend (`utils/apps.js`, `VALID_APPS`)
- * conosce per ora solo "corioli" e "corioli-pediatria": un valore ignoto viene
- * normalizzato a "corioli" (e `tipo` a "ginecologia"), quindi la chiamata
- * risponde comunque 200 e blocco/licenza continuano a funzionare — ma questa
- * edizione risulta indistinguibile da Corioli in dashboard finche' il backend
- * non aggiunge "corioli-cardiologia" a VALID_APPS e a mapAppToTipo.
+ * `app: "corioli-cardiologia"` → BE `tipo: "cardiologia"`.
  */
 export const sendHeartbeat = async (
   doctor: Doctor,
@@ -57,7 +51,7 @@ export const sendHeartbeat = async (
       email: doctor.email,
       numero_telefono: doctor.telefono,
       specializzazione: doctor.specializzazione,
-      tipo: "generale",
+      tipo: "cardiologia",
       app,
       version,
       activeUsers,

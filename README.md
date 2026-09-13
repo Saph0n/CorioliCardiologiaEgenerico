@@ -579,13 +579,6 @@ visita.
   va riservato in Partner Center e l'ID della scheda in
   `src/Pages/Dashboard/Settings.tsx` (`CORIOLI_MS_STORE_ID`) va sostituito con
   quello della nuova app.
-- **Backend licenze:** l'heartbeat invia `app: "corioli-cardiologia"`. Il
-  backend (`Corioli-Dashboard-BE/utils/apps.js`) accetta oggi solo `corioli` e
-  `corioli-pediatria` e normalizza qualsiasi altro valore a `corioli`: la
-  chiamata risponde 200 e blocco/licenza funzionano, ma questa edizione risulta
-  indistinguibile da Corioli in dashboard. Per separarla basta aggiungere
-  `"corioli-cardiologia"` a `VALID_APPS` e il relativo caso in `mapAppToTipo`
-  (`tipo` e `app` sono colonne `String`, nessuna migrazione DB necessaria).
 - **Font del referto:** jsPDF usa i caratteri standard, che sono in codifica
   WinAnsi. Il sanificatore in `PdfService.san` deve quindi degradare tutto
   quello che quella tabella non contiene: le vocali accentate diventano `e'`, il
