@@ -2310,6 +2310,114 @@ export default function AddVisit() {
               onApertoChange={(a) => impostaCardColonna("cliniche", a)}
             >
               <CardBody className="px-4 py-6 gap-6">
+                {/* Peso corporeo + BMI */}
+                {altezzaCm == null && (
+                  <div className="mb-3 rounded-xl border border-dashed border-primary-200 bg-gradient-to-r from-primary-50/70 via-white to-primary-50/40 px-3 py-2.5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary">
+                        <Ruler size={14} />
+                      </div>
+                      <p className="text-xs font-semibold text-primary-800">
+                        Inserisci l&apos;altezza (cm) per calcolare il BMI
+                      </p>
+                    </div>
+                    <div className="flex w-full flex-col gap-2">
+                      <Input
+                        aria-label="Altezza in cm"
+                        type="text"
+                        inputMode="numeric"
+                        size="sm"
+                        variant="bordered"
+                        placeholder="Es. 175"
+                        className="w-full"
+                        classNames={{ base: "w-full" }}
+                        value={altezzaPendingInput}
+                        onValueChange={(v) => {
+                          if (!isValidHeightInputDraft(v)) return;
+                          setAltezzaPendingInput(v);
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        color="primary"
+                        className="corioli-cta w-full"
+                        isLoading={savingAltezza}
+                        onPress={() => void handleSaveAltezza()}
+                      >
+                        Salva
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
+                  <Input
+                    label="Peso corporeo (kg)"
+                    type="text"
+                    inputMode="decimal"
+                    size="sm"
+                    variant="bordered"
+                    labelPlacement="outside"
+                    value={
+                      pesoCorporeoDraft ??
+                      (visitaData.pesoCorporeo === 0
+                        ? ""
+                        : String(visitaData.pesoCorporeo))
+                    }
+                    onFocus={() => {
+                      setPesoCorporeoDraft(
+                        visitaData.pesoCorporeo > 0
+                          ? String(visitaData.pesoCorporeo)
+                          : "",
+                      );
+                    }}
+                    onBlur={() => {
+                      if (pesoCorporeoDraft !== null) {
+                        commitBodyWeight(pesoCorporeoDraft);
+                      }
+                      setPesoCorporeoDraft(null);
+                    }}
+                    onValueChange={(v) => {
+                      if (!isValidWeightInputDraft(v)) return;
+                      setPesoCorporeoDraft(v);
+                      liveBodyWeight(v);
+                    }}
+                    placeholder="Es. 75"
+                    className="flex-1"
+                    classNames={{ label: "pb-1" }}
+                  />
+
+                  {/* Indicatore BMI: numero + fascia OMS, colorato per fascia */}
+                  {bmi != null && (
+                    <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
+                      <div
+                        className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${RIQUADRO_BMI[bmiSegnale.livello]}`}
+                        title={bmiSegnale.nota || "Indice di massa corporea"}
+                      >
+                        <div className="flex items-center gap-1 text-xs font-semibold">
+                          <span>BMI {bmi.toFixed(1).replace(".", ",")}</span>
+                          {/* L'altezza da cui esce il numero. Sta nella scheda
+                              del paziente e non si ripete a ogni visita, quindi
+                              dopo la prima volta spariva dalla vista: qui si
+                              vede sempre da cosa e' stato calcolato il BMI. */}
+                          {altezzaCm != null && (
+                            <span className="font-normal opacity-70">
+                              · h {altezzaCm} cm
+                            </span>
+                          )}
+                        </div>
+                        {bmiSegnale.etichetta && (
+                          <span className="text-[10px] font-medium leading-tight">
+                            {bmiSegnale.etichetta}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Divider className="my-2" />
+
                 {/* Pressione con la posizione della misurazione e, se serve,
                     una seconda misurazione: in clinostatismo per tutti, in
                     ortostatismo per documentare un'ipotensione ortostatica.
@@ -2419,114 +2527,6 @@ export default function AddVisit() {
                       >
                         Seconda misurazione
                       </Button>
-                    </div>
-                  )}
-                </div>
-
-                <Divider className="my-2" />
-
-                {/* Peso corporeo + BMI */}
-                {altezzaCm == null && (
-                  <div className="mb-3 rounded-xl border border-dashed border-primary-200 bg-gradient-to-r from-primary-50/70 via-white to-primary-50/40 px-3 py-2.5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary">
-                        <Ruler size={14} />
-                      </div>
-                      <p className="text-xs font-semibold text-primary-800">
-                        Inserisci l&apos;altezza (cm) per calcolare il BMI
-                      </p>
-                    </div>
-                    <div className="flex w-full flex-col gap-2">
-                      <Input
-                        aria-label="Altezza in cm"
-                        type="text"
-                        inputMode="numeric"
-                        size="sm"
-                        variant="bordered"
-                        placeholder="Es. 175"
-                        className="w-full"
-                        classNames={{ base: "w-full" }}
-                        value={altezzaPendingInput}
-                        onValueChange={(v) => {
-                          if (!isValidHeightInputDraft(v)) return;
-                          setAltezzaPendingInput(v);
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        color="primary"
-                        className="corioli-cta w-full"
-                        isLoading={savingAltezza}
-                        onPress={() => void handleSaveAltezza()}
-                      >
-                        Salva
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
-                  <Input
-                    label="Peso corporeo (kg)"
-                    type="text"
-                    inputMode="decimal"
-                    size="sm"
-                    variant="bordered"
-                    labelPlacement="outside"
-                    value={
-                      pesoCorporeoDraft ??
-                      (visitaData.pesoCorporeo === 0
-                        ? ""
-                        : String(visitaData.pesoCorporeo))
-                    }
-                    onFocus={() => {
-                      setPesoCorporeoDraft(
-                        visitaData.pesoCorporeo > 0
-                          ? String(visitaData.pesoCorporeo)
-                          : "",
-                      );
-                    }}
-                    onBlur={() => {
-                      if (pesoCorporeoDraft !== null) {
-                        commitBodyWeight(pesoCorporeoDraft);
-                      }
-                      setPesoCorporeoDraft(null);
-                    }}
-                    onValueChange={(v) => {
-                      if (!isValidWeightInputDraft(v)) return;
-                      setPesoCorporeoDraft(v);
-                      liveBodyWeight(v);
-                    }}
-                    placeholder="Es. 75"
-                    className="flex-1"
-                    classNames={{ label: "pb-1" }}
-                  />
-
-                  {/* Indicatore BMI: numero + fascia OMS, colorato per fascia */}
-                  {bmi != null && (
-                    <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
-                      <div
-                        className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${RIQUADRO_BMI[bmiSegnale.livello]}`}
-                        title={bmiSegnale.nota || "Indice di massa corporea"}
-                      >
-                        <div className="flex items-center gap-1 text-xs font-semibold">
-                          <span>BMI {bmi.toFixed(1).replace(".", ",")}</span>
-                          {/* L'altezza da cui esce il numero. Sta nella scheda
-                              del paziente e non si ripete a ogni visita, quindi
-                              dopo la prima volta spariva dalla vista: qui si
-                              vede sempre da cosa e' stato calcolato il BMI. */}
-                          {altezzaCm != null && (
-                            <span className="font-normal opacity-70">
-                              · h {altezzaCm} cm
-                            </span>
-                          )}
-                        </div>
-                        {bmiSegnale.etichetta && (
-                          <span className="text-[10px] font-medium leading-tight">
-                            {bmiSegnale.etichetta}
-                          </span>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
