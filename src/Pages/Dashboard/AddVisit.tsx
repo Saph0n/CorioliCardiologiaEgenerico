@@ -2425,90 +2425,6 @@ export default function AddVisit() {
 
                 <Divider className="my-2" />
 
-                {/* Fattori di rischio cardiovascolare.
-                    Stanno qui e non dentro un modulo perché servono a colpo
-                    d'occhio mentre si scrive il referto. Alla visita nuova
-                    arrivano già spuntati come nell'ultima: sono anamnestici e
-                    ricompilarli ogni volta sarebbe tempo perso. */}
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Fattori di rischio CV
-                  </p>
-
-                  {/* Il fumo sta fra i fattori di rischio, che e' il suo posto,
-                      ma **resta una tendina e non una casella**: ha tre stati e
-                      non due. Per SCORE2 "non rilevato" e "no" sono due cose
-                      diverse — una casella non spuntata non dice se il paziente
-                      non fuma o se nessuno gliel'ha chiesto — e anche il referto
-                      stampa il fumo in negativo, perche' "non fumatore" e' un
-                      dato clinico (vedi `PdfService.drawFattoriRischio`). Sta in
-                      testa e non in mezzo alle caselle: un controllo diverso
-                      infilato nella lista sembrerebbe un errore. */}
-                  {/* `mt-9` e non `mt-3`: l'etichetta esterna di NextUI sta
-                      fuori dal riquadro del campo e si mangia quasi tutto il
-                      margine sopra, cosi' "Fumatore" finiva incollato al
-                      titolo del pannello — misurati 0px fra i due, 6 con
-                      `mt-7`, 14 con questo. */}
-                  <div className="mt-9">
-                    <Select
-                      label="Fumatore"
-                      size="sm"
-                      variant="bordered"
-                      labelPlacement="outside"
-                      placeholder="Non rilevato"
-                      selectedKeys={
-                        visitaData.fumatore ? [visitaData.fumatore] : []
-                      }
-                      onSelectionChange={(keys) =>
-                        handleVisitaChange(
-                          "fumatore",
-                          (Array.from(keys)[0] as string) ?? "",
-                        )
-                      }
-                      description="Tre stati: «non rilevato» non vale «no» nel calcolo del rischio"
-                    >
-                      <SelectItem key="si">Si'</SelectItem>
-                      <SelectItem key="no">No</SelectItem>
-                    </Select>
-                  </div>
-                  {/* Una casella per riga, con abbastanza aria fra loro.
-                      Due insidie del Checkbox di NextUI, che qui portavano
-                      entrambe a spuntare il fattore sbagliato con un clic:
-                      è `inline-flex`, quindi senza un contenitore proprio due
-                      fattori finiscono sulla stessa riga; e usa `p-2 -m-2` per
-                      allargare l'area di tocco, che percio' sborda di 8px
-                      sopra e sotto il suo spazio di layout. Da cui `space-y-3`
-                      e non `space-y-1`: sotto gli 11px le righe si
-                      sovrappongono anche quando sembrano separate. */}
-                  <div className="mt-2 space-y-3">
-                    {FATTORI_RISCHIO_CV.map((f) => (
-                      <div key={f.chiave}>
-                        <Checkbox
-                          size="sm"
-                          isSelected={fattoriRischio[f.chiave] === true}
-                          onValueChange={(c) =>
-                            handleBloccoChange(
-                              "fattoriRischio",
-                              f.chiave,
-                              c ? true : undefined,
-                            )
-                          }
-                        >
-                          <span className="text-sm text-gray-700">
-                            {f.label}
-                          </span>
-                        </Checkbox>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-xs text-default-500">
-                    Ipertensione e diabete alimentano anche il
-                    CHA&#8322;DS&#8322;-VASc del modulo Fibrillazione atriale.
-                  </p>
-                </div>
-
-                <Divider className="my-2" />
-
                 {/* Peso corporeo + BMI */}
                 {altezzaCm == null && (
                   <div className="mb-3 rounded-xl border border-dashed border-primary-200 bg-gradient-to-r from-primary-50/70 via-white to-primary-50/40 px-3 py-2.5">
@@ -2614,6 +2530,103 @@ export default function AddVisit() {
                     </div>
                   )}
                 </div>
+
+                <Divider className="my-2" />
+
+                {/* Fattori di rischio cardiovascolare.
+                    Stanno qui e non dentro un modulo perché servono a colpo
+                    d'occhio mentre si scrive il referto. Alla visita nuova
+                    arrivano già spuntati come nell'ultima: sono anamnestici e
+                    ricompilarli ogni volta sarebbe tempo perso. */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Fattori di rischio CV
+                  </p>
+
+                  {/* Il fumo sta fra i fattori di rischio, che e' il suo posto,
+                      ma **resta una tendina e non una casella**: ha tre stati e
+                      non due. Per SCORE2 "non rilevato" e "no" sono due cose
+                      diverse — una casella non spuntata non dice se il paziente
+                      non fuma o se nessuno gliel'ha chiesto — e anche il referto
+                      stampa il fumo in negativo, perche' "non fumatore" e' un
+                      dato clinico (vedi `PdfService.drawFattoriRischio`). Sta in
+                      testa e non in mezzo alle caselle: un controllo diverso
+                      infilato nella lista sembrerebbe un errore. */}
+                  {/* `mt-9` e non `mt-3`: l'etichetta esterna di NextUI sta
+                      fuori dal riquadro del campo e si mangia quasi tutto il
+                      margine sopra, cosi' "Fumatore" finiva incollato al
+                      titolo del pannello — misurati 0px fra i due, 6 con
+                      `mt-7`, 14 con questo. */}
+                  <div className="mt-9">
+                    <Select
+                      label="Fumatore"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      placeholder="Non rilevato"
+                      selectedKeys={
+                        visitaData.fumatore ? [visitaData.fumatore] : []
+                      }
+                      onSelectionChange={(keys) =>
+                        handleVisitaChange("fumatore", senzaMenzione(keys))
+                      }
+                      description="Tre stati: «non rilevato» non vale «no» nel calcolo del rischio"
+                    >
+                      {/* "Non rilevato" deve essere una voce vera e non solo il
+                          testo del campo vuoto: una tendina di NextUI, scelta
+                          una voce, non si riporta piu' a vuoto, e un "Si'"
+                          cliccato per sbaglio restava li' per sempre — dentro
+                          SCORE2 e stampato sul referto. E' lo stesso motivo per
+                          cui le tendine della TC hanno "Nessuna menzione", e usa
+                          la stessa chiave: la stringa vuota non va, il
+                          componente la legge come "nessuna selezione" e la riga
+                          non risulta cliccabile. */}
+                      <SelectItem
+                        key={SENZA_MENZIONE}
+                        className="text-default-500"
+                      >
+                        Non rilevato
+                      </SelectItem>
+                      <SelectItem key="si">Si'</SelectItem>
+                      <SelectItem key="no">No</SelectItem>
+                    </Select>
+                  </div>
+                  {/* Una casella per riga, con abbastanza aria fra loro.
+                      Due insidie del Checkbox di NextUI, che qui portavano
+                      entrambe a spuntare il fattore sbagliato con un clic:
+                      è `inline-flex`, quindi senza un contenitore proprio due
+                      fattori finiscono sulla stessa riga; e usa `p-2 -m-2` per
+                      allargare l'area di tocco, che percio' sborda di 8px
+                      sopra e sotto il suo spazio di layout. Da cui `space-y-3`
+                      e non `space-y-1`: sotto gli 11px le righe si
+                      sovrappongono anche quando sembrano separate. */}
+                  <div className="mt-2 space-y-3">
+                    {FATTORI_RISCHIO_CV.map((f) => (
+                      <div key={f.chiave}>
+                        <Checkbox
+                          size="sm"
+                          isSelected={fattoriRischio[f.chiave] === true}
+                          onValueChange={(c) =>
+                            handleBloccoChange(
+                              "fattoriRischio",
+                              f.chiave,
+                              c ? true : undefined,
+                            )
+                          }
+                        >
+                          <span className="text-sm text-gray-700">
+                            {f.label}
+                          </span>
+                        </Checkbox>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-default-500">
+                    Ipertensione e diabete alimentano anche il
+                    CHA&#8322;DS&#8322;-VASc del modulo Fibrillazione atriale.
+                  </p>
+                </div>
+
                 <Divider className="my-2" />
 
                 {/* Il prontuario chiude la card invece di spezzare il flusso
