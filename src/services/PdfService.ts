@@ -84,6 +84,14 @@ const LH_PROSA = 5.2;
 const PRIMA_RIGA_PROSA = 3.9;
 /** Altezza della fascia grigia dei titoli di sezione. */
 const FASCIA_H = 5.6;
+/**
+ * Aria fra il filo inferiore della fascia e il contenuto della sezione.
+ *
+ * Era 1,3 mm: il titolo e la prima riga si toccavano quasi, e "CONCLUSIONI E
+ * TERAPIA" sembrava incollato al testo che apriva. Vale per tutte le sezioni,
+ * prosa e tabelle, perche' pesano uguale.
+ */
+const ARIA_SOTTO_FASCIA = 2.5;
 
 // ─── B&W palette ─────────────────────────────────────────────────────────────
 const K0 = [0, 0, 0] as const;
@@ -354,7 +362,7 @@ export class PdfService {
       ),
     );
 
-    y = this.sezione(doc, y, title, FASCIA_H + 1.3 + altezza + 1);
+    y = this.sezione(doc, y, title, FASCIA_H + ARIA_SOTTO_FASCIA + altezza + 1);
     let maxY = y;
 
     for (let c = 0; c < cols.length; c++) {
@@ -574,7 +582,8 @@ export class PdfService {
     // "Conclusioni e Terapia" poteva aprire in fondo alla pagina con un rigo
     // orfano e proseguire su quella dopo.
     y = this.sezione(
-      doc, y, title, FASCIA_H + 1.3 + PRIMA_RIGA_PROSA + 2 * LH_PROSA + 1,
+      doc, y, title,
+      FASCIA_H + ARIA_SOTTO_FASCIA + PRIMA_RIGA_PROSA + 2 * LH_PROSA + 1,
     );
     y = this.block(doc, content, ML, y + PRIMA_RIGA_PROSA, PW, LH_PROSA, {
       font: "helvetica", style: "normal", fontSize: 10.5, color: K0,
@@ -1122,7 +1131,7 @@ export class PdfService {
     // un'intestazione e non come una parola urlata.
     doc.text(san(titolo).toUpperCase(), ML + 2, y + 3.9, { charSpace: 0.35 });
 
-    return y + FASCIA_H + 1.3;
+    return y + FASCIA_H + ARIA_SOTTO_FASCIA;
   }
 
   /**
