@@ -188,6 +188,51 @@ describe("referto di visita: fibrillazione atriale", () => {
   });
 });
 
+describe("referto di visita: intestazione", () => {
+  /**
+   * Il titolo del documento e' centrato sulla fascia grigia.
+   *
+   * Si misura sul PDF prodotto e non sulla chiamata a `doc.text`, perche' il
+   * difetto stava proprio nella differenza fra le due: jsPDF centra usando una
+   * larghezza che **non** comprende la spaziatura fra le lettere, quindi
+   * "VISITA CARDIOLOGICA" (19 caratteri a 0,7 mm) usciva 6 mm a destra del
+   * centro — 65 mm di margine a sinistra contro 52 a destra — mentre chi
+   * guardava il codice leggeva `align: "center"` ed era convinto del
+   * contrario.
+   */
+  it("centra il titolo sulla fascia, spaziatura fra le lettere compresa", async () => {
+    const PUNTI_PER_MM = 72 / 25.4;
+    const TITOLO = "VISITA CARDIOLOGICA";
+
+    const testo = await testoDelPdf(visita({}));
+    const i = testo.indexOf(`(${TITOLO}) Tj`);
+    expect(i, "il titolo non compare nel flusso del PDF").toBeGreaterThan(-1);
+
+    const prima = testo.slice(0, i);
+    const td = [...prima.matchAll(/([\d.]+) ([\d.]+) Td/g)].pop();
+    const tc = [...prima.matchAll(/([\d.]+) Tc/g)].pop();
+    expect(td, "posizione del titolo non trovata").toBeDefined();
+    expect(tc, "spaziatura del titolo non trovata").toBeDefined();
+
+    // La larghezza si rimisura con le metriche del carattere, come fa il PDF:
+    // cosi' il test non ripete il calcolo del codice che controlla.
+    const { jsPDF } = await import("jspdf");
+    const metro = new jsPDF({ unit: "mm", format: "a4" });
+    metro.setFont("helvetica", "bold");
+    metro.setFontSize(11);
+
+    const spaziatura = Number(tc![1]) / PUNTI_PER_MM;
+    const larghezza =
+      metro.getTextWidth(TITOLO) + spaziatura * (TITOLO.length - 1);
+    const sinistra = Number(td![1]) / PUNTI_PER_MM;
+    const destra = sinistra + larghezza;
+
+    // Margini di 18 mm su A4: la fascia va da 18 a 192, centro a 105.
+    expect((sinistra + destra) / 2).toBeCloseTo(105, 1);
+    expect(sinistra - 18).toBeCloseTo(192 - destra, 1);
+  });
+});
+
 describe("referto di visita: Doppler TSA", () => {
   it("esce con la sua fascia, come gli altri esami", async () => {
     // Lo referta il chirurgo vascolare, ma il cardiologo lo legge e lo usa:

@@ -99,6 +99,14 @@ import { ProntuarioModal } from "../../components/cardio/ProntuarioModal";
 import { ProntuarioImagingModal } from "../../components/cardio/ProntuarioImagingModal";
 import { applicaBozze } from "../../utils/bozzeMisure";
 import {
+  MODULI_OPZIONALI,
+  MODULI_VISITA_SPENTI,
+  leggiModuliVisita,
+  leggiProntuarioAttivo,
+  type ChiaveModuloOpzionale,
+  type ModuliVisitaAttivi,
+} from "../../utils/moduliVisita";
+import {
   CalcSuggestion,
   CardColonna,
   GruppoCampi,
@@ -603,6 +611,22 @@ const MISURE: Record<string, { path: string; range?: ChiaveMisura }> = {
 };
 
 /**
+ * Prefissi dei moduli in cui il grafico dell'andamento non compare.
+ *
+ * Deciso dal cardiologo il 18 settembre 2026 guardando i campi uno per uno:
+ * sono esami che non si ripetono a distanza utile — "le TAC non le fai ogni
+ * anno, la fai al limite ogni cinque" — e fra un Holter e il successivo il
+ * confronto lo scrive lui nel referto. Il valore della visita precedente resta:
+ * quello che ha tolto e' il grafico, non il confronto.
+ *
+ * Il laboratorio lo tiene, perche' vedere la traiettoria e' il motivo per cui
+ * quegli esami si ripetono, e lo tiene la stenosi carotidea, che e' il caso che
+ * gli capita davvero: un 40% che diventa 50% e il paziente senza l'esame
+ * vecchio in mano.
+ */
+const MODULI_SENZA_ANDAMENTO = ["tc.", "erg.", "hecg.", "hp."];
+
+/**
  * Campi di misura con una bozza ma senza confronto con la visita precedente, e
  * quindi fuori da `MISURE`: al salvataggio la loro bozza va riportata nella
  * visita come quella di tutti gli altri.
@@ -783,6 +807,16 @@ export default function AddVisit() {
   const [sogliaCac, setSogliaCac] = useState<SogliaCacSevera>(
     SOGLIA_CAC_PREDEFINITA,
   );
+  /**
+   * Moduli opzionali accesi nelle impostazioni. Spenti finche' le preferenze
+   * non dicono il contrario: e' lo stato in cui la visita deve presentarsi a
+   * chi apre l'app per la prima volta.
+   */
+  const [moduliAttivi, setModuliAttivi] = useState<ModuliVisitaAttivi>(
+    () => ({ ...MODULI_VISITA_SPENTI }),
+  );
+  /** Il prontuario e' consultabile dalla visita. */
+  const [prontuarioAttivo, setProntuarioAttivo] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -962,8 +996,12 @@ export default function AddVisit() {
         // Soglia di calcificazione severa impostata dal centro: 300 o 400.
         const soglia = Number(prefs?.sogliaCacSevera);
         setSogliaCac(soglia === 400 ? 400 : SOGLIA_CAC_PREDEFINITA);
+        setModuliAttivi(leggiModuliVisita(prefs));
+        setProntuarioAttivo(leggiProntuarioAttivo(prefs));
       } catch {
         setAnamnesiConfig(createDefaultAnamnesiConfig());
+        setModuliAttivi({ ...MODULI_VISITA_SPENTI });
+        setProntuarioAttivo(false);
       }
     };
 
@@ -1653,9 +1691,12 @@ export default function AddVisit() {
   const misura = (chiave: string) => {
     const def = MISURE[chiave];
     if (!def) return {};
+    const conAndamento = !MODULI_SENZA_ANDAMENTO.some((prefisso) =>
+      chiave.startsWith(prefisso),
+    );
     return {
       precedente: precedenti[def.path],
-      serie: serieStoriche[def.path],
+      serie: conAndamento ? serieStoriche[def.path] : undefined,
       dataCorrente: visitData.dataVisita,
       segnale: def.range
         ? valutaMisura(def.range, valoreMisura(def.path), sessoPaziente)
@@ -1668,6 +1709,42 @@ export default function AddVisit() {
     Object.values(visitaData[blocco] as Record<string, unknown>).some(
       (v) => v !== undefined && v !== null && v !== "",
     );
+
+  /**
+   * Il modulo opzionale si vede: o e' acceso nelle impostazioni, o la visita
+   * aperta ci ha gia' dentro dei dati.
+   *
+   * La seconda meta' non e' una cortesia: senza, riaprire una visita vecchia
+   * farebbe sparire dalla maschera dei valori che il referto continua a
+   * stampare, e il medico non avrebbe modo di correggerli. Vale anche per la
+   * copia della visita precedente, che porta dentro i blocchi com'erano.
+   *
+   * Di qui un effetto che sembra strano e non lo e': l'ATS carotidea del
+   * laboratorio e la stenosi massima del Doppler TSA sono lo stesso campo,
+   * quindi scrivere la percentuale fra i lipidi fa comparire il modulo anche
+   * da spento. E' il comportamento giusto — con quel valore il referto stampa
+   * la sezione Doppler TSA, e tenerla nascosta vorrebbe dire stampare una
+   * sezione che il medico non vede.
+   */
+  const moduloVisibile = (chiave: ChiaveModuloOpzionale) =>
+    moduliAttivi[chiave] || bloccoCompilato(chiave);
+
+  /**
+   * Numeri delle sezioni che vengono dopo l'ecocardiogramma: dipendono da
+   * quali moduli sono accesi. Con i numeri fissi, spegnerne uno lascerebbe un
+   * buco nella sequenza (4, 5, 13) che sembra un difetto dell'app. Le prime
+   * cinque sezioni ci sono sempre e tengono il loro numero.
+   */
+  const numeroSezione: Record<string, string> = (() => {
+    const numeri: Record<string, string> = {};
+    let n = 5;
+    for (const modulo of MODULI_OPZIONALI) {
+      if (moduloVisibile(modulo.chiave)) numeri[modulo.chiave] = String(++n);
+    }
+    numeri.accertamenti = String(++n);
+    numeri.conclusioni = String(++n);
+    return numeri;
+  })();
 
   /**
    * Classe di rischio dichiarata dal medico. Guida gli obiettivi di LDL e ApoB:
@@ -2627,28 +2704,35 @@ export default function AddVisit() {
                   </p>
                 </div>
 
-                <Divider className="my-2" />
+                {/* Spento di default nelle impostazioni: le schede sono
+                    contenuto clinico, e finche' non sono complete e validate
+                    non devono uscire dall'app di chi non le ha scritte. */}
+                {prontuarioAttivo && (
+                  <>
+                    <Divider className="my-2" />
 
-                {/* Il prontuario chiude la card invece di spezzare il flusso
-                    delle variabili: è un'azione, non un dato da compilare, e in
-                    mezzo ai campi si leggeva come un campo. Sta in un modal
-                    perché è materiale da guardare mentre si scrive, non
-                    contenuto da stampare.
+                    {/* Il prontuario chiude la card invece di spezzare il flusso
+                        delle variabili: è un'azione, non un dato da compilare, e in
+                        mezzo ai campi si leggeva come un campo. Sta in un modal
+                        perché è materiale da guardare mentre si scrive, non
+                        contenuto da stampare.
 
-                    In grigio piatto però non si vedeva: alla prova il
-                    cardiologo l'ha trovato solo quando gliel'hanno indicato, e
-                    un prontuario che non si trova non serve a niente. Colorato
-                    e con l'icona si legge come il pulsante che è. */}
-                <Button
-                  size="sm"
-                  variant="flat"
-                  color="primary"
-                  className="w-full"
-                  startContent={<BookOpen size={15} />}
-                  onPress={() => apriProntuario()}
-                >
-                  Prontuario — pilastri e farmaci
-                </Button>
+                        In grigio piatto però non si vedeva: alla prova il
+                        cardiologo l'ha trovato solo quando gliel'hanno indicato, e
+                        un prontuario che non si trova non serve a niente. Colorato
+                        e con l'icona si legge come il pulsante che è. */}
+                    <Button
+                      size="sm"
+                      variant="flat"
+                      color="primary"
+                      className="w-full"
+                      startContent={<BookOpen size={15} />}
+                      onPress={() => apriProntuario()}
+                    >
+                      Prontuario — pilastri e farmaci
+                    </Button>
+                  </>
+                )}
               </CardBody>
             </CardColonna>
 
@@ -3202,18 +3286,20 @@ export default function AddVisit() {
                   <p className="text-xs font-semibold uppercase tracking-wider text-default-500">
                     Rischio osservato da imaging
                   </p>
-                  <Button
-                    type="button"
-                    isIconOnly
-                    size="sm"
-                    variant="light"
-                    radius="full"
-                    aria-label="Prontuario imaging: calcium score e CAD-RADS"
-                    className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
-                    onPress={() => setIsProntuarioImagingOpen(true)}
-                  >
-                    <Info size={15} />
-                  </Button>
+                  {prontuarioAttivo && (
+                    <Button
+                      type="button"
+                      isIconOnly
+                      size="sm"
+                      variant="light"
+                      radius="full"
+                      aria-label="Prontuario imaging: calcium score e CAD-RADS"
+                      className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                      onPress={() => setIsProntuarioImagingOpen(true)}
+                    >
+                      <Info size={15} />
+                    </Button>
+                  )}
                 </div>
                 {esitoCac || tc.cadRads ? (
                   <div className="rounded-lg border border-default-200 bg-default-50/60 px-3 py-2 space-y-1">
@@ -3758,23 +3844,26 @@ export default function AddVisit() {
                     testo precompilato su un esame che si chiede ogni cinque
                     anni non fa risparmiare tempo, lo rende solo meno suo. */}
                 <ModuloCollassabile
-                  numero="6"
+                  numero={numeroSezione.tcCoronarica}
+                  visibile={moduloVisibile("tcCoronarica")}
                   titolo="TC coronarica"
                   sottotitolo="non eseguita"
                   compilato={bloccoCompilato("tcCoronarica")}
                   azione={
-                    <Button
-                      type="button"
-                      isIconOnly
-                      size="sm"
-                      variant="light"
-                      radius="full"
-                      aria-label="Prontuario imaging: calcium score e CAD-RADS"
-                      className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
-                      onPress={() => setIsProntuarioImagingOpen(true)}
-                    >
-                      <Info size={15} />
-                    </Button>
+                    prontuarioAttivo ? (
+                      <Button
+                        type="button"
+                        isIconOnly
+                        size="sm"
+                        variant="light"
+                        radius="full"
+                        aria-label="Prontuario imaging: calcium score e CAD-RADS"
+                        className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                        onPress={() => setIsProntuarioImagingOpen(true)}
+                      >
+                        <Info size={15} />
+                      </Button>
+                    ) : undefined
                   }
                 >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -4210,7 +4299,8 @@ export default function AddVisit() {
 
                 {/* Sezione 7: Test ergometrico */}
                 <ModuloCollassabile
-                  numero="7"
+                  numero={numeroSezione.testErgometrico}
+                  visibile={moduloVisibile("testErgometrico")}
                   titolo="Test ergometrico"
                   sottotitolo="non eseguito"
                   compilato={bloccoCompilato("testErgometrico")}
@@ -4386,7 +4476,8 @@ export default function AddVisit() {
 
                 {/* Sezione 8: Holter ECG */}
                 <ModuloCollassabile
-                  numero="8"
+                  numero={numeroSezione.holterEcg}
+                  visibile={moduloVisibile("holterEcg")}
                   titolo="ECG dinamico secondo Holter"
                   sottotitolo="non eseguito"
                   compilato={bloccoCompilato("holterEcg")}
@@ -4533,7 +4624,8 @@ export default function AddVisit() {
 
                 {/* Sezione 9: Holter pressorio */}
                 <ModuloCollassabile
-                  numero="9"
+                  numero={numeroSezione.holterPressorio}
+                  visibile={moduloVisibile("holterPressorio")}
                   titolo="Monitoraggio pressorio delle 24 ore"
                   sottotitolo="non eseguito"
                   compilato={bloccoCompilato("holterPressorio")}
@@ -4703,7 +4795,8 @@ export default function AddVisit() {
                     usa: la placca carotidea e' aterosclerosi documentata, e
                     sposta la classe di rischio senza bisogno di punteggi. */}
                 <ModuloCollassabile
-                  numero="10"
+                  numero={numeroSezione.dopplerTsa}
+                  visibile={moduloVisibile("dopplerTsa")}
                   titolo="EcoColorDoppler dei tronchi sovraaortici"
                   sottotitolo="non eseguito"
                   compilato={bloccoCompilato("dopplerTsa")}
@@ -4814,24 +4907,27 @@ export default function AddVisit() {
 
                 {/* Sezione 11: Scompenso cardiaco */}
                 <ModuloCollassabile
-                  numero="11"
+                  numero={numeroSezione.scompenso}
+                  visibile={moduloVisibile("scompenso")}
                   titolo="Scompenso cardiaco"
                   sottotitolo="non valutato"
                   compilato={bloccoCompilato("scompenso")}
                   azione={
                     <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        radius="full"
-                        aria-label="Prontuario: classi di scompenso"
-                        className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
-                        onPress={() => apriProntuario("classi")}
-                      >
-                        <Info size={15} />
-                      </Button>
+                      {prontuarioAttivo && (
+                        <Button
+                          type="button"
+                          isIconOnly
+                          size="sm"
+                          variant="light"
+                          radius="full"
+                          aria-label="Prontuario: classi di scompenso"
+                          className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                          onPress={() => apriProntuario("classi")}
+                        >
+                          <Info size={15} />
+                        </Button>
+                      )}
                       <TemplateSelector
                         templates={allTemplates.filter(
                           (t) =>
@@ -5017,7 +5113,8 @@ export default function AddVisit() {
 
                 {/* Sezione 12: Fibrillazione atriale */}
                 <ModuloCollassabile
-                  numero="12"
+                  numero={numeroSezione.fibrillazioneAtriale}
+                  visibile={moduloVisibile("fibrillazioneAtriale")}
                   titolo="Fibrillazione atriale"
                   sottotitolo="non valutata"
                   compilato={bloccoCompilato("fibrillazioneAtriale")}
@@ -5251,7 +5348,7 @@ export default function AddVisit() {
                 {/* Sezione 13: Accertamenti */}
                 <div className="space-y-2 relative group">
                   <label className="text-sm font-bold text-gray-700 block mb-1">
-                    12. Accertamenti
+                    {numeroSezione.accertamenti}. Accertamenti
                   </label>
                   <RefertoTextarea
                     value={visitaData.accertamenti}
@@ -5268,7 +5365,7 @@ export default function AddVisit() {
                 <div className="space-y-2 relative group">
                   <div className="flex justify-between items-end mb-1">
                     <label className="text-sm font-bold text-gray-700">
-                      13. Conclusioni e Terapia
+                      {numeroSezione.conclusioni}. Conclusioni e Terapia
                     </label>
                     <TemplateSelector
                       templates={allTemplates.filter(
@@ -5453,21 +5550,27 @@ export default function AddVisit() {
         </ModalContent>
       </AppModal>
 
-      <ProntuarioImagingModal
-        isOpen={isProntuarioImagingOpen}
-        onClose={() => setIsProntuarioImagingOpen(false)}
-        sogliaCac={sogliaCac}
-        categoriaCorrente={esitoCac?.categoria}
-      />
-      <ProntuarioModal
-        isOpen={isProntuarioOpen}
-        onClose={() => setIsProntuarioOpen(false)}
-        fe={visitaData.ecocardiogramma.fe}
-        trigliceridi={visitaData.laboratorio.trigliceridi}
-        categoriaRischio={visitaData.categoriaRischioCv}
-        nyha={visitaData.scompenso.nyha}
-        tabIniziale={tabProntuario}
-      />
+      {/* Montati solo a prontuario attivo: i pulsanti che li aprono sono gia'
+          nascosti, e cosi' non resta modo di arrivarci comunque. */}
+      {prontuarioAttivo && (
+        <>
+          <ProntuarioImagingModal
+            isOpen={isProntuarioImagingOpen}
+            onClose={() => setIsProntuarioImagingOpen(false)}
+            sogliaCac={sogliaCac}
+            categoriaCorrente={esitoCac?.categoria}
+          />
+          <ProntuarioModal
+            isOpen={isProntuarioOpen}
+            onClose={() => setIsProntuarioOpen(false)}
+            fe={visitaData.ecocardiogramma.fe}
+            trigliceridi={visitaData.laboratorio.trigliceridi}
+            categoriaRischio={visitaData.categoriaRischioCv}
+            nyha={visitaData.scompenso.nyha}
+            tabIniziale={tabProntuario}
+          />
+        </>
+      )}
 
       {doctorProfileIncompleteModal}
     </div>

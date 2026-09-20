@@ -743,6 +743,7 @@ export function ModuloCollassabile({
   titolo,
   sottotitolo,
   compilato,
+  visibile = true,
   azione,
   children,
 }: {
@@ -751,10 +752,20 @@ export function ModuloCollassabile({
   sottotitolo?: string;
   /** Il modulo contiene dati: parte aperto e lo segnala nell'intestazione. */
   compilato: boolean;
+  /**
+   * Il modulo e' fra quelli accesi nelle impostazioni. Spento sparisce dalla
+   * maschera: e' il modo in cui la visita si presenta scarna a chi non usa
+   * quell'esame. Il controllo sta qui e non attorno alla chiamata perche'
+   * il modulo resti una riga sola da leggere nel referto.
+   */
+  visibile?: boolean;
   azione?: ReactNode;
   children: ReactNode;
 }) {
+  // Lo useState sta prima dell'uscita: l'ordine degli hook non puo' dipendere
+  // da `visibile`, che cambia quando si tocca un interruttore.
   const [apertoManualmente, setApertoManualmente] = useState<boolean | null>(null);
+  if (!visibile) return null;
   const aperto = apertoManualmente ?? compilato;
 
   return (

@@ -57,26 +57,34 @@ const SECTION_TO_CAMPO = Object.fromEntries(
   ANAMNESI_STRUTTURATA_FIELDS.map((f) => [f.templateSection, f.key]),
 ) as Partial<Record<TemplateSection, AnamnesiCampoKey>>;
 
+/*
+ * Senza numero di sezione: da quando i moduli strumentali si accendono uno per
+ * uno dalle impostazioni, la numerazione della visita cambia da un medico
+ * all'altro, e un "10. Doppler TSA" scritto qui sarebbe vero solo per chi li
+ * ha accesi tutti. L'ordine dell'elenco e' quello della visita e basta a
+ * collocarli. (I numeri erano peraltro gia' discordi: "14. Conclusioni" qui e
+ * "8. Conclusioni" nell'anteprima qui sotto.)
+ */
 const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
-  prestazione: "1. Anamnesi (campo unico)",
-  esameObiettivo: "3. Esame Obiettivo",
-  ecg: "4. ECG",
-  ecocardiogramma: "5. Ecocardiogramma",
-  tcCoronarica: "6. TC coronarica",
-  testErgometrico: "7. Test ergometrico",
-  holterEcg: "8. Holter ECG",
-  holterPressorio: "9. Holter pressorio",
-  dopplerTsa: "10. Doppler TSA",
-  scompenso: "11. Scompenso cardiaco",
-  fibrillazioneAtriale: "12. Fibrillazione atriale",
-  conclusioni: "14. Conclusioni e Terapia",
-  anamnesiFamiliare: "1. Anamnesi · Familiare",
-  anamnesiFisiologica: "1. Anamnesi · Fisiologica",
-  anamnesiPatologica: "1. Anamnesi · Patologica",
-  anamnesiChirurgica: "1. Anamnesi · Chirurgica",
-  anamnesiFarmacologica: "1. Anamnesi · Farmacologica",
-  anamnesiAllergica: "1. Anamnesi · Allergica",
-  anamnesiAbitudini: "1. Anamnesi · Abitudini di vita",
+  prestazione: "Anamnesi (campo unico)",
+  esameObiettivo: "Esame Obiettivo",
+  ecg: "ECG",
+  ecocardiogramma: "Ecocardiogramma",
+  tcCoronarica: "TC coronarica",
+  testErgometrico: "Test ergometrico",
+  holterEcg: "Holter ECG",
+  holterPressorio: "Holter pressorio",
+  dopplerTsa: "Doppler TSA",
+  scompenso: "Scompenso cardiaco",
+  fibrillazioneAtriale: "Fibrillazione atriale",
+  conclusioni: "Conclusioni e Terapia",
+  anamnesiFamiliare: "Anamnesi · Familiare",
+  anamnesiFisiologica: "Anamnesi · Fisiologica",
+  anamnesiPatologica: "Anamnesi · Patologica",
+  anamnesiChirurgica: "Anamnesi · Chirurgica",
+  anamnesiFarmacologica: "Anamnesi · Farmacologica",
+  anamnesiAllergica: "Anamnesi · Allergica",
+  anamnesiAbitudini: "Anamnesi · Abitudini di vita",
 };
 
 const SECTIONS_BY_CATEGORY: Record<TemplateCategory, TemplateSection[]> = {
@@ -122,13 +130,13 @@ type VisitFieldMock = {
 };
 
 const VISITA_FIELDS: VisitFieldMock[] = [
-  { section: "prestazione", label: "1. Anamnesi", hasModello: true },
-  { label: "2. Descrizione Problema", hasModello: false },
-  { section: "esameObiettivo", label: "3. Esame Obiettivo", hasModello: true },
-  { section: "ecg", label: "4. ECG", hasModello: true },
-  { section: "ecocardiogramma", label: "5. Ecocardiogramma", hasModello: true },
-  { section: "tcCoronarica", label: "6. TC coronarica", hasModello: true },
-  { section: "conclusioni", label: "8. Conclusioni e Terapia", hasModello: true },
+  { section: "prestazione", label: "Anamnesi", hasModello: true },
+  { label: "Motivo della visita", hasModello: false },
+  { section: "esameObiettivo", label: "Esame Obiettivo", hasModello: true },
+  { section: "ecg", label: "ECG", hasModello: true },
+  { section: "ecocardiogramma", label: "Ecocardiogramma", hasModello: true },
+  { section: "tcCoronarica", label: "TC coronarica", hasModello: true },
+  { section: "conclusioni", label: "Conclusioni e Terapia", hasModello: true },
 ];
 
 type LivePreviewContent = {

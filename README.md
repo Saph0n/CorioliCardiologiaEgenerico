@@ -36,6 +36,26 @@ L'anamnesi viene prima del motivo della visita, come nei referti cardiologici
 standard e come nella maschera di inserimento: per capire perché il paziente è
 qui serve prima conoscerne la storia.
 
+### Moduli opzionali
+
+Alla prima apertura la visita è quella scarna: anamnesi, motivo, esame
+obiettivo, pressione, elettrocardiogramma, ecocardiogramma, laboratorio,
+rischio cardiovascolare, accertamenti e conclusioni. **TC coronarica, test
+ergometrico, Holter ECG, Holter pressorio, Doppler TSA, scompenso e
+fibrillazione atriale si accendono uno per uno** dalla card «Moduli della
+visita» in Impostazioni, e lo stesso vale per il **prontuario**.
+
+È una richiesta del cardiologo referente: il grosso delle visite cardiologiche
+è refertato in poche righe, e una maschera che apre subito tutti i moduli è una
+maschera che non si usa. Il prontuario è spento per un motivo diverso — le
+schede sono contenuto clinico e restano in revisione finché non le valida il
+cardiologo.
+
+I numeri delle sezioni si assegnano su quelle visibili, quindi la sequenza non
+ha buchi. **Un modulo spento ma compilato resta visibile**: senza questa
+eccezione, riaprire una visita in archivio farebbe sparire dalla maschera dei
+valori che il referto continua a stampare.
+
 Colonna di sinistra (**variabili cliniche**: cambiano a ogni controllo, ed è
 il confronto con il valore precedente che si guarda): parametri vitali
 (P.A., F.C.), peso con BMI, fattori di rischio, esami di laboratorio, indici

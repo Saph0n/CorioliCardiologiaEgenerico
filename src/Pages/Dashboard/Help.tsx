@@ -452,7 +452,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come creo una nuova visita?",
           content:
-            "Dalla scheda del paziente, clicca su '+ Nuova Visita'. Il referto è diviso in sezioni: Anamnesi, Descrizione del problema, Esame obiettivo, i moduli strumentali (elettrocardiogramma, ecocardiogramma, TC coronarica, test ergometrico, Holter), scompenso, fibrillazione atriale, rischio cardiovascolare, Accertamenti e Conclusioni con terapia. Nella colonna di sinistra registri le variabili cliniche (pressione arteriosa, frequenza cardiaca, peso con calcolo del BMI), gli esami di laboratorio e alleghi eventuali immagini.",
+            "Dalla scheda del paziente, clicca su '+ Nuova Visita'. Il referto è diviso in sezioni: Anamnesi, Motivo della visita, Esame obiettivo, elettrocardiogramma, ecocardiogramma, Accertamenti e Conclusioni con terapia. TC coronarica, test ergometrico, Holter ECG e pressorio, Doppler TSA, scompenso e fibrillazione atriale sono moduli facoltativi: si accendono uno per uno da Impostazioni, nella card «Moduli della visita». Nella colonna di sinistra registri le variabili cliniche (pressione arteriosa, frequenza cardiaca, peso con calcolo del BMI), gli esami di laboratorio e alleghi eventuali immagini.",
         },
         {
           title: "Come funziona il calcolo del BMI?",

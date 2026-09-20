@@ -70,6 +70,8 @@ import {
 const ML = 18;
 const MR = 192;
 const PW = MR - ML;   // 174 mm
+/** Spaziatura fra le lettere del titolo del documento, in millimetri. */
+const SPAZIATURA_TITOLO = 0.7;
 const PAGE_H = 297;
 const FOOT_Y = PAGE_H - 14;
 const LH = 4.8;
@@ -475,7 +477,24 @@ export class PdfService {
     doc.setFillColor(...K235);
     doc.rect(ML, y, PW, TITOLO_H, "F");
     doc.setFont("helvetica", "bold"); doc.setFontSize(11); this.tc(doc, K0);
-    doc.text(san(title).toUpperCase(), 105, y + 5.1, { align: "center", charSpace: 0.7 });
+    // Il titolo si posiziona da sinistra su una larghezza misurata qui, invece
+    // di lasciar fare a `align: "center"`.
+    //
+    // jsPDF centra sulla larghezza che gli da' `getStringUnitWidth`, e quella
+    // **non conosce `charSpace`**: con la spaziatura fra le lettere il titolo
+    // esce piu' largo di quanto il calcolo credeva e scivola a destra di mezza
+    // spaziatura per lettera. Su "VISITA CARDIOLOGICA", 19 caratteri a 0,7 mm,
+    // sono 6,3 mm su una fascia di 174: il margine sinistro ne restava 65 e il
+    // destro 52, cioe' un titolo visibilmente storto.
+    //
+    // L'ultima lettera non porta spaziatura visibile, quindi gli spazi che
+    // contano sono `n - 1`.
+    const titolo = san(title).toUpperCase();
+    const larghezzaTitolo =
+      doc.getTextWidth(titolo) + SPAZIATURA_TITOLO * Math.max(titolo.length - 1, 0);
+    doc.text(titolo, 105 - larghezzaTitolo / 2, y + 5.1, {
+      charSpace: SPAZIATURA_TITOLO,
+    });
     y += TITOLO_H;
     if (subtitle) {
       doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);

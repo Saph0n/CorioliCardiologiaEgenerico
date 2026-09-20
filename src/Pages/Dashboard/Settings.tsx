@@ -70,6 +70,15 @@ import {
 import { MedicalTemplate } from "../../types/Storage";
 import { normalizeRegistro } from "../../utils/gruppiRicerca";
 import { SOGLIA_CAC_PREDEFINITA } from "../../utils/tcCoronarica";
+import {
+  GRUPPI_MODULI,
+  MODULI_VISITA_SPENTI,
+  leggiModuliVisita,
+  leggiProntuarioAttivo,
+  moduliDelGruppo,
+  type ChiaveModuloOpzionale,
+  type ModuliVisitaAttivi,
+} from "../../utils/moduliVisita";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
 import {
   AnamnesiConfig,
@@ -292,6 +301,8 @@ const SettingsScreen = () => {
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
     sogliaCacSevera: SOGLIA_CAC_PREDEFINITA as number,
+    moduliVisita: { ...MODULI_VISITA_SPENTI } as ModuliVisitaAttivi,
+    prontuarioEnabled: false,
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -490,6 +501,10 @@ const SettingsScreen = () => {
           // Normalizza/migra sempre la struttura anamnesi (vecchio booleano incluso)
           anamnesiConfig: parseAnamnesiConfig(prefs),
           gruppiRicerca: normalizeRegistro(prefs.gruppiRicerca),
+          // Moduli opzionali e prontuario: assenti o scritti male valgono
+          // spenti, come vuole la beta.
+          moduliVisita: leggiModuliVisita(prefs),
+          prontuarioEnabled: leggiProntuarioAttivo(prefs),
         }));
         setNotificationsEnabled((prefs.notificationsEnabled as boolean) ?? true);
         setPdfTheme((prefs.pdfTheme as string) ?? "light");
@@ -521,14 +536,38 @@ const SettingsScreen = () => {
 
   const handlePreferenceChange = (
     field: string,
-    value: boolean | number | string | string[] | AnamnesiConfig,
+    value: boolean | number | string | string[] | AnamnesiConfig | ModuliVisitaAttivi,
   ) => {
     setPreferences(prev => ({ ...prev, [field]: value }));
+  };
+
+  /**
+   * Accende o spegne un singolo modulo opzionale della visita.
+   *
+   * Aggiorna a partire dallo stato precedente e non dalla copia di questo
+   * render: gli interruttori sono sette in fila, e due click ravvicinati
+   * perderebbero il primo.
+   */
+  const handleModuloChange = (
+    chiave: ChiaveModuloOpzionale,
+    attivo: boolean,
+  ) => {
+    setPreferences((prev) => ({
+      ...prev,
+      moduliVisita: { ...prev.moduliVisita, [chiave]: attivo },
+    }));
   };
 
   // ── Helpers configurazione struttura anamnesi (per tipo di visita) ──
   const [isAnamnesiConfigModalOpen, setIsAnamnesiConfigModalOpen] =
     useState(false);
+  const [isModuliConfigModalOpen, setIsModuliConfigModalOpen] = useState(false);
+
+  /** Quanti moduli di un gruppo sono accesi: la sintesi sulla card. */
+  const moduliAttiviDelGruppo = (gruppo: (typeof GRUPPI_MODULI)[number]["gruppo"]) =>
+    moduliDelGruppo(gruppo).filter(
+      (modulo) => preferences.moduliVisita?.[modulo.chiave],
+    ).length;
 
   const updateAnamnesiTipo = (
     tipo: AnamnesiVisitType,
@@ -2003,6 +2042,92 @@ const SettingsScreen = () => {
                 </div>
               </div>
 
+              {/* Moduli opzionali della visita.
+                  Decisi nella call del 18 settembre 2026: la maschera che un
+                  cardiologo trova alla prima apertura e' quella scarna, e i
+                  moduli che usa di rado se li accende lui uno per uno. In
+                  pagina resta la sintesi, l'elenco sta nel modal come per la
+                  struttura anamnesi: sette interruttori in fila allungavano le
+                  impostazioni piu' di quanto valessero. */}
+              <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">
+                      Moduli della visita
+                    </p>
+                    <p className="text-xs text-default-500 mt-1">
+                      La visita comprende sempre anamnesi, esame obiettivo,
+                      pressione, elettrocardiogramma, ecocardiogramma,
+                      laboratorio, rischio cardiovascolare e conclusioni. Gli
+                      altri moduli si accendono uno per uno.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      {GRUPPI_MODULI.map(({ gruppo, titolo }) => {
+                        const attivi = moduliAttiviDelGruppo(gruppo);
+                        const totale = moduliDelGruppo(gruppo).length;
+                        return (
+                          <div
+                            key={gruppo}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <span className="text-gray-600 w-44 shrink-0">
+                              {titolo}
+                            </span>
+                            <Chip
+                              size="sm"
+                              variant="flat"
+                              color={attivi > 0 ? "primary" : "default"}
+                            >
+                              {attivi > 0
+                                ? `${attivi} di ${totale} attivi`
+                                : "Nessuno attivo"}
+                            </Chip>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="primary"
+                    className="shrink-0"
+                    startContent={<SettingsIcon size={16} />}
+                    onPress={() => setIsModuliConfigModalOpen(true)}
+                  >
+                    Configura
+                  </Button>
+                </div>
+              </div>
+
+              {/* Il prontuario e' spento di default per una ragione che non e'
+                  di ingombro: le schede sono contenuto clinico, e finche' non
+                  sono complete e validate non devono uscire dall'app di chi non
+                  le ha scritte. */}
+              <div className="rounded-lg border border-default-200 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">
+                      Prontuario
+                    </p>
+                    <p className="text-xs text-default-500 mt-1">
+                      Schede di consultazione richiamabili dalla visita:
+                      pilastri e farmaci, classi di rischio, classi dello
+                      scompenso, calcium score e CAD-RADS. Sono in revisione
+                      clinica: restano spente finché non le attivi.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Rendi consultabile il prontuario"
+                    className="shrink-0"
+                    isSelected={Boolean(preferences.prontuarioEnabled)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("prontuarioEnabled", value)
+                    }
+                  />
+                </div>
+              </div>
+
               <div className="rounded-lg border border-default-200 p-4 space-y-3">
                 <p className="text-sm font-medium text-gray-800">
                   Dati dottore nel PDF
@@ -2711,6 +2836,74 @@ const SettingsScreen = () => {
             <Button
               color="primary"
               onPress={() => setIsAnamnesiConfigModalOpen(false)}
+            >
+              Fatto
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </AppModal>
+
+      <AppModal
+        isOpen={isModuliConfigModalOpen}
+        onClose={() => setIsModuliConfigModalOpen(false)}
+        size="2xl"
+        scrollBehavior="inside"
+      >
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-1">
+            <span>Moduli della visita</span>
+            <span className="text-xs font-normal text-default-500">
+              Accendi i moduli che usi: restano spenti finché non li attivi, e
+              la visita ti si presenta con le sole sezioni che compili sempre.
+              Un modulo già compilato resta visibile nelle visite in archivio
+              anche quando è spento.
+            </span>
+          </ModalHeader>
+          <ModalBody className="pb-2">
+            <div className="flex flex-col gap-5">
+              {GRUPPI_MODULI.map(({ gruppo, titolo, nota }) => (
+                <div key={gruppo} className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">
+                      {titolo}
+                    </p>
+                    {nota && (
+                      <p className="text-xs text-default-500 mt-0.5">{nota}</p>
+                    )}
+                  </div>
+                  {moduliDelGruppo(gruppo).map((modulo) => (
+                    <div
+                      key={modulo.chiave}
+                      className="flex items-start justify-between gap-4 rounded-lg border border-default-200 bg-default-50/40 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm text-default-700">
+                          {modulo.titolo}
+                        </p>
+                        <p className="text-xs text-default-500">
+                          {modulo.descrizione}
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label={`Attiva il modulo ${modulo.titolo}`}
+                        className="shrink-0"
+                        isSelected={Boolean(
+                          preferences.moduliVisita?.[modulo.chiave],
+                        )}
+                        onValueChange={(value) =>
+                          handleModuloChange(modulo.chiave, value)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              color="primary"
+              onPress={() => setIsModuliConfigModalOpen(false)}
             >
               Fatto
             </Button>
