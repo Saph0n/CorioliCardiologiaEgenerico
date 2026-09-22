@@ -202,7 +202,7 @@ export default function AddPatient() {
           birthday: patient.dataNascita,
           birthplace: patient.luogoNascita,
           cf: patient.codiceFiscale || "",
-          gender: patient.sesso,
+          gender: patient.sesso ?? "",
           address: patient.indirizzo || "",
           bloodType: patient.gruppoSanguigno || "",
           allergies: patient.allergie || "",
@@ -235,7 +235,7 @@ export default function AddPatient() {
           birthday: patient.dataNascita,
           birthplace: patient.luogoNascita,
           cf: patient.codiceFiscale || "",
-          gender: patient.sesso,
+          gender: patient.sesso ?? "",
           address: patient.indirizzo || "",
           bloodType: patient.gruppoSanguigno || "",
           allergies: patient.allergie || "",
@@ -441,13 +441,20 @@ export default function AddPatient() {
 
     try {
       const cfVal = registerData.cf.trim();
+      // Senza scelta il sesso resta non indicato: prima veniva salvato "M", e
+      // un dato inventato in anagrafica poi si stampa nel referto ed entra nei
+      // calcoli che dipendono dal sesso.
+      const sessoScelto: Patient["sesso"] =
+        registerData.gender === "M" || registerData.gender === "F"
+          ? registerData.gender
+          : undefined;
       const payload = {
         ...(cfVal ? { codiceFiscale: cfVal.toUpperCase(), codiceFiscaleGenerato: false as const } : {}),
         nome: registerData.firstName.trim(),
         cognome: registerData.lastName.trim(),
         dataNascita: registerData.birthday || "",
         luogoNascita: registerData.birthplace.trim(),
-        sesso: (registerData.gender === "M" || registerData.gender === "F" ? registerData.gender : "M") as "M" | "F",
+        sesso: sessoScelto,
         email: registerData.email.trim() || undefined,
         telefono: registerData.phone.trim() || undefined,
         indirizzo: registerData.address.trim() || undefined,
@@ -753,7 +760,7 @@ export default function AddPatient() {
                 >
                   <Select
                     label="Genere (opzionale)"
-                    placeholder="Seleziona genere"
+                    placeholder="Non indicato"
                     variant="bordered"
                     selectedKeys={
                       registerData.gender ? [registerData.gender] : []
@@ -775,6 +782,11 @@ export default function AddPatient() {
                     }}
                     classNames={baseLabelClassNames}
                   >
+                    {/* "Non indicato" e' una scelta possibile, non l'assenza
+                        di scelta: serve anche a togliere un sesso messo per
+                        sbaglio, che una tendina a due voci non lascia piu'
+                        riportare a vuoto. */}
+                    <SelectItem key="-" value="-">Non indicato</SelectItem>
                     <SelectItem key="M" value="M">Maschio</SelectItem>
                     <SelectItem key="F" value="F">Femmina</SelectItem>
                   </Select>

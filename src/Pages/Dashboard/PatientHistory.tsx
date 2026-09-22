@@ -68,6 +68,7 @@ import {
 } from "../../types/Storage";
 import type { LucideIcon } from "lucide-react";
 import { getRicettaTesto } from "../../utils/ricettaTemplate";
+import { senzaMarcatori } from "../../utils/grassettoReferto";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
@@ -1242,7 +1243,7 @@ export default function PatientHistory() {
     return `${patient.nome[0]}${patient.cognome[0]}`.toUpperCase();
   };
 
-  const getGenderColor = (_gender: string): "primary" => {
+  const getGenderColor = (_gender?: string): "primary" => {
     return "primary";
   };
 
@@ -1282,7 +1283,9 @@ export default function PatientHistory() {
     if (!hasRefertoCompilato(visit)) return [];
     const v = visit.visita;
     const badges: Array<"terapia" | "followup"> = [];
-    if ((v?.terapiaSpecifica || visit.terapie)?.trim()) {
+    // La terapia in atto e' la prova piu' diretta che il paziente ne abbia
+    // una: le conclusioni dicono cosa si consiglia, questa cosa gia' prende.
+    if ((v?.terapiaInAtto || v?.terapiaSpecifica || visit.terapie)?.trim()) {
       badges.push("terapia");
     }
     const haystack = [
@@ -1759,11 +1762,12 @@ export default function PatientHistory() {
                         <div>
                           <div className="mb-2">
                             <p className="text-gray-700 text-sm font-medium">
-                              {visit.visita?.problemaClinico ||
-                                visit.visita?.prestazione ||
-                                visit.descrizioneClinica ||
-                                visit.anamnesi ||
-                                "Visita"}
+                              {senzaMarcatori(
+                                visit.visita?.problemaClinico ||
+                                  visit.visita?.prestazione ||
+                                  visit.descrizioneClinica ||
+                                  visit.anamnesi,
+                              ) || "Visita"}
                             </p>
                           </div>
 
@@ -1771,8 +1775,10 @@ export default function PatientHistory() {
                           {(visit.visita?.terapiaSpecifica ||
                             visit.conclusioniDiagnostiche) && (
                             <div className="text-sm text-gray-600 bg-default-50 p-2 rounded-lg border-l-3 border-default-300">
-                              {visit.visita?.terapiaSpecifica ||
-                                visit.conclusioniDiagnostiche}
+                              {senzaMarcatori(
+                                visit.visita?.terapiaSpecifica ||
+                                  visit.conclusioniDiagnostiche,
+                              )}
                             </div>
                           )}
                         </div>
@@ -2242,14 +2248,21 @@ export default function PatientHistory() {
               />
               <Select
                 label="Sesso"
+                placeholder="Non indicato"
                 selectedKeys={editData.sesso ? [editData.sesso] : []}
                 onSelectionChange={(keys) => {
-                  const val = Array.from(keys)[0] as "M" | "F";
-                  setEditData((prev) => ({ ...prev, sesso: val }));
+                  const val = Array.from(keys)[0];
+                  setEditData((prev) => ({
+                    ...prev,
+                    sesso: val === "M" || val === "F" ? val : undefined,
+                  }));
                 }}
                 variant="bordered"
-                isRequired
               >
+                {/* Non obbligatorio, e con la voce per riportarlo a vuoto:
+                    il sesso non indicato resta tale, e i calcoli che lo
+                    richiedono lo dicono invece di sceglierne uno. */}
+                <SelectItem key="-">Non indicato</SelectItem>
                 <SelectItem key="M">Maschio</SelectItem>
                 <SelectItem key="F">Femmina</SelectItem>
               </Select>

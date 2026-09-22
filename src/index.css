@@ -41,6 +41,14 @@
 }
 
 @layer components {
+  /* Campo di testo del referto: area modificabile che mostra il grassetto
+     vero invece dei marcatori. Il testo va a capo da solo e il campo cresce
+     con il contenuto, come faceva la textarea che ha sostituito. */
+  .referto-editor {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   .corioli-card {
     @apply rounded-xl border border-default-200 bg-white shadow-sm;
   }

@@ -131,7 +131,7 @@ export class ExportService {
         patient.codiceFiscale,
         patient.dataNascita,
         patient.luogoNascita,
-        patient.sesso,
+        patient.sesso || '',
         patient.email || '',
         patient.telefono || '',
         patient.indirizzo || '',
@@ -276,7 +276,13 @@ export class ExportService {
 
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.text(`CF: ${patient.codiceFiscale} | Nato: ${new Date(patient.dataNascita).toLocaleDateString('it-IT')} | ${patient.sesso}`, 20, yPos);
+        const datiPaziente = [
+          `CF: ${patient.codiceFiscale}`,
+          `Nato: ${new Date(patient.dataNascita).toLocaleDateString('it-IT')}`,
+          // Senza sesso indicato la voce non si scrive: stampava "undefined".
+          patient.sesso,
+        ].filter(Boolean).join(' | ');
+        doc.text(datiPaziente, 20, yPos);
         yPos += 8;
 
         // Visite del paziente

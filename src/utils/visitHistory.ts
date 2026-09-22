@@ -36,6 +36,7 @@ const ANAMNESI_LABELS: Record<string, string> = {
 const VISITA_LABELS: Record<string, string> = {
   problemaClinico: "Problema clinico",
   prestazione: "Anamnesi",
+  terapiaInAtto: "Terapia in atto",
   esameObiettivo: "Esame obiettivo",
   accertamenti: "Accertamenti",
   terapiaSpecifica: "Conclusioni e terapia",

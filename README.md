@@ -21,29 +21,44 @@ Un solo tipo di visita, come in ambulatorio. Il referto segue quest'ordine:
    (familiare, fisiologica, patologica, chirurgica, farmacologica, allergica,
    abitudini di vita + sezioni personalizzate)
 3. Motivo della visita
-4. Esame obiettivo
-5. **Esami strumentali**, una fascia ciascuno — **pressione arteriosa**,
-   elettrocardiogramma, ecocardiogramma, TC coronarica, test ergometrico,
-   Holter ECG e pressorio, **Doppler TSA**
-6. **Esami ematochimici**
-7. **Inquadramento clinico**, sotto un titolo solo — scompenso, fibrillazione
+4. **Esami ematochimici**
+5. **Terapia in atto**
+6. **Pressione arteriosa** ed elettrocardiogramma
+7. Esame obiettivo
+8. **Altri esami strumentali**, una fascia ciascuno — ecocardiogramma, TC
+   coronarica, test ergometrico, Holter ECG e pressorio, **Doppler TSA**
+9. **Inquadramento clinico**, sotto un titolo solo — scompenso, fibrillazione
    atriale, rischio cardiovascolare
-8. Accertamenti
-9. Conclusioni e terapia
-10. Immagini allegate
+10. Accertamenti
+11. Conclusioni e terapia
+12. Immagini allegate
 
 L'anamnesi viene prima del motivo della visita, come nei referti cardiologici
 standard e come nella maschera di inserimento: per capire perché il paziente è
 qui serve prima conoscerne la storia.
 
+Il resto dell'ordine è quello delle visite d'esempio del cardiologo (22
+settembre 2026): ematochimici subito dopo la storia e prima della terapia che
+il paziente sta facendo, poi pressione ed ECG, e solo dopo l'esame obiettivo.
+Cambia **solo il foglio**: nella maschera il laboratorio resta nella colonna di
+sinistra e l'esame obiettivo prima dell'ECG.
+
+La **terapia in atto** è quella che il paziente assume all'arrivo, distinta
+dalla terapia consigliata nelle conclusioni. Alla visita nuova arriva copiata
+dall'ultima visita che ce l'ha, come i fattori di rischio: di solito fra un
+controllo e l'altro non cambia, e il medico corregge solo quello che è
+cambiato.
+
 ### Moduli opzionali
 
-Alla prima apertura la visita è quella scarna: anamnesi, motivo, esame
-obiettivo, pressione, elettrocardiogramma, ecocardiogramma, laboratorio,
-rischio cardiovascolare, accertamenti e conclusioni. **TC coronarica, test
-ergometrico, Holter ECG, Holter pressorio, Doppler TSA, scompenso e
+Alla prima apertura la visita è quella scarna: anamnesi, motivo, terapia in
+atto, esame obiettivo, pressione, elettrocardiogramma, laboratorio, rischio
+cardiovascolare, accertamenti e conclusioni. **Ecocardiogramma, TC coronarica,
+test ergometrico, Holter ECG, Holter pressorio, Doppler TSA, scompenso e
 fibrillazione atriale si accendono uno per uno** dalla card «Moduli della
 visita» in Impostazioni, e lo stesso vale per il **prontuario**.
+L'ecocardiogramma è fra questi dal 22 settembre 2026; si vede comunque quando
+è acceso lo scompenso, che ne legge la frazione di eiezione.
 
 È una richiesta del cardiologo referente: il grosso delle visite cardiologiche
 è refertato in poche righe, e una maschera che apre subito tutti i moduli è una
@@ -79,9 +94,39 @@ laboratorio:
 - **Altri esami**: emocromo, transaminasi, uricemia e **azotemia** (senza
   soglia finché il cardiologo non la indica), TSH.
 
+Il **sesso** è facoltativo: non scelto resta *non indicato*, in anagrafica e
+nel referto, che semplicemente non stampa la voce. Prima veniva salvato «M», e
+un dato inventato in anagrafica poi si stampa e entra nei calcoli. I conti che
+dipendono dal sesso (eGFR, clearance, SCORE2, CHA₂DS₂-VASc, soglie di
+emoglobina e uricemia) si fermano dicendo che manca, invece di rispondere sul
+sesso sbagliato.
+
 L'**ATS carotidea** del burden aterogeno e la **stenosi massima** del modulo
 Doppler TSA sono lo stesso campo, non due copie: si scrive da tutte e due le
 parti e il valore resta uno.
+
+### Grassetto nei campi del referto
+
+Chiesto dal cardiologo il 22 settembre 2026: poter far risaltare qualcosa
+mentre si scrive. Il testo salvato resta **testo semplice**, con il risalto
+segnato come nei messaggi (`**così**`), perché è la forma che il referto, i
+backup e la cronologia sanno già trattare. Nel campo, però, i marcatori **non
+si vedono**: i campi del referto sono aree modificabili che mostrano il
+grassetto vero, e la prima versione — che lasciava gli asterischi a schermo —
+sembrava un errore dell'applicazione.
+
+Il grassetto si mette con **Ctrl+B** (Cmd+B sul Mac) o con il **tasto destro →
+Grassetto**, e ripremendo si toglie. Incollare porta dentro solo testo: la
+grafica di dove si copiava — corsivi, colori, tabelle di un altro gestionale —
+verrebbe salvata e poi sparirebbe in stampa. `utils/grassettoReferto.ts` fa la
+conversione nei due sensi (`testoInHtml` per riempire il campo, `testoDaiNodi`
+per rileggerlo), e un marcatore spaiato resta testo: «vedi \*\* nota» non
+chiedeva il grassetto.
+
+Il testo con i marcatori non passa da `splitTextToSize`: il ritorno a capo lo
+fa `PdfService` misurando parola per parola, perché le parole in grassetto sono
+più larghe delle stesse in tondo e con una misura sola le righe uscirebbero dal
+margine destro. Nelle anteprime testuali dello storico i marcatori si tolgono.
 
 La pressione arteriosa si può scrivere con la barra, il trattino o lo spazio
 (`120/80`, `120-80`, `120 80`): viene ricondotta alla forma canonica al
@@ -410,6 +455,46 @@ Alcune voci sono state tolte di proposito, e vanno lasciate fuori:
   punteggi si calcolano da età, sesso e fattori di rischio, quindi senza una
   dichiarazione del medico ogni referto porterebbe un «CHA₂DS₂-VASc 0 / 9»
   addosso a un paziente che non è mai stato fibrillante.
+
+## Dashboard: la colonna «Pazienti a rischio»
+
+Tre colonne: pazienti recenti, visite recenti e i pazienti a rischio. La terza
+nasce dalla richiesta del 22 settembre 2026 — tenere sotto gli occhi i pazienti
+più a rischio, come nell'edizione di ginecologia la tabella delle gravidanze in
+corso. Lì la coorte è ovvia e il numero è la settimana; qui la coorte è chi il
+cardiologo ha dichiarato a rischio, e il numero è la distanza dall'obiettivo di
+LDL.
+
+La riga dice tre cose e si ferma: nome, scostamento dall'obiettivo a destra, e
+sotto in piccolo `LDL 138 · obiettivo 70 · alto`. La classe è anche la striscia
+colorata a sinistra, l'unità di misura non si ripete a ogni riga e `≈` segna un
+LDL stimato invece di scrivere «stimato» per esteso: la prima versione diceva
+le stesse cose in quattro righe ed era un muro di testo. La barra si disegna
+solo per chi è fuori obiettivo — a obiettivo lo dice già la scritta verde, e
+senza esami la riga dice «da dosare» invece di far credere che vada tutto bene.
+
+**«Vedi tutti» apre `/pazienti-a-rischio`**, la stessa coorte senza il taglio
+alle prime righe (`Pages/Dashboard/PazientiARischio.tsx`, con la riga condivisa
+in `components/cardio/RigaPazienteARischio.tsx` perché colonna e pagina siano
+lo stesso elenco). Portava all'elenco di tutti i pazienti, che è un altro
+elenco: chi apre da lì sta cercando proprio questi.
+
+- **Chi ci entra:** i pazienti di classe alta o molto alta, e chiunque altro sia
+  sopra l'obiettivo di LDL della propria classe. **Chi non ha una classe
+  dichiarata resta fuori**: il rischio lo attribuisce il medico e l'app non lo
+  indovina, come per tutto il resto in `rischioCv.ts`.
+- **In che ordine:** prima la classe, poi quanto si è lontani dall'obiettivo.
+- **Da dove vengono i dati:** la classe dall'ultima visita che la dichiara,
+  l'LDL dall'ultimo prelievo in archivio — anche di una visita precedente,
+  perché un controllo senza esami non cancella il pannello su cui il medico sta
+  ancora ragionando. L'LDL è il dosato se c'è, altrimenti Friedewald, e la riga
+  lo dichiara.
+- **La barra** è lo scostamento dall'obiettivo, non una percentuale di rischio:
+  quella non esiste e non va suggerita.
+
+Niente da scrivere in più: sono dati che la visita ha già. Con i gruppi di
+ricerca attivi la loro card scende sulla riga sotto, invece di stringere le
+altre in quattro colonne.
 
 ## Gruppi di ricerca
 

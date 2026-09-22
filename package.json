@@ -111,11 +111,11 @@
         "dmg",
         "zip"
       ],
-      "icon": "public/dottoressa.png"
+      "icon": "build/icon-mac.png"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "public/dottoressa.png"
+      "icon": "public/corioli-icon.png"
     }
   },
   "optionalDependencies": {

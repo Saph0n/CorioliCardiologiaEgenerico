@@ -860,3 +860,105 @@ describe("referto di visita: azotemia", () => {
     expect(testo).toContain("42 mg/dL");
   });
 });
+
+describe("referto di visita: ordine delle sezioni", () => {
+  // Chiesto dal cardiologo il 22 settembre 2026, sulle visite d'esempio che
+  // aveva mandato: ematochimici dopo l'anamnesi e prima della terapia in
+  // atto, esame obiettivo dopo pressione ed ECG.
+  it("segue l'ordine delle visite d'esempio del cardiologo", async () => {
+    const testo = await testoDelPdf(
+      visita({
+        prestazione: "Ipertensione arteriosa nota da anni.",
+        laboratorio: { colesteroloTotale: 210 },
+        terapiaInAtto: "Ramipril 5 mg una compressa al mattino.",
+        pressioneArteriosa: "135/85",
+        ecg: { pr: 160 },
+        ecocardiogramma: { fe: 60 },
+      }),
+    );
+    const ordine = [
+      "ANAMNESI",
+      "MOTIVO DELLA VISITA",
+      "ESAMI EMATOCHIMICI",
+      "TERAPIA IN ATTO",
+      "PRESSIONE ARTERIOSA",
+      "ELETTROCARDIOGRAMMA",
+      "ESAME OBIETTIVO",
+      "ECOCARDIOGRAMMA",
+    ].map((titolo) => {
+      const i = testo.indexOf(titolo);
+      expect(i, `"${titolo}" non compare nel referto`).toBeGreaterThan(-1);
+      return i;
+    });
+    expect(ordine).toEqual([...ordine].sort((a, b) => a - b));
+  });
+
+  it("stampa la terapia in atto", async () => {
+    const testo = await testoDelPdf(
+      visita({ terapiaInAtto: "Bisoprololo 2,5 mg" }),
+    );
+    expect(dalTitolo(testo, "TERAPIA IN ATTO")).toContain("Bisoprololo 2,5 mg");
+  });
+
+  it("senza terapia in atto la sezione non c'e'", async () => {
+    const testo = await testoDelPdf(visita({}));
+    expect(testo).not.toContain("TERAPIA IN ATTO");
+  });
+});
+
+describe("referto di visita: sesso non indicato", () => {
+  // Fino al 22 settembre 2026 un paziente senza scelta veniva salvato come
+  // maschio: il referto stampava "Maschile" come se fosse stato raccolto.
+  const senzaSesso: Patient = { ...paziente, sesso: undefined };
+
+  it("non stampa la voce sesso quando non e' indicato", async () => {
+    const blob = await PdfService.generateVisitPDF(senzaSesso, visita({}));
+    const testo = await blob!.text();
+    expect(testo).not.toContain("Maschile");
+    expect(testo).not.toContain("Femminile");
+  });
+
+  it("nella riga di identita' non sceglie nato o nata", async () => {
+    // La riga di identificazione compare dalla seconda pagina: serve un
+    // referto che vada a capo pagina, se no non si vedrebbe mai.
+    const blob = await PdfService.generateVisitPDF(
+      senzaSesso,
+      visita({ esameObiettivo: "Nei limiti. ".repeat(700) }),
+    );
+    const testo = await blob!.text();
+    expect(testo).toContain("nato/a il 12/04/1950");
+  });
+
+  it("con il sesso indicato la voce c'e'", async () => {
+    const testo = await testoDelPdf(visita({}));
+    expect(testo).toContain("Maschile");
+  });
+});
+
+describe("referto di visita: grassetto scritto dal medico", () => {
+  // Chiesto il 22 settembre 2026: poter far risaltare qualcosa mentre si
+  // scrive. I campi restano testo semplice e il risalto si segna con `**`,
+  // come nei messaggi; sul foglio diventa grassetto.
+  it("stampa in grassetto il tratto fra i marcatori", async () => {
+    const v = visita({ esameObiettivo: "Soffio **sistolico 3/6** sul focolaio" });
+    expect(await carattereDi(v, "sistolico")).toContain("Bold");
+  });
+
+  it("lascia in tondo il resto della frase", async () => {
+    const v = visita({ esameObiettivo: "Soffio **sistolico 3/6** sul focolaio" });
+    expect(await carattereDi(v, "focolaio")).not.toContain("Bold");
+  });
+
+  it("non stampa i marcatori", async () => {
+    const testo = await testoDelPdf(
+      visita({ esameObiettivo: "Soffio **sistolico** sul focolaio" }),
+    );
+    expect(dalTitolo(testo, "ESAME OBIETTIVO")).not.toContain("**");
+  });
+
+  it("un marcatore spaiato resta testo", async () => {
+    // Chi scrive "vedi ** nota" non stava chiedendo il grassetto.
+    const testo = await testoDelPdf(visita({ esameObiettivo: "vedi ** nota" }));
+    expect(dalTitolo(testo, "ESAME OBIETTIVO")).toContain("**");
+  });
+});

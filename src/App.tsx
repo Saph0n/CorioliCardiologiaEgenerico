@@ -12,6 +12,7 @@ import { storageService } from "./services/StorageServiceFallback";
 // Lazy loaded routes per ottimizzare il bundle iniziale
 const Home = lazy(() => import("./Pages/Dashboard/Home"));
 const PatientList = lazy(() => import("./Pages/Dashboard/Dashboard"));
+const PazientiARischio = lazy(() => import("./Pages/Dashboard/PazientiARischio"));
 const AboutUs = lazy(() => import("./Pages/About/About"));
 const AddPatient = lazy(() => import("./Pages/Dashboard/AddPatient"));
 import { CheckPatientOpener } from "./contexts/CheckPatientModalContext";
@@ -82,6 +83,7 @@ const App: React.FC = () => {
                   <Routes>
                     <Route element={<Home />} path="/" />
                     <Route element={<PatientList />} path="/pazienti" />
+                    <Route element={<PazientiARischio />} path="/pazienti-a-rischio" />
                     <Route element={<AboutUs />} path="/about-us" />
                     <Route element={<AddPatient />} path="/add-patient" />
                     <Route element={<CheckPatientOpener />} path="/check-patient" />

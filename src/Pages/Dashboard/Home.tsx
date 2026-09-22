@@ -22,6 +22,7 @@ import {
   Clock,
   ArrowRight,
   ClipboardList,
+  HeartPulse,
 } from "lucide-react";
 import {
   DoctorService,
@@ -44,6 +45,12 @@ import {
   statoGruppi,
   type StatoGruppo,
 } from "../../utils/gruppiRicerca";
+import {
+  pazientiDaTenereDOcchio,
+  type VoceRischio,
+} from "../../utils/pazientiARischio";
+import { RigaPazienteARischio } from "../../components/cardio/RigaPazienteARischio";
+import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -55,10 +62,16 @@ interface GroupedRecentVisit {
   mixedTypes: boolean;
 }
 
+/** Una riga della colonna del rischio, col nome gia' risolto. */
+interface VoceRischioConNome extends VoceRischio {
+  patientName: string;
+}
+
 interface DashboardStats {
   totalPatients: number;
   totalVisits: number;
   recentPatients: Patient[];
+  pazientiARischio: VoceRischioConNome[];
   groupedRecentVisits: GroupedRecentVisit[];
   averageAge: number;
   visitsThisMonth: number;
@@ -109,11 +122,6 @@ const getVisitTypePluralPhrase = (
 ): string => {
   if (count <= 1) return getVisitTypeLabel(tipo);
   return `${count} visite`;
-};
-
-const formatPatientDisplayName = (patient: Patient): string | null => {
-  const name = `${patient.nome ?? ""} ${patient.cognome ?? ""}`.trim();
-  return name || null;
 };
 
 const groupRecentVisits = (
@@ -210,6 +218,7 @@ export default function Home() {
     totalPatients: 0,
     totalVisits: 0,
     recentPatients: [],
+    pazientiARischio: [],
     groupedRecentVisits: [],
     averageAge: 0,
     visitsThisMonth: 0,
@@ -326,10 +335,24 @@ export default function Home() {
           setGruppiAbilitati(false);
         }
 
+        // Colonna del rischio: la coorte da tenere sotto gli occhi. Il nome si
+        // risolve qui perche' la funzione lavora sulle visite e non deve
+        // sapere come si scrive un paziente.
+        const aRischio = pazientiDaTenereDOcchio(visits).map((voce) => {
+          const p = patientMap.get(voce.patientId);
+          return {
+            ...voce,
+            patientName: p
+              ? formatPatientDisplayName(p) ?? "Paziente senza nome"
+              : "Paziente sconosciuto",
+          };
+        });
+
         setStats({
           totalPatients: patients.length,
           totalVisits: visits.length,
           recentPatients: sortedPatients,
+          pazientiARischio: aRischio,
           groupedRecentVisits,
           averageAge,
           visitsThisMonth,
@@ -491,7 +514,10 @@ export default function Home() {
       </div>
 
       {/* ─── Lists Row ─────────────────────────────────────────── */}
-      <div className={`grid grid-cols-1 gap-6 ${gruppiAbilitati ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+      {/* Tre colonne fisse: pazienti, visite e il rischio. Con i gruppi di
+          ricerca accesi la loro card scende sulla riga sotto, invece di
+          stringere le altre in quattro. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Pazienti Recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
@@ -675,6 +701,67 @@ export default function Home() {
           </CardBody>
         </Card>
 
+
+        {/* Pazienti a rischio.
+            Chiesta il 22 settembre 2026: una colonna che tenga i pazienti piu'
+            a rischio sotto gli occhi, come la tabella delle gravidanze in
+            corso dell'edizione di ginecologia. La classe la dichiara il
+            medico, qui si legge soltanto; il numero a destra e' la distanza
+            dall'obiettivo di LDL, che e' quello su cui si puo' agire.
+
+            La riga sta in `RigaPazienteARischio`, la stessa della pagina che
+            si apre da "Vedi tutti": la colonna e' quell'elenco accorciato. */}
+        <Card className="corioli-card">
+          <CardHeader className="corioli-card-header flex justify-between items-center">
+            <div className="dashboard-column-header-title">
+              <HeartPulse className="text-brand-700 shrink-0" size={16} />
+              <h3 className="text-base font-semibold text-gray-900">
+                Pazienti a rischio
+              </h3>
+            </div>
+            <Button
+              size="sm"
+              variant="light"
+              color="primary"
+              endContent={<ChevronRight size={16} />}
+              onPress={() => navigate("/pazienti-a-rischio")}
+            >
+              Vedi tutti
+            </Button>
+          </CardHeader>
+          <CardBody className="p-0">
+            {stats.pazientiARischio.length > 0 ? (
+              <div className="divide-y divide-gray-100">
+                {stats.pazientiARischio.map((voce) => (
+                  <RigaPazienteARischio
+                    key={voce.patientId}
+                    voce={voce}
+                    nome={voce.patientName}
+                    onApri={() => navigate(`/patient-history/${voce.patientId}`)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center px-6 py-10 text-center gap-2">
+                <HeartPulse size={32} className="text-gray-200" />
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  Nessun paziente da sorvegliare
+                </p>
+                <p
+                  className="text-xs max-w-[240px]"
+                  style={{ color: "var(--color-text-tertiary)" }}
+                >
+                  Compaiono qui i pazienti di classe alta o molto alta, e
+                  chiunque sia sopra l&apos;obiettivo di LDL della sua classe.
+                  La classe si dichiara nella visita.
+                </p>
+              </div>
+            )}
+          </CardBody>
+        </Card>
 
         {/* Gruppi di ricerca */}
         {gruppiAbilitati && (

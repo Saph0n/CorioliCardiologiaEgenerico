@@ -2047,7 +2047,7 @@ const SettingsScreen = () => {
                   cardiologo trova alla prima apertura e' quella scarna, e i
                   moduli che usa di rado se li accende lui uno per uno. In
                   pagina resta la sintesi, l'elenco sta nel modal come per la
-                  struttura anamnesi: sette interruttori in fila allungavano le
+                  struttura anamnesi: otto interruttori in fila allungavano le
                   impostazioni piu' di quanto valessero. */}
               <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -2056,10 +2056,11 @@ const SettingsScreen = () => {
                       Moduli della visita
                     </p>
                     <p className="text-xs text-default-500 mt-1">
-                      La visita comprende sempre anamnesi, esame obiettivo,
-                      pressione, elettrocardiogramma, ecocardiogramma,
+                      La visita comprende sempre anamnesi, terapia in atto,
+                      esame obiettivo, pressione, elettrocardiogramma,
                       laboratorio, rischio cardiovascolare e conclusioni. Gli
-                      altri moduli si accendono uno per uno.
+                      altri moduli, ecocardiogramma compreso, si accendono uno
+                      per uno.
                     </p>
                     <div className="mt-3 flex flex-col gap-1.5">
                       {GRUPPI_MODULI.map(({ gruppo, titolo }) => {

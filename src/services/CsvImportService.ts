@@ -81,11 +81,18 @@ function parseDateTimeForVisit(value: string): string {
   return parseDateLike(datePart);
 }
 
-function parseGender(value: string): "M" | "F" {
+/**
+ * Sesso dalla colonna del CSV: `undefined` quando la colonna non lo dice.
+ *
+ * Indovinarlo e' peggio che non averlo — finiva in anagrafica come un dato
+ * raccolto, si stampava nel referto ed entrava nei calcoli che dipendono dal
+ * sesso, che ora invece si fermano dicendo che manca.
+ */
+function parseGender(value: string): "M" | "F" | undefined {
   const normalized = safeLower(cleanValue(value));
   if (normalized.startsWith("m") || normalized.startsWith("male")) return "M";
   if (normalized.startsWith("f") || normalized.startsWith("female")) return "F";
-  return "F";
+  return undefined;
 }
 
 function normalizePhone(value: string): string {

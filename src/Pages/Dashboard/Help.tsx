@@ -452,7 +452,12 @@ export default function HelpAndFeedback() {
         {
           title: "Come creo una nuova visita?",
           content:
-            "Dalla scheda del paziente, clicca su '+ Nuova Visita'. Il referto è diviso in sezioni: Anamnesi, Motivo della visita, Esame obiettivo, elettrocardiogramma, ecocardiogramma, Accertamenti e Conclusioni con terapia. TC coronarica, test ergometrico, Holter ECG e pressorio, Doppler TSA, scompenso e fibrillazione atriale sono moduli facoltativi: si accendono uno per uno da Impostazioni, nella card «Moduli della visita». Nella colonna di sinistra registri le variabili cliniche (pressione arteriosa, frequenza cardiaca, peso con calcolo del BMI), gli esami di laboratorio e alleghi eventuali immagini.",
+            "Dalla scheda del paziente, clicca su '+ Nuova Visita'. Il referto è diviso in sezioni: Anamnesi, Motivo della visita, Terapia in atto (riportata dall'ultima visita, da rileggere), Esame obiettivo, elettrocardiogramma, Accertamenti e Conclusioni con terapia. Ecocardiogramma, TC coronarica, test ergometrico, Holter ECG e pressorio, Doppler TSA, scompenso e fibrillazione atriale sono moduli facoltativi: si accendono uno per uno da Impostazioni, nella card «Moduli della visita». Nella colonna di sinistra registri le variabili cliniche (pressione arteriosa, frequenza cardiaca, peso con calcolo del BMI), gli esami di laboratorio e alleghi eventuali immagini.",
+        },
+        {
+          title: "Posso evidenziare una parte del referto?",
+          content:
+            "Sì. In tutti i campi di testo del referto, seleziona quello che vuoi far risaltare e premi Ctrl+B (Cmd+B sul Mac), oppure fai clic con il tasto destro e scegli «Grassetto». Il testo diventa grassetto nel campo, come lo vedrai nel referto stampato. Premi di nuovo Ctrl+B sullo stesso testo per toglierlo.",
         },
         {
           title: "Come funziona il calcolo del BMI?",

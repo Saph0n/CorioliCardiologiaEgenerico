@@ -3,15 +3,18 @@
  *
  * Decisione della call con il dott. Trani del 18 settembre 2026, quella che ha
  * dato il via alla versione beta: la maschera che un cardiologo trova alla
- * prima apertura e' quella scarna — anamnesi, motivo, esame obiettivo,
- * pressione, ECG, ecocardiogramma, laboratorio, rischio, conclusioni. Tutto il
- * resto esiste ma parte spento, "in caso ti serva lo metti, in caso non ti
- * serve no".
+ * prima apertura e' quella scarna — anamnesi, motivo, terapia in atto, esame
+ * obiettivo, pressione, ECG, laboratorio, rischio, conclusioni. Tutto il resto
+ * esiste ma parte spento, "in caso ti serva lo metti, in caso non ti serve no".
+ *
+ * L'ecocardiogramma e' entrato fra gli spegnibili il 22 settembre 2026: il
+ * cardiologo lo dava per tolto dalla basic, e l'ha lasciato attivabile dalle
+ * impostazioni come gli altri esami strumentali.
  *
  * I gruppi sono i suoi: gli esami strumentali che il cardiologo referta di rado
- * (moduli 6-10, "nessuno metterà mai la media, è già scritta dentro il foglio
- * che ti arriva") e le due valutazioni che vuole rivedere prima di darle in
- * mano a tutti (11-12: "manda fuori strada, è troppo delicato").
+ * ("nessuno metterà mai la media, è già scritta dentro il foglio che ti
+ * arriva") e le due valutazioni che vuole rivedere prima di darle in mano a
+ * tutti ("manda fuori strada, è troppo delicato").
  *
  * Spegnere un modulo nasconde la sua parte di maschera, **non** i dati: una
  * visita in archivio che quel modulo l'ha compilato continua a mostrarlo, se no
@@ -20,6 +23,7 @@
 
 /** Modulo della visita che l'utente puo' accendere e spegnere. */
 export type ChiaveModuloOpzionale =
+  | "ecocardiogramma"
   | "tcCoronarica"
   | "testErgometrico"
   | "holterEcg"
@@ -38,6 +42,13 @@ export interface ModuloOpzionale {
   /** Riga di spiegazione nelle impostazioni. */
   descrizione: string;
   gruppo: GruppoModuloOpzionale;
+  /**
+   * Modulo senza il quale questo non funziona, e che quindi si vede con lui
+   * anche se spento: lo scompenso legge il fenotipo dalla FE, e la FE si scrive
+   * nell'ecocardiogramma. Acceso da solo mostrerebbe un fenotipo che non si
+   * puo' mai calcolare, perche' manca il campo da cui viene.
+   */
+  richiede?: ChiaveModuloOpzionale;
 }
 
 /**
@@ -45,6 +56,12 @@ export interface ModuloOpzionale {
  * li mostrano cosi' come li si incontra scrivendo il referto.
  */
 export const MODULI_OPZIONALI: readonly ModuloOpzionale[] = [
+  {
+    chiave: "ecocardiogramma",
+    titolo: "Ecocardiogramma",
+    descrizione: "Diametri e spessori del ventricolo sinistro, FE, gradienti, PAPs.",
+    gruppo: "strumentali",
+  },
   {
     chiave: "tcCoronarica",
     titolo: "TC coronarica",
@@ -78,8 +95,10 @@ export const MODULI_OPZIONALI: readonly ModuloOpzionale[] = [
   {
     chiave: "scompenso",
     titolo: "Scompenso cardiaco",
-    descrizione: "Fenotipo per frazione di eiezione, classe NYHA, NT-proBNP.",
+    descrizione:
+      "Fenotipo per frazione di eiezione, classe NYHA, NT-proBNP. Mostra anche l'ecocardiogramma, da cui legge la FE.",
     gruppo: "valutazioni",
+    richiede: "ecocardiogramma",
   },
   {
     chiave: "fibrillazioneAtriale",
@@ -116,6 +135,15 @@ export function moduliDelGruppo(
   return MODULI_OPZIONALI.filter((modulo) => modulo.gruppo === gruppo);
 }
 
+/** I moduli che portano con se' `chiave` (vedi `ModuloOpzionale.richiede`). */
+export function moduliCheRichiedono(
+  chiave: ChiaveModuloOpzionale,
+): ChiaveModuloOpzionale[] {
+  return MODULI_OPZIONALI.filter((modulo) => modulo.richiede === chiave).map(
+    (modulo) => modulo.chiave,
+  );
+}
+
 /** Stato acceso/spento di ogni modulo opzionale. */
 export type ModuliVisitaAttivi = Record<ChiaveModuloOpzionale, boolean>;
 
@@ -127,6 +155,7 @@ export type ModuliVisitaAttivi = Record<ChiaveModuloOpzionale, boolean>;
  * che il cardiologo ha chiesto di non fargli vedere per primo.
  */
 export const MODULI_VISITA_SPENTI: ModuliVisitaAttivi = {
+  ecocardiogramma: false,
   tcCoronarica: false,
   testErgometrico: false,
   holterEcg: false,

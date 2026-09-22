@@ -169,6 +169,44 @@ describe("referto di visita: niente esce dal foglio", () => {
   });
 });
 
+describe("referto di visita: prosa con il grassetto", () => {
+  // Il testo con i marcatori non passa da `splitTextToSize`: il ritorno a capo
+  // lo fa il PDF misurando parola per parola, perche' le parole in grassetto
+  // sono piu' larghe delle stesse in tondo. E' esattamente il punto in cui una
+  // riga puo' uscire dal margine senza che il testo estratto lo mostri.
+  const conGrassetto: Visit = {
+    ...visitaPiena,
+    visita: {
+      ...visitaPiena.visita!,
+      esameObiettivo: (
+        prosa.esameObiettivo.replace("soffio sistolico", "**soffio sistolico**") + " "
+      ).repeat(4),
+    },
+  };
+
+  it("nessuna riga in grassetto sfonda il margine destro", async () => {
+    const fuori = (await scritteDelReferto(paziente, conGrassetto))
+      .filter((s) => s.destra > MR + 0.5)
+      .map((s) => `"${s.testo}" arriva a ${s.destra.toFixed(1)} mm`);
+    expect(fuori).toEqual([]);
+  });
+
+  it("le parole in grassetto restano nella loro riga", async () => {
+    // Ogni parola e' disegnata da sola: quelle della stessa riga devono stare
+    // alla stessa quota, se no il grassetto scalerebbe il testo in verticale.
+    const scritte = await scritteDelReferto(paziente, conGrassetto);
+    const soffio = scritte.filter((s) => s.testo === "soffio");
+    expect(soffio.length).toBeGreaterThan(0);
+    for (const parola of soffio) {
+      const sistolico = scritte.find(
+        (s) => s.testo === "sistolico" && s.y === parola.y,
+      );
+      expect(sistolico, "\"sistolico\" non e' sulla riga di \"soffio\"").toBeDefined();
+      expect(sistolico!.sinistra).toBeGreaterThan(parola.sinistra);
+    }
+  });
+});
+
 describe("referto di visita: la casella del nome", () => {
   /** La quota della riga in cui e' stata scritta l'etichetta indicata. */
   function rigaDi(scritte: Scritta[], etichetta: string): number {

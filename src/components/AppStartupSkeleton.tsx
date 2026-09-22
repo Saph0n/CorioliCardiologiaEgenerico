@@ -28,6 +28,9 @@ export function resolvePageSkeletonVariant(pathname: string): PageSkeletonVarian
   const path = pathname.replace(/\/+$/, "") || "/";
 
   if (path === "/") return "home";
+  // Prima di "/pazienti": l'elenco dei pazienti a rischio e' una lista, non
+  // la griglia delle schede.
+  if (path.startsWith("/pazienti-a-rischio")) return "table";
   if (path.startsWith("/pazienti")) return "grid";
   if (path.startsWith("/visite") || path.startsWith("/gruppi-ricerca")) return "table";
   if (path.startsWith("/settings")) return "settings";
@@ -220,7 +223,10 @@ function HomePageSkeleton() {
           <SkeletonKpiCard key={i} />
         ))}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Tre colonne come la dashboard: pazienti, visite e "Da tenere
+          d'occhio". Lo scheletro deve avere la forma della pagina che sta
+          per arrivare, se no al caricamento il contenuto salta. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <SkeletonDashboardListCard
           titleWidth="w-32"
           rowVariant="patient"
@@ -229,6 +235,11 @@ function HomePageSkeleton() {
         <SkeletonDashboardListCard
           titleWidth="w-28"
           rowVariant="visit"
+          rowCount={5}
+        />
+        <SkeletonDashboardListCard
+          titleWidth="w-36"
+          rowVariant="patient"
           rowCount={5}
         />
       </div>

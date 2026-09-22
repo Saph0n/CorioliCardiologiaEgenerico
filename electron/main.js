@@ -203,7 +203,8 @@ function createWindow() {
       spellcheck: true,
       preload: preloadPath,
     },
-    icon: path.join(__dirname, "../public/dottoressa.png"),
+    // public/ non entra nel pacchetto: Vite la copia in dist/, che invece c'è.
+    icon: path.join(__dirname, isDev ? "../public/corioli-icon.png" : "../dist/corioli-icon.png"),
     show: false,
   });
 

@@ -19,6 +19,7 @@ import {
   parseAnamnesiConfig,
 } from "../utils/anamnesiStrutturata";
 import { getRicettaTesto } from "../utils/ricettaTemplate";
+import { MARCATORE_GRASSETTO } from "../utils/grassettoReferto";
 import {
   calcolaCaloNotturno,
   calcolaClearanceCockcroftGault,
@@ -167,6 +168,36 @@ const SIMBOLI: Record<string, string> = {
  * tipografica automatica, e un errore qui non si vede finche' qualcuno non
  * stampa un referto.
  */
+/** Un tratto di testo con il suo peso: e' l'unita' che il PDF disegna. */
+type TrattoTesto = { testo: string; grassetto: boolean };
+
+/**
+ * Da testo con i marcatori a paragrafi di parole, ciascuna col suo peso.
+ *
+ * Gli spazi restano come parole a se': servono a misurare la riga e a sapere
+ * dove si puo' andare a capo. Un marcatore che non si chiude resta testo, come
+ * nei messaggi: chi scrive "vedi ** nota" non voleva il grassetto.
+ */
+function trattiPerParagrafo(testo: string): TrattoTesto[][] {
+  return testo.split("\n").map((paragrafo) => {
+    const parole: TrattoTesto[] = [];
+    // Divide su `**`: i pezzi in posizione dispari stanno fra due marcatori,
+    // cioe' sono quelli da mettere in grassetto. Con un marcatore spaiato
+    // l'ultimo pezzo resta senza chiusura e torna testo normale.
+    const pezzi = paragrafo.split(MARCATORE_GRASSETTO);
+    const chiusi = pezzi.length % 2 === 1;
+    pezzi.forEach((pezzo, i) => {
+      const grassetto = chiusi && i % 2 === 1;
+      const testoPezzo =
+        !chiusi && i > 0 ? `${MARCATORE_GRASSETTO}${pezzo}` : pezzo;
+      for (const parola of testoPezzo.split(/(\s+)/)) {
+        if (parola) parole.push({ testo: parola, grassetto });
+      }
+    });
+    return parole;
+  });
+}
+
 export function san(t: string): string {
   if (!t) return "";
   for (const [simbolo, ascii] of Object.entries(SIMBOLI)) {
@@ -289,15 +320,91 @@ export class PdfService {
       if (textStyle.color) this.tc(doc, textStyle.color);
     };
 
+    const testo = san(text);
+
     applica();
-    const lines: string[] = doc.splitTextToSize(san(text), maxW);
-    for (const line of lines) {
-      y = this.pb(doc, y, lh + 1);
-      // Da riapplicare a ogni riga: dopo un salto pagina il piede ha cambiato
-      // font, corpo e colore.
+    // Senza marcatori si resta sulla via breve: e' quella che disegna quasi
+    // tutto il referto, e il ritorno a capo di jsPDF e' gia' quello giusto.
+    if (!testo.includes(MARCATORE_GRASSETTO)) {
+      const lines: string[] = doc.splitTextToSize(testo, maxW);
+      for (const line of lines) {
+        y = this.pb(doc, y, lh + 1);
+        // Da riapplicare a ogni riga: dopo un salto pagina il piede ha cambiato
+        // font, corpo e colore.
+        applica();
+        doc.text(line, x, y);
+        y += lh;
+      }
+      return y;
+    }
+
+    return this.blockConGrassetto(doc, testo, x, y, maxW, lh, applica, textStyle);
+  }
+
+  /**
+   * La stessa prosa, con i tratti fra `**` in grassetto.
+   *
+   * Il ritorno a capo lo fa questo metodo e non `splitTextToSize`: le parole in
+   * grassetto sono piu' larghe delle stesse in tondo, e misurando tutto con un
+   * carattere solo le righe uscivano oltre il margine destro — lo stesso
+   * difetto che il commento qui sopra racconta per il font sbagliato.
+   *
+   * Il marcatore e' quello che il medico digita nella maschera, o che il
+   * pulsante grassetto gli mette attorno alla selezione: nel campo resta testo
+   * semplice, sul foglio diventa un risalto.
+   */
+  private static blockConGrassetto(
+    doc: jsPDF,
+    testo: string,
+    x: number,
+    y: number,
+    maxW: number,
+    lh: number,
+    applica: () => void,
+    textStyle?: { font?: "helvetica"; style?: "normal" | "bold" | "italic"; fontSize?: number; color?: readonly number[] },
+  ): number {
+    const famiglia = textStyle?.font ?? "helvetica";
+    // Un testo gia' in grassetto (o in corsivo) non ha un "piu' grassetto":
+    // li' il marcatore non cambia niente ed e' giusto che non cambi.
+    const stileBase = textStyle?.style ?? "normal";
+    const applicaTratto = (grassetto: boolean) => {
       applica();
-      doc.text(line, x, y);
+      doc.setFont(famiglia, grassetto && stileBase === "normal" ? "bold" : stileBase);
+    };
+
+    const scriviRiga = (riga: TrattoTesto[]) => {
+      y = this.pb(doc, y, lh + 1);
+      let cursore = x;
+      for (const tratto of riga) {
+        applicaTratto(tratto.grassetto);
+        doc.text(tratto.testo, cursore, y);
+        cursore += doc.getTextWidth(tratto.testo);
+      }
       y += lh;
+    };
+
+    for (const paragrafo of trattiPerParagrafo(testo)) {
+      let riga: TrattoTesto[] = [];
+      let larghezza = 0;
+      for (const parola of paragrafo) {
+        applicaTratto(parola.grassetto);
+        const w = doc.getTextWidth(parola.testo);
+        const aCapo = larghezza + w > maxW && riga.length > 0;
+        if (aCapo) {
+          scriviRiga(riga);
+          riga = [];
+          larghezza = 0;
+          // Lo spazio che ha fatto traboccare la riga non apre quella dopo:
+          // rientrerebbe il testo di un carattere, a caso.
+          if (!parola.testo.trim()) continue;
+        }
+        riga.push(parola);
+        larghezza += w;
+      }
+      // Un paragrafo vuoto e' una riga vuota voluta: la si salta in altezza
+      // senza disegnare niente.
+      if (riga.length) scriviRiga(riga);
+      else y += lh;
     }
     return y;
   }
@@ -828,7 +935,10 @@ export class PdfService {
     const autore = doctor
       ? san(`Dott. ${doctor.nome} ${doctor.cognome}`.trim())
       : "";
-    const nato = patient.sesso === "F" ? "nata" : "nato";
+    // Senza sesso indicato la riga non ne sceglie uno: "nato/a" e' la forma
+    // che usano i referti quando il dato non c'e'.
+    const nato =
+      patient.sesso === "F" ? "nata" : patient.sesso === "M" ? "nato" : "nato/a";
     const identita = [
       san(this.nomePaziente(patient)),
       patient.dataNascita ? `${nato} il ${fd(patient.dataNascita)}` : "",
@@ -2166,16 +2276,22 @@ export class PdfService {
 
     y = this.drawTextSection(doc, y, "Motivo della visita", vis.problemaClinico);
 
-    y = this.drawTextSection(doc, y, "Esame Obiettivo", vis.esameObiettivo);
+    // Ordine chiesto dal cardiologo il 22 settembre 2026, "come negli esempi
+    // di visite mandati": gli esami ematochimici subito dopo la storia del
+    // paziente e prima della terapia che sta facendo, poi pressione ed ECG, e
+    // solo dopo l'esame obiettivo. Nella maschera il laboratorio resta nella
+    // colonna di sinistra ("ok come posizione in colonna"): l'ordine cambia
+    // solo sul foglio.
+    y = this.drawLaboratorio(doc, y, vis.laboratorio, patient);
+    y = this.drawTextSection(doc, y, "Terapia in atto", vis.terapiaInAtto);
 
     // Ogni esame con la sua fascia, come anamnesi ed esame obiettivo. C'e'
     // stato un titolo "Esami strumentali" che li raccoglieva, con i moduli
     // come sottotitoli sottolineati: il cardiologo l'ha fatto togliere l'11
     // settembre 2026 ("meglio evidenziare in grigio le singole voci").
-    //
-    // La pressione apre la serie, prima dell'elettrocardiogramma.
     y = this.drawPressioneArteriosa(doc, y, vis);
     y = this.drawEcg(doc, y, vis.ecg, vis.frequenzaCardiaca);
+    y = this.drawTextSection(doc, y, "Esame Obiettivo", vis.esameObiettivo);
     y = this.drawEcocardiogramma(doc, y, vis.ecocardiogramma);
     y = this.drawTcCoronarica(
       doc, y, vis.tcCoronarica,
@@ -2185,7 +2301,6 @@ export class PdfService {
     y = this.drawHolterEcg(doc, y, vis.holterEcg);
     y = this.drawHolterPressorio(doc, y, vis.holterPressorio);
     y = this.drawDopplerTsa(doc, y, vis.dopplerTsa);
-    y = this.drawLaboratorio(doc, y, vis.laboratorio, patient);
 
     // Scompenso, fibrillazione atriale e rischio cardiovascolare restano sotto
     // un titolo solo, con i moduli come sottotitoli: sono i tre inquadramenti

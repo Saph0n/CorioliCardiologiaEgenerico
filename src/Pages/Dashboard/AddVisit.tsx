@@ -102,6 +102,7 @@ import {
   MODULI_OPZIONALI,
   MODULI_VISITA_SPENTI,
   leggiModuliVisita,
+  moduliCheRichiedono,
   leggiProntuarioAttivo,
   type ChiaveModuloOpzionale,
   type ModuliVisitaAttivi,
@@ -292,6 +293,7 @@ const createDefaultVisitData = () => ({
 const createDefaultVisitaData = () => ({
   problemaClinico: "",
   prestazione: "",
+  terapiaInAtto: "",
   esameObiettivo: "",
   accertamenti: "",
   terapiaSpecifica: "",
@@ -465,6 +467,7 @@ function visitaPerSalvataggio(
   return {
     problemaClinico: v.problemaClinico,
     prestazione: v.prestazione,
+    ...(v.terapiaInAtto?.trim() ? { terapiaInAtto: v.terapiaInAtto } : {}),
     esameObiettivo: v.esameObiettivo,
     accertamenti: v.accertamenti,
     terapiaSpecifica: v.terapiaSpecifica,
@@ -857,21 +860,30 @@ export default function AddVisit() {
       };
 
       /**
-       * Riporta i fattori di rischio dall'ultima visita che ne ha.
+       * Riporta i fattori di rischio e la terapia in atto, ciascuno
+       * dall'ultima visita che ce l'ha.
        *
-       * Sono anamnestici e non cambiano da un controllo all'altro: richiederli
-       * a ogni visita sarebbe esattamente il tempo perso che rende i referti
-       * cardiologici volutamente scarni. Restano modificabili, e la copia e'
-       * per visita, cosi' resta la storia di quando un fattore e' comparso.
+       * Non cambiano da un controllo all'altro: richiederli a ogni visita
+       * sarebbe esattamente il tempo perso che rende i referti cardiologici
+       * volutamente scarni. Restano modificabili, e la copia e' per visita,
+       * cosi' resta la storia di quando un fattore e' comparso o un farmaco e'
+       * cambiato. La terapia riportata va riletta: e' quella che il paziente
+       * prendeva all'ultimo controllo, e il referto la stampa.
        *
        * Si applica **solo alla visita nuova**: in modifica i valori devono
        * restare quelli salvati.
        */
-      const riportaFattoriRischio = (visite: Visit[]) => {
-        const precedente = visite.find((v) => v.visita?.fattoriRischio);
-        const fattori = precedente?.visita?.fattoriRischio;
-        if (!fattori) return;
-        setVisitaData((prev) => ({ ...prev, fattoriRischio: { ...fattori } }));
+      const riportaDallUltimaVisita = (visite: Visit[]) => {
+        const fattori = visite.find((v) => v.visita?.fattoriRischio)?.visita
+          ?.fattoriRischio;
+        const terapia = visite.find((v) => v.visita?.terapiaInAtto?.trim())
+          ?.visita?.terapiaInAtto;
+        if (!fattori && !terapia) return;
+        setVisitaData((prev) => ({
+          ...prev,
+          ...(fattori ? { fattoriRischio: { ...fattori } } : {}),
+          ...(terapia ? { terapiaInAtto: terapia } : {}),
+        }));
       };
 
       if (visitId) {
@@ -907,6 +919,7 @@ export default function AddVisit() {
                 fumatore: visit.visita?.fumatore ?? "",
                 categoriaRischioCv: visit.visita?.categoriaRischioCv ?? "",
                 sintesiRischio: visit.visita?.sintesiRischio ?? "",
+                terapiaInAtto: visit.visita?.terapiaInAtto ?? "",
                 immagini: visit.visita?.immagini ?? [],
                 ecg: visit.visita?.ecg ?? {},
                 ecocardiogramma: visit.visita?.ecocardiogramma ?? {},
@@ -954,7 +967,7 @@ export default function AddVisit() {
             const patientData = await PatientService.getPatientById(patientId);
             setPatient(patientData);
             if (patientData) {
-              riportaFattoriRischio(await loadPatientVisits(patientData.id));
+              riportaDallUltimaVisita(await loadPatientVisits(patientData.id));
             }
           } catch {
             setError("Errore nel caricamento dati paziente");
@@ -964,7 +977,7 @@ export default function AddVisit() {
             const patientData = await PatientService.getPatientByCF(patientCf);
             setPatient(patientData);
             if (patientData) {
-              riportaFattoriRischio(await loadPatientVisits(patientData.id));
+              riportaDallUltimaVisita(await loadPatientVisits(patientData.id));
             }
           } catch {
             setError("Errore nel caricamento dati paziente");
@@ -1726,14 +1739,19 @@ export default function AddVisit() {
    * la sezione Doppler TSA, e tenerla nascosta vorrebbe dire stampare una
    * sezione che il medico non vede.
    */
-  const moduloVisibile = (chiave: ChiaveModuloOpzionale) =>
-    moduliAttivi[chiave] || bloccoCompilato(chiave);
+  const moduloVisibile = (chiave: ChiaveModuloOpzionale): boolean =>
+    moduliAttivi[chiave] ||
+    bloccoCompilato(chiave) ||
+    // Visibile anche quando lo porta con se' un altro modulo: lo scompenso
+    // senza ecocardiogramma non avrebbe dove leggere la FE.
+    moduliCheRichiedono(chiave).some(moduloVisibile);
 
   /**
-   * Numeri delle sezioni che vengono dopo l'ecocardiogramma: dipendono da
+   * Numeri delle sezioni che vengono dopo l'elettrocardiogramma: dipendono da
    * quali moduli sono accesi. Con i numeri fissi, spegnerne uno lascerebbe un
    * buco nella sequenza (4, 5, 13) che sembra un difetto dell'app. Le prime
-   * cinque sezioni ci sono sempre e tengono il loro numero.
+   * cinque sezioni (anamnesi, motivo, terapia in atto, esame obiettivo, ECG)
+   * ci sono sempre e tengono il loro numero.
    */
   const numeroSezione: Record<string, string> = (() => {
     const numeri: Record<string, string> = {};
@@ -3482,11 +3500,31 @@ export default function AddVisit() {
                   />
                 </div>
 
-                {/* Sezione 3: Esame Obiettivo */}
+                {/* Sezione 3: Terapia in atto.
+                    Chiesta dal cardiologo il 22 settembre 2026. E' quella
+                    che il paziente prende all'arrivo, non quella consigliata
+                    nelle conclusioni: alla visita nuova arriva copiata
+                    dall'ultima, e si corregge se nel frattempo e' cambiata. */}
+                <div className="space-y-2 group">
+                  <label className="text-sm font-bold text-gray-700 block mb-1">
+                    3. Terapia in atto
+                  </label>
+                  <RefertoTextarea
+                    value={visitaData.terapiaInAtto}
+                    onValueChange={(value) =>
+                      handleVisitaChange("terapiaInAtto", value)
+                    }
+                    variant="bordered"
+                    minRows={3}
+                    placeholder="Farmaci assunti, con dosaggio e posologia..."
+                  />
+                </div>
+
+                {/* Sezione 4: Esame Obiettivo */}
                 <div className="space-y-2 relative group">
                   <div className="flex justify-between items-end mb-1">
                     <label className="text-sm font-bold text-gray-700">
-                      3. Esame Obiettivo
+                      4. Esame Obiettivo
                     </label>
                     <TemplateSelector
                       templates={allTemplates.filter(
@@ -3508,10 +3546,10 @@ export default function AddVisit() {
                   />
                 </div>
 
-                {/* Sezione 4: ECG */}
+                {/* Sezione 5: ECG */}
                 <div className="space-y-2 relative group">
                   <ModuloHeader
-                    numero="4"
+                    numero="5"
                     titolo="Elettrocardiogramma"
                     azione={
                       <TemplateSelector
@@ -3586,13 +3624,15 @@ export default function AddVisit() {
                   />
                 </div>
 
-                {/* Sezione 5: Ecocardiogramma.
+                {/* Ecocardiogramma.
                     Collassabile come la TC: si apre da solo quando e'
                     compilato, e in una visita nuova non occupa mezza pagina
-                    finche' non serve. Proposta nella call dell'11 settembre
-                    2026. */}
+                    finche' non serve (call dell'11 settembre 2026). Dal 22
+                    settembre e' anche spegnibile dalle impostazioni, spento
+                    di default come gli altri esami strumentali. */}
                 <ModuloCollassabile
-                  numero="5"
+                  numero={numeroSezione.ecocardiogramma}
+                  visibile={moduloVisibile("ecocardiogramma")}
                   titolo="Ecocardiogramma"
                   sottotitolo="non eseguito"
                   compilato={bloccoCompilato("ecocardiogramma")}

@@ -44,6 +44,8 @@ export const visitaDiProva: Visit = {
       "Il paziente riferisce dispnea da sforzo comparsa da circa due mesi, con progressiva riduzione della tolleranza all'esercizio. Nega dolore toracico a riposo, cardiopalmo, sincopi o lipotimie.",
     prestazione:
       "Ipertensione arteriosa nota da quindici anni, in trattamento con ACE-inibitore.\nDislipidemia in terapia con statina a media intensita'.\nPregresso infarto miocardico inferiore nel 2019, trattato con angioplastica e impianto di stent medicato su coronaria destra.\nNega diabete mellito. Familiarita' paterna per cardiopatia ischemica precoce.\nEx fumatore, sospensione nel 2019. Attivita' fisica saltuaria.",
+    terapiaInAtto:
+      "Acido acetilsalicilico 100 mg, 1 cp al mattino.\nRamipril 5 mg, 1 cp al mattino.\nBisoprololo 2,5 mg, 1 cp al mattino.\nAtorvastatina 40 mg, 1 cp la sera.",
     esameObiettivo:
       "Paziente vigile, orientato, eupnoico a riposo. Toni cardiaci validi e ritmici, soffio sistolico 2/6 sul focolaio aortico irradiato ai vasi del collo. Murmure vescicolare presente su tutto l'ambito polmonare, non rumori aggiunti. Addome trattabile. Non edemi declivi. Polsi periferici validi e simmetrici.",
     accertamenti:

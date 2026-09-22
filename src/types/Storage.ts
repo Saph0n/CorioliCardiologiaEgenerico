@@ -19,7 +19,16 @@ export interface Patient {
   cognome: string;
   dataNascita: string;
   luogoNascita: string;
-  sesso: 'M' | 'F';
+  /**
+   * Sesso biologico, quando e' stato indicato.
+   *
+   * Facoltativo: fino al 22 settembre 2026 un paziente senza scelta veniva
+   * salvato come maschio, e il referto lo stampava come un dato raccolto.
+   * Assente vuol dire "non indicato", e i calcoli che lo richiedono (eGFR,
+   * SCORE2, CHA2DS2-VASc, soglie di emoglobina e uricemia) si fermano dicendo
+   * che manca, invece di rispondere sul sesso sbagliato.
+   */
+  sesso?: 'M' | 'F';
   indirizzo?: string;
   telefono?: string;
   email?: string;
@@ -627,6 +636,13 @@ export interface Visit {
     problemaClinico: string;
     /** Anamnesi in campo unico (usata quando l'anamnesi strutturata è disattivata). */
     prestazione: string;
+    /**
+     * Terapia (cardiologica) che il paziente assume all'arrivo. Diversa da
+     * `terapiaSpecifica`, che e' quella consigliata in chiusura: questa e' il
+     * punto di partenza, e alla visita nuova arriva copiata dall'ultima che ce
+     * l'ha, perche' fra un controllo e l'altro di solito non cambia.
+     */
+    terapiaInAtto?: string;
     /** Esame obiettivo. */
     esameObiettivo: string;
     /** Accertamenti / esami visionati o richiesti. */

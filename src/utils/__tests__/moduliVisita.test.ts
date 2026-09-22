@@ -5,6 +5,7 @@ import {
   MODULI_VISITA_SPENTI,
   leggiModuliVisita,
   leggiProntuarioAttivo,
+  moduliCheRichiedono,
   moduliDelGruppo,
 } from "../moduliVisita";
 
@@ -48,6 +49,7 @@ describe("moduli opzionali della visita", () => {
 
   it("divide i moduli nei due gruppi decisi dal cardiologo", () => {
     expect(moduliDelGruppo("strumentali").map((m) => m.chiave)).toEqual([
+      "ecocardiogramma",
       "tcCoronarica",
       "testErgometrico",
       "holterEcg",
@@ -58,6 +60,15 @@ describe("moduli opzionali della visita", () => {
       "scompenso",
       "fibrillazioneAtriale",
     ]);
+  });
+
+  // L'ecocardiogramma e' spento di default dal 22 settembre 2026, ma lo
+  // scompenso ne legge la FE: acceso da solo mostrerebbe un fenotipo che non
+  // si puo' mai calcolare.
+  it("fa comparire l'ecocardiogramma con lo scompenso", () => {
+    expect(MODULI_VISITA_SPENTI.ecocardiogramma).toBe(false);
+    expect(moduliCheRichiedono("ecocardiogramma")).toEqual(["scompenso"]);
+    expect(moduliCheRichiedono("tcCoronarica")).toEqual([]);
   });
 
   // La card nelle impostazioni riassume gruppo per gruppo e il modal elenca

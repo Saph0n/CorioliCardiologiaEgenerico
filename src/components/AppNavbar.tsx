@@ -204,11 +204,11 @@ export default function AppNavbar() {
             aria-label="Corioli Cardiologia — vai alla dashboard"
           >
             <img
-              src={`${import.meta.env.BASE_URL}corioli-logo-navbar.png`}
+              src={`${import.meta.env.BASE_URL}corioli-logo.svg`}
               alt="Corioli Cardiologia"
-              width={220}
-              height={40}
-              className="h-7 w-auto max-h-8 object-contain object-left md:h-8 md:max-h-9"
+              width={158}
+              height={48}
+              className="h-8 w-auto max-h-9 object-contain object-left md:h-9 md:max-h-10"
               decoding="async"
             />
           </Link>
