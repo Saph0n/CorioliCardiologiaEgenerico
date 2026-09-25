@@ -66,9 +66,9 @@ export const FATTORI_RISCHIO_CV: {
   { chiave: "ipertensione", label: "Ipertensione arteriosa" },
   { chiave: "dislipidemia", label: "Dislipidemia" },
   { chiave: "diabete", label: "Diabete o prediabete" },
-  { chiave: "familiaritaCad", label: "Familiarita' per CAD precoce" },
-  { chiave: "obesita", label: "Obesita'" },
-  { chiave: "sedentarieta", label: "Sedentarieta'" },
+  { chiave: "familiaritaCad", label: "Familiarità per CAD precoce" },
+  { chiave: "obesita", label: "Obesità" },
+  { chiave: "sedentarieta", label: "Sedentarietà" },
   { chiave: "eventoCvPregresso", label: "Pregresso evento cardiovascolare" },
 ];
 

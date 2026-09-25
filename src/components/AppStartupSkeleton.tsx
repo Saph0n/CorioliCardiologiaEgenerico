@@ -8,10 +8,19 @@ import {
   Skeleton,
 } from "@nextui-org/react";
 import DesktopShell from "./DesktopShell";
+import { datiPronti } from "../services/seed";
 
 const NAVBAR_MENU_WIDTHS = ["w-20", "w-16", "w-14", "w-20", "w-24", "w-12"];
 
-const STARTUP_MIN_MS = 2500;
+/**
+ * L'avvio aspetta i dati veri (`datiPronti`), non un orologio: prima lo
+ * scheletro restava 2,5 secondi fissi anche con i dati gia' pronti, a ogni
+ * apertura dell'app. Compare solo se l'attesa supera `SCHELETRO_DOPO_MS`
+ * (sotto, il lampo dello scheletro disturba piu' dell'attesa) e non trattiene
+ * mai l'app oltre `AVVIO_MAX_MS`.
+ */
+const SCHELETRO_DOPO_MS = 200;
+const AVVIO_MAX_MS = 4000;
 
 export type PageSkeletonVariant =
   | "home"
@@ -98,12 +107,9 @@ function SkeletonPageHeader({
   return (
     <div className="flex flex-col gap-6 w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <Skeleton className="h-14 w-14 rounded-xl shrink-0" />
-          <div className="space-y-2 min-w-0">
-            <Skeleton className="h-8 w-48 md:w-64 max-w-full rounded-lg" />
-            <Skeleton className="h-4 w-56 max-w-full rounded-md" />
-          </div>
+        <div className="space-y-2 min-w-0">
+          <Skeleton className="h-9 w-48 md:w-64 max-w-full rounded-lg" />
+          <Skeleton className="h-5 w-56 max-w-full rounded-md" />
         </div>
         {withActions && (
           <div className="flex gap-3 w-full md:w-auto">
@@ -247,16 +253,23 @@ function HomePageSkeleton() {
   );
 }
 
+/** Righe della tabella dei pazienti (era una griglia di schede). */
 export function PatientGridSkeleton() {
   return (
-    <>
-      <Skeleton className="h-4 w-44 rounded-md mb-4" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-44 rounded-2xl" />
+    <div className="overflow-hidden rounded-xl border border-default-200 bg-white">
+      <Skeleton className="h-9 w-full rounded-none" />
+      <div className="divide-y divide-default-100">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-6 px-4 py-3">
+            <Skeleton className="h-4 w-48 rounded-md" />
+            <Skeleton className="h-4 w-10 rounded-md" />
+            <Skeleton className="h-4 w-36 rounded-md" />
+            <Skeleton className="h-4 w-20 rounded-md" />
+            <Skeleton className="ml-auto h-7 w-28 rounded-lg" />
+          </div>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -524,13 +537,15 @@ function SettingsPageSkeleton() {
         </div>
       </CardSkeleton>
 
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-stretch [&>*]:h-full">
+      <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+        <div className="hidden lg:block space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 w-36 rounded-lg" />
+          ))}
+        </div>
+        <div className="space-y-8">
           <SkeletonProfiloCard />
           <SkeletonAmbulatoriCard />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <SkeletonBackupCard />
           <SkeletonFunzionalitaVisiteCard />
         </div>
@@ -740,17 +755,31 @@ export function AppStartupSkeleton() {
 
 export function AppStartupGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
+  const [mostraScheletro, setMostraScheletro] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setReady(true), STARTUP_MIN_MS);
-    return () => window.clearTimeout(timer);
+    let attivo = true;
+    const pronto = () => {
+      if (attivo) setReady(true);
+    };
+    const scheletro = window.setTimeout(() => {
+      if (attivo) setMostraScheletro(true);
+    }, SCHELETRO_DOPO_MS);
+    const limite = window.setTimeout(pronto, AVVIO_MAX_MS);
+    void datiPronti().then(pronto, pronto);
+    return () => {
+      attivo = false;
+      window.clearTimeout(scheletro);
+      window.clearTimeout(limite);
+    };
   }, []);
 
   if (!ready) {
+    if (!mostraScheletro) return null;
     if (location.pathname === "/blocked") {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50 flex items-center justify-center p-6">
+        <div className="min-h-finestra bg-gradient-to-br from-brand-50 via-white to-slate-50 flex items-center justify-center p-6">
           <Skeleton className="h-48 w-full max-w-md rounded-2xl" />
         </div>
       );

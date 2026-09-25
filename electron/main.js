@@ -206,7 +206,18 @@ function createWindow() {
     // public/ non entra nel pacchetto: Vite la copia in dist/, che invece c'è.
     icon: path.join(__dirname, isDev ? "../public/corioli-icon.png" : "../dist/corioli-icon.png"),
     show: false,
+    autoHideMenuBar: true,
+    // Su Windows la barra del titolo la disegna l'app (`BarraFinestra`),
+    // pulsanti riduci/ingrandisci/chiudi compresi. Quelli di Electron
+    // (`titleBarOverlay`) sul bianco non si evidenziavano al passaggio del
+    // mouse: il fondo lo calcolano dal tema di Windows e col tema scuro
+    // viene bianco. Resta il bordo di sistema: ridimensionamento e ombra.
+    ...(process.platform === "win32" && { titleBarStyle: "hidden" }),
   });
+
+  // Su Windows Electron reinstalla File/Edit/View/Window/Help se il menu è null
+  // alla creazione della finestra. Si toglie dopo, e di nuovo prima del primo paint.
+  nascondiMenuDiSistema(mainWindow);
 
   // Correttore ortografico: italiano e inglese (da impostare subito)
   mainWindow.webContents.session.setSpellCheckerLanguages(["it", "en"]);
@@ -247,6 +258,21 @@ function createWindow() {
         { label: "Taglia", role: "cut" },
         { label: "Copia", role: "copy" },
         { label: "Incolla", role: "paste" },
+      );
+      // I campi del referto sono aree modificabili (`RefertoTextarea`), gli
+      // unici dell'app dove il grassetto esiste: lo applica la pagina.
+      if (params.editFlags?.canEditRichly) {
+        menuTemplate.push(
+          { type: "separator" },
+          {
+            label: "Grassetto",
+            accelerator: "CmdOrCtrl+B",
+            registerAccelerator: false,
+            click: () => mainWindow.webContents.send("referto:grassetto"),
+          },
+        );
+      }
+      menuTemplate.push(
         { type: "separator" },
         { label: "Seleziona tutto", role: "selectAll" },
       );
@@ -275,7 +301,16 @@ function createWindow() {
 
   mainWindowRef = mainWindow;
 
+  // Il pulsante ingrandisci diventa "ripristina" anche quando la finestra si
+  // ingrandisce col doppio clic sulla barra o trascinandola in alto.
+  for (const evento of ["maximize", "unmaximize"]) {
+    mainWindow.on(evento, () => {
+      mainWindow.webContents.send("finestra:ingrandita", mainWindow.isMaximized());
+    });
+  }
+
   mainWindow.once("ready-to-show", () => {
+    nascondiMenuDiSistema(mainWindow);
     mainWindow.show();
   });
 
@@ -360,6 +395,18 @@ ipcMain.handle("kv:clearAppDottori", async () => {
 
 ipcMain.handle("app:version", () => app.getVersion());
 
+// Pulsanti riduci/ingrandisci/chiudi della barra del titolo (`BarraFinestra`)
+const finestraDi = (event) => BrowserWindow.fromWebContents(event.sender);
+ipcMain.on("finestra:riduci", (e) => finestraDi(e)?.minimize());
+ipcMain.on("finestra:ingrandisci", (e) => {
+  const finestra = finestraDi(e);
+  if (!finestra) return;
+  if (finestra.isMaximized()) finestra.unmaximize();
+  else finestra.maximize();
+});
+ipcMain.on("finestra:chiudi", (e) => finestraDi(e)?.close());
+ipcMain.handle("finestra:ingrandita", (e) => finestraDi(e)?.isMaximized() ?? false);
+
 ipcMain.handle("backup:create", async (_event, reason) => createBackup(reason));
 
 ipcMain.handle("backup:list", async () => {
@@ -439,6 +486,14 @@ ipcMain.handle("shell:openExternal", async (_event, url) => {
     return { ok: false, error: String(err?.message || err) };
   }
 });
+
+function nascondiMenuDiSistema(window) {
+  // Su macOS il menu sta nella barra dello schermo, non nella finestra, e
+  // porta le scorciatoie: senza, Cmd+C / Cmd+V / Cmd+Q non funzionano.
+  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
+  window.removeMenu();
+  window.setMenuBarVisibility(false);
+}
 
 app.whenReady().then(() => {
   // PDF rimasti da una sessione precedente (crash o chiusura forzata)

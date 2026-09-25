@@ -24,6 +24,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAppVersion: () => ipcRenderer.invoke('app:version'),
 
+  // Pulsanti riduci/ingrandisci/chiudi della barra del titolo (`BarraFinestra`).
+  // Solo su Windows: altrove la barra del titolo e' quella di sistema.
+  finestra:
+    process.platform === 'win32'
+      ? {
+          riduci: () => ipcRenderer.send('finestra:riduci'),
+          ingrandisci: () => ipcRenderer.send('finestra:ingrandisci'),
+          chiudi: () => ipcRenderer.send('finestra:chiudi'),
+          ingrandita: () => ipcRenderer.invoke('finestra:ingrandita'),
+          onIngrandita: (callback) => {
+            const ascolta = (_event, ingrandita) => callback(ingrandita);
+            ipcRenderer.on('finestra:ingrandita', ascolta);
+            return () => ipcRenderer.removeListener('finestra:ingrandita', ascolta);
+          },
+        }
+      : undefined,
+
+  // "Grassetto" scelto nel menu del tasto destro sul referto (electron/main.js)
+  onGrassettoReferto: (callback) => {
+    const ascolta = () => callback();
+    ipcRenderer.on('referto:grassetto', ascolta);
+    return () => ipcRenderer.removeListener('referto:grassetto', ascolta);
+  },
+
   // Backup automatici (copie del file SQLite in userData/backups)
   backupCreate: (reason) => ipcRenderer.invoke('backup:create', reason),
   backupList: () => ipcRenderer.invoke('backup:list'),

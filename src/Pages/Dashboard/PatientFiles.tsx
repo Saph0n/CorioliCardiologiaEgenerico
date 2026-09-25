@@ -14,7 +14,6 @@ import {
   useDisclosure,
 } from "@nextui-org/react";
 import {
-  ArrowLeftIcon,
   Download,
   Eye,
   FileImage,
@@ -33,6 +32,7 @@ import { Document, Patient } from "../../types/Storage";
 import { DocumentService, PatientService } from "../../services/OfflineServices";
 import { todayIsoDate } from "../../utils/dateUtils";
 import { AppModal } from "../../components/AppModal";
+import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
 const formatFileSize = (bytes: number): string => {
   if (!bytes) return "0 B";
@@ -296,7 +296,7 @@ export default function PatientFiles() {
         { label: "Dashboard", path: "/" },
         { label: "Pazienti", path: "/pazienti" },
         {
-          label: `${patient.nome} ${patient.cognome}`,
+          label: formatPatientDisplayName(patient) ?? "Paziente",
           path: `/patient-history/${patient.id}`,
         },
         { label: "File" },
@@ -305,23 +305,12 @@ export default function PatientFiles() {
 
   const HeaderActions = (
     <div className="flex gap-2">
-      {patient && (
-        <Button
-          color="default"
-          variant="flat"
-          onPress={() => navigate(`/patient-history/${patient.id}`)}
-          startContent={<ArrowLeftIcon size={16} />}
-        >
-          Torna alla storia
-        </Button>
-      )}
       <Button
         color="primary"
         onPress={onUploadOpen}
         startContent={<Plus size={18} />}
-        className="shadow-md shadow-primary/20"
       >
-        Carica Documento
+        Carica documento
       </Button>
     </div>
   );
@@ -331,14 +320,12 @@ export default function PatientFiles() {
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       <PageHeader
-        title="File Paziente"
+        title="File del paziente"
         subtitle={
           patient
-            ? `Archivio documenti di ${patient.nome} ${patient.cognome}.`
+            ? `Archivio documenti di ${formatPatientDisplayName(patient) ?? "questo paziente"}.`
             : "Archivio documenti paziente."
         }
-        icon={FileText}
-        iconColor="primary"
         actions={HeaderActions}
       />
 
@@ -348,7 +335,7 @@ export default function PatientFiles() {
             placeholder="Cerca per titolo, descrizione o nome file..."
             value={searchTerm}
             onValueChange={setSearchTerm}
-            startContent={<Search size={18} className="text-default-400" />}
+            startContent={<Search size={18} className="text-default-500" />}
             variant="bordered"
             isClearable
           />
@@ -389,14 +376,18 @@ export default function PatientFiles() {
                     ? "Prova a modificare i termini di ricerca."
                     : "Carica il primo documento (PDF o immagine) per questo paziente."}
                 </p>
-                <Button
-                  color="primary"
-                  onPress={onUploadOpen}
-                  startContent={<Plus size={18} />}
-                  className="shadow-md shadow-primary/20"
-                >
-                  Carica Primo Documento
-                </Button>
+                {/* self-center: nel CardBody in colonna il pulsante si allargava
+                    a tutta la card, e ripeteva quello della testata. */}
+                {!searchTerm && (
+                  <Button
+                    variant="bordered"
+                    onPress={onUploadOpen}
+                    startContent={<Plus size={18} />}
+                    className="self-center"
+                  >
+                    Carica il primo documento
+                  </Button>
+                )}
               </CardBody>
             </Card>
           ) : (
@@ -427,7 +418,7 @@ export default function PatientFiles() {
                         <div className="h-full w-full flex flex-col items-center justify-center text-default-500 min-h-[9rem]">
                           <FileText size={28} />
                           <span className="text-xs mt-2 font-medium">{typeLabel}</span>
-                          <span className="text-[11px] text-default-400">
+                          <span className="text-[11px] text-default-500">
                             Anteprima non disponibile
                           </span>
                         </div>
@@ -589,12 +580,12 @@ export default function PatientFiles() {
       <AppModal isOpen={isUploadOpen} onClose={onUploadClose} size="2xl">
         <ModalContent>
           <ModalHeader>
-            <h2 className="text-xl font-bold">Carica Nuovo Documento</h2>
+            <h2 className="text-xl font-bold">Carica un documento</h2>
           </ModalHeader>
           <ModalBody>
             <div className="space-y-4">
               <Input
-                label="Titolo Documento"
+                label="Titolo del documento"
                 placeholder="Es. Risposta esame sangue"
                 value={uploadTitle}
                 onValueChange={setUploadTitle}
@@ -620,7 +611,7 @@ export default function PatientFiles() {
                 />
                 <label htmlFor="patient-file-upload" className="cursor-pointer">
                   <div className="space-y-2">
-                    <Upload className="mx-auto w-8 h-8 text-gray-400" />
+                    <Upload className="mx-auto w-8 h-8 text-gray-500" />
                     <p className="text-sm text-gray-600">
                       {selectedFile
                         ? selectedFile.name
@@ -632,7 +623,7 @@ export default function PatientFiles() {
                       </p>
                     )}
                     {!selectedFile && (
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-500">
                         Supportati: PDF, immagini, Word, Excel e altri (max 25MB)
                       </p>
                     )}
@@ -658,7 +649,7 @@ export default function PatientFiles() {
               isLoading={loading}
               isDisabled={!selectedFile || !uploadTitle.trim()}
             >
-              Carica Documento
+              Carica documento
             </Button>
           </ModalFooter>
         </ModalContent>

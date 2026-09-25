@@ -9,7 +9,6 @@ import {
   ModalFooter,
   Avatar,
   Chip,
-  Divider,
   Spinner,
   Input,
   Textarea,
@@ -33,7 +32,6 @@ import {
   ClipboardList,
   ArrowLeftIcon,
   DownloadIcon,
-  UserIcon,
   FileTextIcon,
   ChevronDown,
   ChevronUp,
@@ -54,6 +52,7 @@ import {
   RicettaService,
   TemplateService,
   PreferenceService,
+  DocumentService,
 } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import {
@@ -75,24 +74,15 @@ import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
-import {
-  MAX_HEIGHT_CM,
-  MIN_BIRTH_YEAR,
-  MIN_HEIGHT_CM,
-  isValidHeightInputDraft,
-  parseHeightFieldBlur,
-  parseHeightFieldLive,
-  parseOptionalHeight,
-  todayIsoDate,
-  validateBirthDate,
-} from "../../utils/formValidation";
-import { AppModal } from "../../components/AppModal";
+import { todayIsoDate } from "../../utils/formValidation";
+import { AppModal, MODAL_SCHERMO_INTERO } from "../../components/AppModal";
 import {
   formattaDurata,
   giorniDa,
   gruppiDelPaziente,
   gruppoKey,
 } from "../../utils/gruppiRicerca";
+import { formatPatientDisplayName, patientInitials } from "../../utils/patientDisplay";
 
 /** Da quanto il paziente è in un gruppo, per il tooltip del chip. */
 function dettaglioArruolamento(g: AppartenenzaGruppo): string {
@@ -161,7 +151,6 @@ function PatientDocEmptyState({
 
 type PendingDelete =
   | { kind: "visita"; id: string }
-  | { kind: "paziente" }
   | { kind: "esame"; id: string }
   | { kind: "certificato"; id: string }
   | { kind: "ricetta"; id: string };
@@ -175,15 +164,6 @@ export default function PatientHistory() {
   const [error, setError] = useState<string | null>(null);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
-  const {
-    isOpen: isEditOpen,
-    onOpen: onEditOpen,
-    onClose: onEditClose,
-  } = useDisclosure();
-  const [editData, setEditData] = useState<Partial<Patient>>({});
-  const [altezzaInputDraft, setAltezzaInputDraft] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
@@ -211,6 +191,8 @@ export default function PatientHistory() {
   const [editingRichiestaEsame, setEditingRichiestaEsame] =
     useState<RichiestaEsameComplementare | null>(null);
   const [notaBeneLocal, setNotaBeneLocal] = useState("");
+  /** File caricati per il paziente (esami portati, referti esterni). */
+  const [numeroFile, setNumeroFile] = useState<number | null>(null);
   /** Gruppi di ricerca: attivi solo se la funzione e' abilitata in Impostazioni. */
   const [gruppiAbilitati, setGruppiAbilitati] = useState(false);
   const [savingNotaBene, setSavingNotaBene] = useState(false);
@@ -680,17 +662,6 @@ export default function PatientHistory() {
           showToast("Visita eliminata.");
           break;
         }
-        case "paziente": {
-          if (!patient) return;
-          await PatientService.deletePatient(patient.id);
-          sessionStorage.setItem(
-            "appdottori_toast",
-            "Paziente eliminato con successo",
-          );
-          showToast("Paziente eliminato con successo");
-          navigate("/pazienti");
-          return;
-        }
         case "esame": {
           await RichiestaEsameService.delete(pendingDelete.id);
           if (patient) {
@@ -739,9 +710,6 @@ export default function PatientHistory() {
       if (pendingDelete.kind === "visita") {
         setError("Errore nell'eliminazione della visita");
         showToast("Errore nell'eliminazione della visita.", "error");
-      } else if (pendingDelete.kind === "paziente") {
-        setError("Errore durante l'eliminazione del paziente.");
-        showToast("Errore durante l'eliminazione del paziente.", "error");
       } else {
         showToast("Errore nell'eliminazione.", "error");
       }
@@ -758,13 +726,6 @@ export default function PatientHistory() {
           confirmLabel: "Elimina visita",
           message:
             "Sei sicuro di voler eliminare questa visita? Questa azione è irreversibile.",
-        };
-      case "paziente":
-        return {
-          title: "Elimina paziente",
-          confirmLabel: "Elimina paziente",
-          message:
-            "Sei sicuro di voler eliminare questo paziente? Verranno eliminate anche tutte le visite collegate. Questa azione è irreversibile.",
         };
       case "esame":
         return {
@@ -1144,81 +1105,20 @@ export default function PatientHistory() {
     }
   };
 
-  // ── Patient Edit ──
-  const handleOpenEdit = () => {
-    if (!patient) return;
-    setEditData({
-      nome: patient.nome,
-      cognome: patient.cognome,
-      dataNascita: patient.dataNascita,
-      luogoNascita: patient.luogoNascita,
-      sesso: patient.sesso,
-      codiceFiscale: patient.codiceFiscale,
-      indirizzo: patient.indirizzo || "",
-      telefono: patient.telefono || "",
-      email: patient.email || "",
-      gruppoSanguigno: patient.gruppoSanguigno || "",
-      allergie: patient.allergie || "",
-      altezza: patient.altezza,
-      notaBene: patient.notaBene || "",
-    });
-    setAltezzaInputDraft(null);
-    setSuccessMsg(null);
-    onEditOpen();
-  };
-
-  const handleSavePatient = async () => {
-    if (!patient) return;
-
-    if (!editData.nome?.trim() || !editData.cognome?.trim()) {
-      setError("Nome e cognome sono obbligatori.");
-      return;
-    }
-    if (editData.dataNascita) {
-      const birthErr = validateBirthDate(editData.dataNascita);
-      if (birthErr) {
-        setError(birthErr);
-        return;
-      }
-    }
-    let altezza: number | undefined;
-    const altezzaRaw =
-      altezzaInputDraft ??
-      (editData.altezza != null ? String(editData.altezza) : "");
-    if (altezzaRaw.trim()) {
-      const parsed = parseOptionalHeight(altezzaRaw);
-      if (parsed == null) {
-        setError(`Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`);
-        return;
-      }
-      altezza = parsed;
-    }
-
-    setSaving(true);
-    setError(null);
-    try {
-      await PatientService.updatePatient(patient.id, {
-        ...editData,
-        altezza,
-        codiceFiscaleGenerato: false,
-        updatedAt: new Date().toISOString(),
+  useEffect(() => {
+    if (!patient?.id) return;
+    let attivo = true;
+    DocumentService.getAllDocuments()
+      .then((tutti) => {
+        if (attivo) setNumeroFile(tutti.filter((d) => d.patientId === patient.id).length);
+      })
+      .catch(() => {
+        if (attivo) setNumeroFile(null);
       });
-      // Refresh patient data
-      const updated = await PatientService.getPatientById(patient.id);
-      if (updated) setPatient(updated);
-      setSuccessMsg("Paziente aggiornato con successo!");
-      setAltezzaInputDraft(null);
-      setTimeout(() => {
-        onEditClose();
-        setSuccessMsg(null);
-      }, 1500);
-    } catch (error) {
-      console.error("Errore aggiornamento paziente:", error);
-      setError("Errore durante l'aggiornamento del paziente.");
-    } finally {
-      setSaving(false);
-    }
-  };
+    return () => {
+      attivo = false;
+    };
+  }, [patient?.id]);
 
   const handleSaveNotaBene = async () => {
     if (!patient) return;
@@ -1240,7 +1140,7 @@ export default function PatientHistory() {
   };
 
   const getPatientInitials = (patient: Patient) => {
-    return `${patient.nome[0]}${patient.cognome[0]}`.toUpperCase();
+    return patientInitials(patient);
   };
 
   const getGenderColor = (_gender?: string): "primary" => {
@@ -1425,7 +1325,7 @@ export default function PatientHistory() {
             onPress={() => navigate("/")}
             startContent={<ArrowLeftIcon size={16} />}
           >
-            Torna a Home
+            Torna alla Dashboard
           </Button>
         </CardBody>
       </Card>
@@ -1436,7 +1336,7 @@ export default function PatientHistory() {
     ? [
         { label: "Dashboard", path: "/" },
         { label: "Pazienti", path: "/pazienti" },
-        { label: `${patient.nome} ${patient.cognome}` },
+        { label: formatPatientDisplayName(patient) ?? "Paziente" },
       ]
     : [];
 
@@ -1458,7 +1358,7 @@ export default function PatientHistory() {
               />
               <div className="space-y-1.5">
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-                  {patient.nome} {patient.cognome}
+                  {formatPatientDisplayName(patient) ?? "Paziente senza nome"}
                 </h1>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
                   <CodiceFiscaleValue
@@ -1470,21 +1370,25 @@ export default function PatientHistory() {
                   <span className="text-default-300">·</span>
                   <span>
                     {formatVisitDate(patient.dataNascita)}
-                    <span className="text-default-400 ml-1">
+                    <span className="text-default-500 ml-1">
                       ({calculateAge(patient.dataNascita)} anni)
                     </span>
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                  <span className="patient-clinical-badge">
-                    Gruppo {patient.gruppoSanguigno || "—"}
-                  </span>
-                  <span className="patient-clinical-badge">
-                    {patient.altezza != null && patient.altezza > 0
-                      ? `${patient.altezza} cm`
-                      : "—"}
-                  </span>
-                </div>
+                {/* Solo i dati che ci sono. "Gruppo —" era il gruppo sanguigno
+                    vuoto, e si leggeva come "nessun gruppo di ricerca". */}
+                {(patient.gruppoSanguigno || (patient.altezza != null && patient.altezza > 0)) && (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {patient.gruppoSanguigno && (
+                      <span className="patient-clinical-badge">
+                        Gr. sanguigno {patient.gruppoSanguigno}
+                      </span>
+                    )}
+                    {patient.altezza != null && patient.altezza > 0 && (
+                      <span className="patient-clinical-badge">{patient.altezza} cm</span>
+                    )}
+                  </div>
+                )}
                 {(patient.telefono ||
                   patient.email ||
                   patient.luogoNascita) && (
@@ -1525,7 +1429,7 @@ export default function PatientHistory() {
                   <div className="flex items-start gap-1.5 mt-1">
                     <FlaskConical
                       size={13}
-                      className="text-default-400 shrink-0 mt-1"
+                      className="text-default-500 shrink-0 mt-1"
                       aria-hidden
                     />
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -1576,20 +1480,30 @@ export default function PatientHistory() {
               <Button
                 variant="bordered"
                 size="sm"
-                onPress={handleOpenEdit}
+                // Lo stesso form della creazione, con le stesse regole: prima
+                // qui c'era un modal suo che chiedeva nome E cognome, mentre un
+                // paziente si puo' creare col solo cognome o col solo CF.
+                onPress={() =>
+                  navigate(`/add-patient?mode=edit&id=${encodeURIComponent(patient.id)}`)
+                }
                 startContent={<i className="ti ti-edit text-base" aria-hidden />}
                 className="justify-start md:w-44 border-[0.5px] border-default-300 bg-white px-4 py-2 h-auto min-h-0 font-medium"
               >
-                Modifica Dati
+                Modifica dati
               </Button>
-              <button
-                type="button"
-                onClick={() => navigate(`/patient-history/${patient.id}/files`)}
-                className="patient-header-file-btn md:w-44"
+              {/* Un pulsante come "Modifica dati", con il conteggio: prima era
+                  una scritta "File" sotto, e li' stanno gli esami vecchi che il
+                  paziente non porta alla visita. */}
+              <Button
+                variant="bordered"
+                size="sm"
+                onPress={() => navigate(`/patient-history/${patient.id}/files`)}
+                startContent={<i className="ti ti-folder text-base" aria-hidden />}
+                className="justify-start md:w-44 border-[0.5px] border-default-300 bg-white px-4 py-2 h-auto min-h-0 font-medium"
               >
-                <i className="ti ti-folder" aria-hidden />
-                File
-              </button>
+                File del paziente
+                {numeroFile ? <span className="text-default-600">({numeroFile})</span> : null}
+              </Button>
             </div>
           </div>
         </CardBody>
@@ -1608,7 +1522,7 @@ export default function PatientHistory() {
           onClick={() => setIsNotaBeneOpen((prev) => !prev)}
           className="flex items-center gap-2 w-full min-w-0 py-2 px-3 text-left"
         >
-          <StickyNote size={14} className="text-default-400 shrink-0" />
+          <StickyNote size={14} className="text-default-500 shrink-0" />
           {isNotaBeneOpen ? (
             <span className="text-xs font-medium text-default-600 flex-1 min-w-0">
               Nota bene
@@ -1620,7 +1534,7 @@ export default function PatientHistory() {
                 : "Nota bene (amica, prezzi, familiarità…)"}
             </span>
           )}
-          <span className="text-default-400 shrink-0">
+          <span className="text-default-500 shrink-0">
             {isNotaBeneOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </span>
         </button>
@@ -1681,7 +1595,7 @@ export default function PatientHistory() {
               }}
               startContent={<PlusIcon size={16} />}
             >
-              Nuova Visita
+              Nuova visita
             </Button>
           </div>
 
@@ -1703,7 +1617,7 @@ export default function PatientHistory() {
                     navigate(`/add-visit?patientId=${patient.id}`);
                   }}
                 >
-                  Aggiungi Prima Visita
+                  Aggiungi la prima visita
                 </Button>
               </CardBody>
             </Card>
@@ -1712,12 +1626,20 @@ export default function PatientHistory() {
               {visits.map((visit) => (
                 <Card
                   key={visit.id}
-                  isPressable
-                  onPress={() => handleVisitClick(visit)}
-                  className="w-full hover:shadow-md transition-all border-transparent hover:border-primary-100 group cursor-pointer"
+                  className="w-full hover:shadow-md transition-all border-transparent hover:border-primary-100 group"
                 >
                   <CardBody className="p-5">
                     <div className="flex flex-col md:flex-row gap-5">
+                      {/* Data e testo sono il pulsante che apre l'anteprima; le
+                          azioni gli stanno accanto e non dentro. Prima era la
+                          scheda intera a essere un <button>, con dentro altri
+                          pulsanti: HTML non valido e tabulazione confusa. */}
+                      <button
+                        type="button"
+                        onClick={() => handleVisitClick(visit)}
+                        title="Apri l'anteprima del referto"
+                        className="flex flex-1 min-w-0 flex-col md:flex-row gap-5 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                      >
                       {/* Data e Icona (Colonna sinistra fissa) */}
                       <div className="flex md:flex-col items-center md:items-start gap-3 min-w-[100px] border-b md:border-b-0 md:border-r border-default-100 pb-3 md:pb-0 md:pr-4">
                         <div className="flex flex-col items-center md:items-start">
@@ -1730,15 +1652,10 @@ export default function PatientHistory() {
                             })}
                           </span>
                         </div>
+                        {/* Niente chip "Visita": nell'edizione cardiologica il tipo
+                            e' uno solo, e la stessa etichetta su ogni scheda non
+                            diceva niente. Restano i badge che distinguono. */}
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <Chip
-                            size="sm"
-                            variant="flat"
-                            color="primary"
-                            className="capitalize font-semibold"
-                          >
-                            Visita
-                          </Chip>
                           {getVisitContextBadges(visit).map((badge) => (
                             <span
                               key={badge}
@@ -1784,6 +1701,8 @@ export default function PatientHistory() {
                         </div>
                       </div>
 
+                      </button>
+
                       {/* Azioni (a destra su desktop) */}
                       <div
                         className="flex md:flex-col gap-2 justify-end md:justify-start border-t md:border-t-0 md:border-l border-default-100 pt-3 md:pt-0 md:pl-4"
@@ -1793,6 +1712,7 @@ export default function PatientHistory() {
                           type="button"
                           className="visit-card-icon-btn"
                           title="Modifica visita"
+                          aria-label="Modifica visita"
                           onClick={() => navigate(`/edit-visit/${visit.id}`)}
                         >
                           <i className="ti ti-edit" aria-hidden />
@@ -1801,6 +1721,7 @@ export default function PatientHistory() {
                           type="button"
                           className="visit-card-icon-btn disabled:opacity-50 disabled:pointer-events-none"
                           title="Stampa"
+                          aria-label="Stampa il referto"
                           onClick={() => handlePrintPdf(visit)}
                           disabled={pdfLoading}
                         >
@@ -1849,9 +1770,8 @@ export default function PatientHistory() {
             </div>
             {rightColumnTab === "ricette" ? (
               <Button
-                color="primary"
                 size="sm"
-                variant="flat"
+                variant="bordered"
                 className="patient-doc-panel-cta"
                 onPress={handleOpenNuovaRicetta}
                 startContent={<PlusIcon size={16} />}
@@ -1860,9 +1780,8 @@ export default function PatientHistory() {
               </Button>
             ) : rightColumnTab === "esami" ? (
               <Button
-                color="primary"
                 size="sm"
-                variant="flat"
+                variant="bordered"
                 className="patient-doc-panel-cta"
                 onPress={handleOpenNuovaRichiestaEsame}
                 startContent={<PlusIcon size={16} />}
@@ -1871,9 +1790,8 @@ export default function PatientHistory() {
               </Button>
             ) : (
               <Button
-                color="primary"
                 size="sm"
-                variant="flat"
+                variant="bordered"
                 className="patient-doc-panel-cta"
                 onPress={handleOpenNuovoCertificato}
                 startContent={<PlusIcon size={16} />}
@@ -1891,19 +1809,17 @@ export default function PatientHistory() {
                   <PatientDocEmptyState
                     icon={Pill}
                     title="Nessuna ricetta emessa"
-                    hint="Le ricette create per questa paziente appariranno qui"
+                    hint="Le ricette create per questo paziente compariranno qui"
                   />
                 ) : (
                   ricette.map((r) => (
                     <Card
                       key={r.id}
-                      isPressable
-                      onPress={() => handleOpenRicettaPreview(r)}
-                      className="border border-default-200 shadow-sm hover:border-primary/40 group cursor-pointer w-full min-h-[5rem]"
+                      className="border border-default-200 shadow-sm hover:border-primary/40 group w-full min-h-[5rem]"
                     >
                       <CardBody className="p-3 min-h-[5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex-1 min-w-0">
+                          <button type="button" onClick={() => handleOpenRicettaPreview(r)} className="flex-1 min-w-0 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="right-col-card-title break-words">
                                 {getRicettaSummary(r)}
@@ -1915,7 +1831,7 @@ export default function PatientHistory() {
                             <p className="right-col-card-date">
                               {formatCardDateSubtle(r.dataRicetta)}
                             </p>
-                          </div>
+                          </button>
                           <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRicetta(r)} title="Modifica">
                               <EditIcon size={14} />
@@ -1940,26 +1856,24 @@ export default function PatientHistory() {
                   <PatientDocEmptyState
                     icon={FlaskConical}
                     title="Nessuna richiesta esame"
-                    hint="Le prescrizioni di esami per questa paziente appariranno qui"
+                    hint="Le prescrizioni di esami per questo paziente compariranno qui"
                   />
                 ) : (
                   richiesteEsami.map((r) => (
                     <Card
                       key={r.id}
-                      isPressable
-                      onPress={() => handleOpenEsamePreview(r)}
-                      className="border border-default-200 shadow-sm hover:border-primary-300 group cursor-pointer w-full min-h-[7.5rem]"
+                      className="border border-default-200 shadow-sm hover:border-primary-300 group w-full min-h-[7.5rem]"
                     >
                       <CardBody className="p-3 min-h-[7.5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex-1 min-w-0">
+                          <button type="button" onClick={() => handleOpenEsamePreview(r)} className="flex-1 min-w-0 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
                             <h4 className="right-col-card-title break-words">
                               {r.nome}
                             </h4>
                             <p className="right-col-card-date">
                               {formatCardDateSubtle(r.dataRichiesta)}
                             </p>
-                          </div>
+                          </button>
                           <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRichiestaEsame(r)} title="Modifica">
                               <EditIcon size={14} />
@@ -1986,26 +1900,24 @@ export default function PatientHistory() {
                   <PatientDocEmptyState
                     icon={Award}
                     title="Nessun certificato emesso"
-                    hint="I certificati rilasciati a questa paziente appariranno qui"
+                    hint="I certificati rilasciati a questo paziente compariranno qui"
                   />
                 ) : (
                   certificati.map((c) => (
                     <Card
                       key={c.id}
-                      isPressable
-                      onPress={() => handleOpenCertificatoPreview(c)}
-                      className="border border-default-200 shadow-sm hover:border-warning-300 group cursor-pointer w-full min-h-[5rem]"
+                      className="border border-default-200 shadow-sm hover:border-warning-300 group w-full min-h-[5rem]"
                     >
                       <CardBody className="p-3 min-h-[5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex-1 min-w-0">
+                          <button type="button" onClick={() => handleOpenCertificatoPreview(c)} className="flex-1 min-w-0 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
                             <h4 className="right-col-card-title break-words">
                               {getCertificatoTipoLabel(c.tipo)}
                             </h4>
                             <p className="right-col-card-date">
                               {formatCardDateSubtle(c.dataCertificato)}
                             </p>
-                          </div>
+                          </button>
                           <div
                             className="flex gap-1 flex-shrink-0"
                             onClick={(e) => e.stopPropagation()}
@@ -2054,24 +1966,17 @@ export default function PatientHistory() {
         scrollBehavior="inside"
         classNames={
           previewFullscreen
-            ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" }
+            ? { base: MODAL_SCHERMO_INTERO }
             : undefined
         }
       >
         <ModalContent
-          className={previewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}
+          className={previewFullscreen ? "flex flex-col" : undefined}
         >
           {selectedVisit && (
             <>
               <ModalHeader className="flex flex-col gap-1">
-                <div className="flex items-center justify-between w-full">
-                  <div>
-                    <h2 className="text-xl font-bold">Anteprima Referto</h2>
-                  </div>
-                  <Chip color="primary" variant="flat">
-                    Visita
-                  </Chip>
-                </div>
+                <h2 className="pr-8 text-xl font-bold">Anteprima referto</h2>
               </ModalHeader>
               <ModalBody
                 className={previewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}
@@ -2160,7 +2065,7 @@ export default function PatientHistory() {
                     navigate(`/edit-visit/${selectedVisit.id}`);
                   }}
                 >
-                  Modifica Visita
+                  Modifica visita
                 </Button>
               </ModalFooter>
             </>
@@ -2168,247 +2073,6 @@ export default function PatientHistory() {
         </ModalContent>
       </AppModal>
 
-      {/* ── Edit Patient Modal ── */}
-      <AppModal
-        isOpen={isEditOpen}
-        onClose={onEditClose}
-        size="2xl"
-        scrollBehavior="inside"
-      >
-        <ModalContent>
-          <ModalHeader className="flex items-center gap-3">
-            <div className="p-2 rounded-full bg-warning-100">
-              <UserIcon size={20} className="text-warning-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Modifica Paziente</h2>
-              <p className="text-sm text-gray-500">
-                Aggiorna i dati anagrafici
-              </p>
-            </div>
-          </ModalHeader>
-          <ModalBody>
-            {successMsg && (
-              <div className="corioli-feedback-success px-4 py-3 rounded-lg text-sm font-medium">
-                {successMsg}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Nome"
-                value={editData.nome || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, nome: v }))
-                }
-                variant="bordered"
-                isRequired
-              />
-              <Input
-                label="Cognome"
-                value={editData.cognome || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, cognome: v }))
-                }
-                variant="bordered"
-                isRequired
-              />
-              <Input
-                label="Codice Fiscale"
-                value={editData.codiceFiscale || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({
-                    ...prev,
-                    codiceFiscale: v.toUpperCase(),
-                  }))
-                }
-                variant="bordered"
-                isRequired
-                maxLength={16}
-              />
-              <Input
-                label="Data di Nascita"
-                type="date"
-                value={editData.dataNascita || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, dataNascita: v }))
-                }
-                min={`${MIN_BIRTH_YEAR}-01-01`}
-                max={todayIsoDate()}
-                variant="bordered"
-                isRequired
-              />
-              <Input
-                label="Luogo di Nascita"
-                value={editData.luogoNascita || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, luogoNascita: v }))
-                }
-                variant="bordered"
-              />
-              <Select
-                label="Sesso"
-                placeholder="Non indicato"
-                selectedKeys={editData.sesso ? [editData.sesso] : []}
-                onSelectionChange={(keys) => {
-                  const val = Array.from(keys)[0];
-                  setEditData((prev) => ({
-                    ...prev,
-                    sesso: val === "M" || val === "F" ? val : undefined,
-                  }));
-                }}
-                variant="bordered"
-              >
-                {/* Non obbligatorio, e con la voce per riportarlo a vuoto:
-                    il sesso non indicato resta tale, e i calcoli che lo
-                    richiedono lo dicono invece di sceglierne uno. */}
-                <SelectItem key="-">Non indicato</SelectItem>
-                <SelectItem key="M">Maschio</SelectItem>
-                <SelectItem key="F">Femmina</SelectItem>
-              </Select>
-            </div>
-
-            <Divider className="my-2" />
-            <p className="text-sm font-medium text-gray-500">
-              Contatti (opzionali)
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Indirizzo"
-                value={editData.indirizzo || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, indirizzo: v }))
-                }
-                variant="bordered"
-              />
-              <Input
-                label="Telefono"
-                type="tel"
-                value={editData.telefono || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, telefono: v }))
-                }
-                variant="bordered"
-              />
-              <Input
-                label="Email"
-                type="email"
-                value={editData.email || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, email: v }))
-                }
-                variant="bordered"
-                className="md:col-span-2"
-              />
-            </div>
-
-            <Divider className="my-2" />
-            <p className="text-sm font-medium text-gray-500">Dati clinici</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select
-                label="Gruppo sanguigno"
-                placeholder="Seleziona"
-                selectedKeys={
-                  editData.gruppoSanguigno ? [editData.gruppoSanguigno] : []
-                }
-                onSelectionChange={(keys) =>
-                  setEditData((prev) => ({
-                    ...prev,
-                    gruppoSanguigno: (Array.from(keys)[0] as string) || "",
-                  }))
-                }
-                variant="bordered"
-              >
-                {["A+", "A-", "B+", "B-", "AB+", "AB-", "0+", "0-", "Non noto"].map(
-                  (g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  )
-                )}
-              </Select>
-              <Input
-                label="Altezza (cm)"
-                type="text"
-                inputMode="numeric"
-                value={
-                  altezzaInputDraft ??
-                  (editData.altezza != null ? String(editData.altezza) : "")
-                }
-                onFocus={() => {
-                  setAltezzaInputDraft(
-                    editData.altezza != null ? String(editData.altezza) : "",
-                  );
-                }}
-                onBlur={() => {
-                  if (altezzaInputDraft !== null) {
-                    setEditData((prev) => ({
-                      ...prev,
-                      altezza: parseHeightFieldBlur(altezzaInputDraft),
-                    }));
-                  }
-                  setAltezzaInputDraft(null);
-                }}
-                onValueChange={(v) => {
-                  if (!isValidHeightInputDraft(v)) return;
-                  setAltezzaInputDraft(v);
-                  const live = parseHeightFieldLive(v);
-                  if (live === "incomplete") {
-                    if (v === "") {
-                      setEditData((prev) => ({ ...prev, altezza: undefined }));
-                    }
-                    return;
-                  }
-                  setEditData((prev) => ({ ...prev, altezza: live }));
-                }}
-                variant="bordered"
-                placeholder="Es. 165"
-              />
-            </div>
-            <div className="mt-2">
-              <Textarea
-                label="Allergie / Intolleranze"
-                placeholder="Elenca eventuali allergie a farmaci, alimenti, ecc."
-                value={editData.allergie || ""}
-                onValueChange={(v) =>
-                  setEditData((prev) => ({ ...prev, allergie: v }))
-                }
-                variant="bordered"
-                minRows={2}
-              />
-            </div>
-          </ModalBody>
-          <ModalFooter className="flex justify-between items-center">
-            <Button
-              color="danger"
-              variant="light"
-              isIconOnly
-              onPress={() => {
-                onEditClose();
-                requestDelete({ kind: "paziente" });
-              }}
-              aria-label="Elimina Paziente"
-              title="Elimina Paziente"
-            >
-              <Trash2Icon size={20} />
-            </Button>
-            <div className="flex gap-2">
-              <Button color="default" variant="light" onPress={onEditClose}>
-                Annulla
-              </Button>
-              <Button
-                color="primary"
-                onPress={handleSavePatient}
-                isLoading={saving}
-                startContent={!saving ? <SaveIcon size={16} /> : undefined}
-              >
-                Salva Modifiche
-              </Button>
-            </div>
-          </ModalFooter>
-        </ModalContent>
-      </AppModal>
 
       {/* Modal Anteprima esame = PDF in iframe (come Anteprima Referto) */}
       <AppModal
@@ -2422,11 +2086,11 @@ export default function PatientHistory() {
         scrollBehavior="inside"
         classNames={
           esamePreviewFullscreen
-            ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" }
+            ? { base: MODAL_SCHERMO_INTERO }
             : undefined
         }
       >
-        <ModalContent className={esamePreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+        <ModalContent className={esamePreviewFullscreen ? "flex flex-col" : undefined}>
           {selectedRichiestaEsamePreview && patient && (
             <>
               <ModalHeader className="flex flex-col gap-1">
@@ -2477,9 +2141,9 @@ export default function PatientHistory() {
         }}
         size={certificatoPreviewFullscreen ? "full" : "5xl"}
         scrollBehavior="inside"
-        classNames={certificatoPreviewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" } : undefined}
+        classNames={certificatoPreviewFullscreen ? { base: MODAL_SCHERMO_INTERO } : undefined}
       >
-        <ModalContent className={certificatoPreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+        <ModalContent className={certificatoPreviewFullscreen ? "flex flex-col" : undefined}>
           {selectedCertificatoPreview && patient && (
             <>
               <ModalHeader className="flex flex-col gap-1">
@@ -2539,11 +2203,11 @@ export default function PatientHistory() {
                       color="primary"
                       startContent={<ClipboardList size={16} />}
                     >
-                      Modelli Esame
+                      Modelli
                     </Button>
                   </DropdownTrigger>
                   <DropdownMenu
-                    aria-label="Modelli Esame"
+                    aria-label="Modelli"
                     onAction={(key) => {
                       const t = examTemplates.find((x) => x.id === key);
                       if (t) {
@@ -2573,15 +2237,15 @@ export default function PatientHistory() {
 
               <Input
                 label="Esame richiesto"
-                placeholder="Es. Emocromo, Eco Addome..."
+                placeholder="Es. Ecocardiogramma color-Doppler, Holter ECG 24 ore..."
                 value={nuovaRichiestaNome}
                 onValueChange={setNuovaRichiestaNome}
                 variant="bordered"
               />
 
               <Textarea
-                label="Note cliniche / Quesito diagnostico"
-                placeholder="Es. Controllo post-operatorio, sospetta appendicite..."
+                label="Note cliniche e quesito diagnostico"
+                placeholder="Es. Dispnea da sforzo di recente insorgenza: valutazione della funzione ventricolare..."
                 value={nuovaRichiestaNote}
                 onValueChange={setNuovaRichiestaNote}
                 variant="bordered"
@@ -2631,7 +2295,7 @@ export default function PatientHistory() {
                 )
               }
             >
-              {editingRichiestaEsame ? "Salva Modifiche" : "Crea Richiesta"}
+              {editingRichiestaEsame ? "Salva modifiche" : "Crea richiesta"}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -2654,14 +2318,14 @@ export default function PatientHistory() {
                     <Button
                       size="sm"
                       variant="flat"
-                      color="warning"
+                      color="primary"
                       startContent={<ClipboardList size={16} />}
                     >
-                      Modelli Certificato
+                      Modelli
                     </Button>
                   </DropdownTrigger>
                   <DropdownMenu
-                    aria-label="Modelli Certificato"
+                    aria-label="Modelli"
                     onAction={(key) => {
                       const t = certTemplates.find((x) => x.id === key);
                       if (t) {
@@ -2698,8 +2362,8 @@ export default function PatientHistory() {
               <SelectItem key="altro">Altro</SelectItem>
             </Select>
             <Textarea
-              label="Descrizione / Testo del certificato"
-              placeholder="Es. La sottoscritta attesta che la paziente è stata visitata in data odierna e necessita di riposo per..."
+              label="Testo del certificato"
+              placeholder="Es. Si attesta che il paziente è stato visitato in data odierna e necessita di riposo per..."
               value={certDescrizione}
               onValueChange={setCertDescrizione}
               variant="bordered"
@@ -2740,7 +2404,7 @@ export default function PatientHistory() {
               isLoading={savingCertificato}
               startContent={editingCertificato ? <SaveIcon size={18} /> : <PlusIcon size={18} />}
             >
-              {editingCertificato ? "Salva Modifiche" : "Crea Certificato"}
+              {editingCertificato ? "Salva modifiche" : "Crea certificato"}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -2755,9 +2419,9 @@ export default function PatientHistory() {
         }}
         size={ricettaPreviewFullscreen ? "full" : "5xl"}
         scrollBehavior="inside"
-        classNames={ricettaPreviewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" } : undefined}
+        classNames={ricettaPreviewFullscreen ? { base: MODAL_SCHERMO_INTERO } : undefined}
       >
-        <ModalContent className={ricettaPreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+        <ModalContent className={ricettaPreviewFullscreen ? "flex flex-col" : undefined}>
           {selectedRicettaPreview && patient && (
             <>
               <ModalHeader className="flex flex-col gap-1">
@@ -2810,11 +2474,11 @@ export default function PatientHistory() {
                   <Dropdown>
                     <DropdownTrigger>
                       <Button size="sm" variant="flat" color="primary" startContent={<ClipboardList size={16} />}>
-                        Modelli Ricetta
+                        Modelli
                       </Button>
                     </DropdownTrigger>
                     <DropdownMenu
-                      aria-label="Modelli Ricetta"
+                      aria-label="Modelli"
                       onAction={(key) => {
                         const t = ricetteTemplates.find((x) => x.id === key);
                         if (!t) return;
@@ -2841,7 +2505,7 @@ export default function PatientHistory() {
 
               <Textarea
                 label="Prescrizione"
-                placeholder={"Scrivi qui l'intera prescrizione: farmaci, posologie, durata e indicazioni.\n\nEs.\nMonuril: 2 bustine (una ogni 24 h) la sera a vescica vuota per 2 giorni\nD-Mannosio: 1 bustina al giorno\n\nBere almeno 2 L di acqua al giorno."}
+                placeholder={"Scrivi qui l'intera prescrizione: farmaci, posologie, durata e indicazioni.\n\nEs.\nAtorvastatina 40 mg: 1 compressa la sera\nBisoprololo 2,5 mg: 1 compressa al mattino\n\nControllo del profilo lipidico fra 3 mesi."}
                 value={ricettaTesto}
                 onValueChange={setRicettaTesto}
                 variant="bordered"
@@ -2883,7 +2547,7 @@ export default function PatientHistory() {
                 editingRicetta ? <SaveIcon size={18} /> : <PlusIcon size={18} />
               }
             >
-              {editingRicetta ? "Salva Modifiche" : "Crea Ricetta"}
+              {editingRicetta ? "Salva modifiche" : "Crea ricetta"}
             </Button>
           </ModalFooter>
         </ModalContent>

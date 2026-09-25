@@ -20,6 +20,7 @@ import {
 } from "../utils/anamnesiStrutturata";
 import { getRicettaTesto } from "../utils/ricettaTemplate";
 import { MARCATORE_GRASSETTO } from "../utils/grassettoReferto";
+import { titoloMedico } from "../utils/doctorProfile";
 import {
   calcolaCaloNotturno,
   calcolaClearanceCockcroftGault,
@@ -86,6 +87,12 @@ const PRIMA_RIGA_PROSA = 3.9;
 /** Altezza della fascia grigia dei titoli di sezione. */
 const FASCIA_H = 5.6;
 /**
+ * Righe che una tabella deve avere su ciascun lato di un salto pagina: una
+ * riga sola sotto il titolo in fondo alla pagina, o sola in cima alla pagina
+ * dopo, e' un orfano. Le tabelle che non arrivano al doppio non si spezzano.
+ */
+const RIGHE_MINIME = 2;
+/**
  * Aria fra il filo inferiore della fascia e il contenuto della sezione.
  *
  * Era 1,3 mm: il titolo e la prima riga si toccavano quasi, e "CONCLUSIONI E
@@ -109,7 +116,8 @@ const K235: [number, number, number] = [235, 235, 235];
  * hanno qualcosa da stampare, e il gruppo deve comparire solo se almeno uno lo
  * fa. Vedi `PdfService.gruppo`.
  */
-type ApriGruppo = (y: number) => number;
+/** Apre il gruppo; `bisogno` e' lo spazio del primo blocco che ci va sotto. */
+type ApriGruppo = (y: number, bisogno?: number) => number;
 
 interface VisitPdfOptions {
   /** Allega al referto le immagini caricate nella visita. */
@@ -156,18 +164,6 @@ const SIMBOLI: Record<string, string> = {
   "\u2192": "->", "\u2190": "<-", "\u00a0": " ",
 };
 
-/**
- * Accenti -> apostrofo ASCII per la stampa.
- *
- * Il font standard di jsPDF (WinAnsi) non disegna le vocali accentate: senza
- * questa conversione il referto uscirebbe con caratteri sbagliati. E' il motivo
- * per cui nell'applicazione i testi si possono scrivere accentati.
- *
- * Esportata per essere coperta dai test: la mappa e' due righe di coppie
- * numero-stringa, si e' gia' rotta una volta durante una correzione
- * tipografica automatica, e un errore qui non si vede finche' qualcuno non
- * stampa un referto.
- */
 /** Un tratto di testo con il suo peso: e' l'unita' che il PDF disegna. */
 type TrattoTesto = { testo: string; grassetto: boolean };
 
@@ -198,24 +194,32 @@ function trattiPerParagrafo(testo: string): TrattoTesto[][] {
   });
 }
 
+/**
+ * Prepara il testo per il font standard di jsPDF.
+ *
+ * Le vocali accentate passano cosi' come sono: stanno nella codifica WinAnsi
+ * (à = 0xE0, è = 0xE8...) e Helvetica le disegna, tondo e grassetto. Fino al
+ * settembre 2026 venivano cambiate in apostrofo ("eta'", "attivita'") sulla
+ * convinzione che il font non le sapesse scrivere: il referto, che e' il
+ * documento che gira fra colleghi, usciva scritto male senza motivo.
+ *
+ * Esportata per essere coperta dai test: un errore qui non si vede finche'
+ * qualcuno non stampa un referto.
+ */
 export function san(t: string): string {
   if (!t) return "";
+  // Testo UTF-8 riletto come Latin-1 ("Ã¨" al posto di "è"), per esempio da
+  // un CSV importato con la codifica sbagliata: si ricompone la lettera.
+  // Prima dei simboli, che cambierebbero lo spazio non separabile che segue la A con la tilde.
+  t = t.replace(/\u00c3([\u00a0\u00a8\u00a9\u00ac\u00b2\u00b9])/g, (_, c: string) =>
+    String.fromCharCode(c.charCodeAt(0) + 0x40),
+  );
   for (const [simbolo, ascii] of Object.entries(SIMBOLI)) {
     if (t.includes(simbolo)) t = t.split(simbolo).join(ascii);
   }
-  const M: Record<number, string> = {
-    224: "a'", 232: "e'", 233: "e'", 236: "i'", 242: "o'", 249: "u'",
-    192: "A'", 200: "E'", 201: "E'", 204: "I'", 210: "O'", 217: "U'",
-  };
   let r = "";
   for (let i = 0; i < t.length; i++) {
     const c = t.charCodeAt(i);
-    if (M[c]) { r += M[c]; continue; }
-    if (c === 195 && i + 1 < t.length) {
-      const n = t.charCodeAt(i + 1);
-      const U: Record<number, string> = { 160: "a'", 168: "e'", 169: "e'", 172: "i'", 178: "o'", 185: "u'" };
-      if (U[n]) { r += U[n]; i++; continue; }
-    }
     // Rete di sicurezza: qualunque altro carattere fuori dalla tabella a un
     // byte farebbe ripiegare jsPDF su UTF-16 e romperebbe la riga intera. Si
     // prova la scomposizione Unicode (e' quella che riduce "ﬁ" a "fi"), e solo
@@ -229,6 +233,21 @@ export function san(t: string): string {
     r += t[i];
   }
   return r;
+}
+
+/**
+ * `san` per i valori delle tabelle, con la virgola decimale.
+ *
+ * I valori scritti dal medico arrivano come numeri e si stampavano con
+ * `${n}`, cioe' col punto ("Creatinina 1.2 mg/dL"), mentre quelli calcolati
+ * passano da un formattatore italiano ("CT / HDL 5,0"): nella stessa tabella
+ * degli ematochimici c'erano i due separatori, e a schermo la virgola.
+ * Convertire qui, dove si disegnano le celle, copre anche i campi futuri.
+ *
+ * Solo le tabelle: la prosa del referto la scrive il medico e resta com'e'.
+ */
+export function sanValore(t: string): string {
+  return san(t).replace(/(\d)\.(\d)/g, "$1,$2");
 }
 
 function fd(d: string): string {
@@ -267,6 +286,9 @@ export class PdfService {
    * fine. Con la stampa differita i piedi si disegnano tutti insieme in coda,
    * quando il documento e' chiuso.
    */
+  /** Vedi `generateVisitPDF`: spento, le tabelle si spezzano dove capita. */
+  private static controlloOrfani = true;
+
   private static fCtx: {
     doctor: Doctor | null;
     opts: FooterVisibilityOptions;
@@ -455,7 +477,7 @@ export class PdfService {
         const lblW = lbl ? doc.getTextWidth(lbl) : 0;
         doc.setFont("helvetica", item.forte ? "bold" : "normal");
         const linee: string[] = doc.splitTextToSize(
-          san(item.value), colW - lblW - 4,
+          sanValore(item.value), colW - lblW - 4,
         );
         return { lbl, lblW, linee };
       }),
@@ -528,7 +550,7 @@ export class PdfService {
       // corpo 6,5: e' il primo posto dove si cerca chi ha scritto il referto,
       // non l'ultimo.
       const nome = doctor
-        ? `Dott. ${doctor.nome} ${doctor.cognome}`.trim()
+        ? `${titoloMedico(doctor)} ${doctor.nome} ${doctor.cognome}`.trim()
         : "Studio medico";
       // Il nome in corpo 11, lo stesso del titolo del documento: a 15 pesava
       // piu' di "VISITA CARDIOLOGICA", e il cardiologo l'ha trovato
@@ -886,10 +908,13 @@ export class PdfService {
     _vis?: FooterVisibilityOptions,
     pagina?: { numero: number; totale: number },
   ) {
-    // La firma dell'applicazione: corpo 5, grigio chiarissimo, a sinistra sotto
-    // il filetto, in diagonale rispetto al numero di pagina. Si legge se la si
-    // cerca, non si nota mentre si legge il referto.
-    doc.setFont("helvetica", "normal"); doc.setFontSize(5); this.tc(doc, K200);
+    // Le tre scritte del piede sono a corpo 8. Erano a 5 e 6,5 e sul foglio
+    // stampato non si leggevano ("sono troppo piccole", Pablo, 24 settembre
+    // 2026): il piede sta in una posizione fissa, quindi ingrandirle non
+    // allunga il referto di una riga.
+    // La firma dell'applicazione, a sinistra sotto il filetto: in grigio
+    // medio, piu' chiaro di data e pagina, perche' non e' un dato del referto.
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K140);
     doc.text("Creato con Corioli", ML, FOOT_Y + 4.5);
 
     this.rule(doc, FOOT_Y, ML, MR, 0.2);
@@ -898,10 +923,11 @@ export class PdfService {
     // alla ristampa: se una visita viene corretta e il referto ristampato, due
     // fogli identici in copertina possono portare contenuti diversi, e senza
     // una data di emissione non c'e' modo di sapere quale si ha in mano.
-    // Stesso corpo e stesso grigio della firma dell'applicazione: si legge se
-    // la si cerca.
+    // Stesso corpo e stesso grigio del numero di pagina: scuro abbastanza da
+    // restare in fotocopia, che e' proprio il caso in cui serve sapere quale
+    // versione si ha in mano.
     if (this.fCtx?.emissione) {
-      doc.setFont("helvetica", "normal"); doc.setFontSize(5); this.tc(doc, K200);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);
       doc.text(san(this.fCtx.emissione), 105, FOOT_Y + 4.5, { align: "center" });
     }
 
@@ -910,7 +936,7 @@ export class PdfService {
     // stampa anche su una pagina sola, perche' e' il modo in cui il foglio
     // dichiara di essere completo.
     if (pagina) {
-      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); this.tc(doc, K140);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);
       doc.text(
         `Pagina ${pagina.numero} di ${pagina.totale}`,
         MR, FOOT_Y + 4.5, { align: "right" },
@@ -933,7 +959,7 @@ export class PdfService {
   ): void {
     const totale = doc.getNumberOfPages();
     const autore = doctor
-      ? san(`Dott. ${doctor.nome} ${doctor.cognome}`.trim())
+      ? san(`${titoloMedico(doctor)} ${doctor.nome} ${doctor.cognome}`.trim())
       : "";
     // Senza sesso indicato la riga non ne sceglie uno: "nato/a" e' la forma
     // che usano i referti quando il dato non c'e'.
@@ -1021,7 +1047,7 @@ export class PdfService {
     cy += 4.5;
 
     const rawName = san(`${doctor?.nome || ""} ${doctor?.cognome || ""}`.trim());
-    const name = rawName ? `Dott. ${rawName}` : "_______________________";
+    const name = rawName ? `${titoloMedico(doctor)} ${rawName}` : "_______________________";
     doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); this.tc(doc, K0);
     doc.text(name, MR, cy, { align: "right" });
     cy += 4;
@@ -1095,52 +1121,18 @@ export class PdfService {
     if (presenti.length === 0) return y;
 
     const colW = PW / colonne;
-    // 8,4 mm per riga: etichetta, valore e filetto con un millimetro d'aria
-    // fra l'uno e l'altro. Erano 9, e con quattro righe di ecocardiogramma e
-    // sei di ematochimici il mezzo millimetro si vedeva in fondo al foglio.
-    const RIGA_BASE = 8.4;
-
-    // Le celle si dispongono per larghezza, non contandole: una voce puo'
-    // chiedere piu' colonne con `span`, e quando nella riga non ci sta piu' si
-    // va a capo. Serve al nome del paziente, che in una cella da 43 mm veniva
-    // troncato senza dirlo: un referto che tronca il cognome e' un referto
-    // sbagliato, e mandare a capo il campo accanto costa una riga.
-    type Cella = { item: (typeof presenti)[number]; col: number; span: number };
-    const righe: Cella[][] = [];
-    let corrente: Cella[] = [];
-    let col = 0;
-    for (const item of presenti) {
-      const span = Math.min(Math.max(Math.round(item.span ?? 1), 1), colonne);
-      if (col + span > colonne) {
-        if (corrente.length) righe.push(corrente);
-        corrente = [];
-        col = 0;
-      }
-      corrente.push({ item, col, span });
-      col += span;
-    }
-    if (corrente.length) righe.push(corrente);
 
     // Si impagina una riga alla volta invece di riservare il blocco intero:
     // per una tabella di dodici misure lo spazio non c'e' quasi mai in fondo
     // alla pagina, e la tabella scivolava tutta a quella dopo lasciando mezzo
     // foglio bianco. Se il salto capita a meta', la pagina nuova riapre con il
-    // nome del modulo.
-    for (const riga of righe) {
-      // Il valore che non entra nella sua cella va a capo dentro la cella, e
-      // la riga si alza per contenerlo. Prima veniva disegnata la sola prima
-      // riga di testo e il resto spariva.
-      const spezzate = riga.map((cella) => {
-        doc.setFont("helvetica", cella.item.forte ? "bold" : "normal");
-        doc.setFontSize(9);
-        const maxW = cella.span * colW - 4;
-        return doc.splitTextToSize(san(cella.item.value), maxW) as string[];
-      });
-      const massimoRighe = Math.max(1, ...spezzate.map((l) => l.length));
-      const rowH = RIGA_BASE + (massimoRighe - 1) * LH;
-
+    // nome del modulo. Le tabelle corte invece restano intere: lo decide chi
+    // apre la sezione, con `spazioBlocco`.
+    const righeTabella = this.righeMisure(doc, presenti, colonne);
+    const altezze = righeTabella.map((r) => r.rowH);
+    for (const [i, { riga, spezzate, rowH }] of righeTabella.entries()) {
       const prima = y;
-      y = this.pb(doc, y, rowH + 2);
+      y = this.saltoPrimaDi(y, altezze, i) ? this.pb(doc, y, Number.POSITIVE_INFINITY) : this.pb(doc, y, rowH + 2);
       if (y !== prima) y = this.segue(doc, y, titolo);
 
       riga.forEach((cella, i) => {
@@ -1172,6 +1164,120 @@ export class PdfService {
   }
 
   /**
+   * Le righe di una tabella di misure, con le celle gia' spezzate e l'altezza
+   * di ciascuna. La usano il disegno e la misura (`altezzaMisure`): cosi'
+   * lo spazio che una sezione chiede e' per costruzione quello che occupa.
+   */
+  private static righeMisure(
+    doc: jsPDF,
+    presenti: { label: string; value: string; forte?: boolean; span?: number }[],
+    colonne: number,
+  ) {
+    const colW = PW / colonne;
+    // 8,4 mm per riga: etichetta, valore e filetto con un millimetro d'aria
+    // fra l'uno e l'altro. Erano 9, e con quattro righe di ecocardiogramma e
+    // sei di ematochimici il mezzo millimetro si vedeva in fondo al foglio.
+    const RIGA_BASE = 8.4;
+
+    // Le celle si dispongono per larghezza, non contandole: una voce puo'
+    // chiedere piu' colonne con `span`, e quando nella riga non ci sta piu' si
+    // va a capo. Serve al nome del paziente, che in una cella da 43 mm veniva
+    // troncato senza dirlo: un referto che tronca il cognome e' un referto
+    // sbagliato, e mandare a capo il campo accanto costa una riga.
+    type Cella = { item: (typeof presenti)[number]; col: number; span: number };
+    const righe: Cella[][] = [];
+    let corrente: Cella[] = [];
+    let col = 0;
+    for (const item of presenti) {
+      const span = Math.min(Math.max(Math.round(item.span ?? 1), 1), colonne);
+      if (col + span > colonne) {
+        if (corrente.length) righe.push(corrente);
+        corrente = [];
+        col = 0;
+      }
+      corrente.push({ item, col, span });
+      col += span;
+    }
+    if (corrente.length) righe.push(corrente);
+
+    return righe.map((riga) => {
+      // Il valore che non entra nella sua cella va a capo dentro la cella, e
+      // la riga si alza per contenerlo. Prima veniva disegnata la sola prima
+      // riga di testo e il resto spariva.
+      const spezzate = riga.map((cella) => {
+        doc.setFont("helvetica", cella.item.forte ? "bold" : "normal");
+        doc.setFontSize(9);
+        const maxW = cella.span * colW - 4;
+        return doc.splitTextToSize(sanValore(cella.item.value), maxW) as string[];
+      });
+      const massimoRighe = Math.max(1, ...spezzate.map((l) => l.length));
+      return { riga, spezzate, rowH: RIGA_BASE + (massimoRighe - 1) * LH };
+    });
+  }
+
+  /** Altezze delle righe di una tabella di misure, senza disegnarla. */
+  private static altezzeMisure(
+    doc: jsPDF,
+    items: { label: string; value: string; forte?: boolean; span?: number }[],
+    colonne = 3,
+  ): number[] {
+    const presenti = items.filter((i) => i.value && i.value !== "-");
+    return this.righeMisure(doc, presenti, colonne).map((r) => r.rowH);
+  }
+
+  /** Altezze delle righe di una tabella di dettagli, senza disegnarla. */
+  private static altezzeDettagli(
+    doc: jsPDF,
+    items: { label: string; value: string; forte?: boolean }[],
+  ): number[] {
+    return items
+      .filter((i) => i.value && i.value !== "-")
+      .map((item) => {
+        doc.setFont("helvetica", item.forte ? "bold" : "normal"); doc.setFontSize(9);
+        const linee: string[] = doc.splitTextToSize(sanValore(item.value), PW - 34 - 4);
+        return Math.max(1, linee.length) * LH + 1.6;
+      });
+  }
+
+  /**
+   * Lo spazio che il titolo di un blocco deve trovare in fondo alla pagina,
+   * date le altezze delle righe della sua tabella: il titolo e le prime
+   * `RIGHE_MINIME` righe, o tutta la tabella se e' troppo corta per
+   * spezzarsi. Prima chiedeva il titolo e una riga sola, e il test
+   * ergometrico restava con la sua prima riga in fondo a una pagina.
+   *
+   * Tenere insieme i blocchi interi costava una pagina in piu' sul referto di
+   * prova, ed e' la lunghezza che il cardiologo aveva chiesto di ridurre: si
+   * evitano solo gli orfani. Quelli in cima alla pagina dopo li evita
+   * `saltoPrimaDi`.
+   */
+  private static spazioBlocco(testata: number, righe: number[]): number {
+    // Senza controllo: il titolo e la prima riga, come prima.
+    if (!this.controlloOrfani) return testata + (righe[0] ?? 0) + 2;
+    const quante = righe.length < RIGHE_MINIME * 2 ? righe.length : RIGHE_MINIME;
+    // I 3 mm in fondo sono il margine che `drawMisureTable` e `drawDettagliTable`
+    // chiedono a ogni riga (2) arrotondato alla chiusura della tabella (3): senza,
+    // la seconda riga non ci stava per un soffio e restava orfana la prima.
+    return testata + righe.slice(0, quante).reduce((a, b) => a + b, 0) + 3;
+  }
+
+  /**
+   * Se la riga `i` deve andare a capo pagina anche se ci starebbe: succede
+   * quando dopo di lei ne resta una sola, e quella sola finirebbe in cima alla
+   * pagina dopo. Anticipando il salto di una riga, sulla pagina nuova ne
+   * arrivano due.
+   */
+  private static saltoPrimaDi(y: number, altezze: number[], i: number): boolean {
+    if (!this.controlloOrfani) return false;
+    const n = altezze.length;
+    if (n < RIGHE_MINIME * 2 || i !== n - RIGHE_MINIME) return false;
+    const limite = FOOT_Y - 8;
+    const staQuesta = y + altezze[i] + 2 <= limite;
+    const stannoTutte = y + altezze[i] + altezze[i + 1] + 2 <= limite;
+    return staQuesta && !stannoTutte;
+  }
+
+  /**
    * Tabella a due colonne "etichetta | valore" per i dati che hanno testi
    * lunghi (struttura, categoria CAD-RADS): qui il valore va mandato a capo,
    * non troncato.
@@ -1184,15 +1290,16 @@ export class PdfService {
     const presenti = items.filter((i) => i.value && i.value !== "-");
     if (presenti.length === 0) return y;
 
-    const labelW = 34;
-    presenti.forEach((item) => {
+    const labelW = 34; // la stessa di `altezzeDettagli`
+    const altezze = this.altezzeDettagli(doc, presenti);
+    presenti.forEach((item, i) => {
       doc.setFont("helvetica", item.forte ? "bold" : "normal"); doc.setFontSize(9);
       const linee: string[] = doc.splitTextToSize(
-        san(item.value), PW - labelW - 4,
+        sanValore(item.value), PW - labelW - 4,
       );
       const h = Math.max(1, linee.length) * LH + 1.6;
       const prima = y;
-      y = this.pb(doc, y, h + 2);
+      y = this.saltoPrimaDi(y, altezze, i) ? this.pb(doc, y, Number.POSITIVE_INFINITY) : this.pb(doc, y, h + 2);
       if (y !== prima) y = this.segue(doc, y, titolo);
 
       doc.setFont("helvetica", "normal"); doc.setFontSize(7); this.tc(doc, K80);
@@ -1252,8 +1359,8 @@ export class PdfService {
    * Resta per l'inquadramento clinico soltanto: gli esami strumentali hanno
    * ciascuno la sua fascia dall'11 settembre 2026.
    */
-  private static sottosezione(doc: jsPDF, y: number, titolo: string): number {
-    y = this.pb(doc, y, 16);
+  private static sottosezione(doc: jsPDF, y: number, titolo: string, bisogno = 16): number {
+    y = this.pb(doc, y, bisogno);
     y += 2.5;
     doc.setFont("helvetica", "bold"); doc.setFontSize(8.2); this.tc(doc, K30);
     const t = san(titolo);
@@ -1271,14 +1378,14 @@ export class PdfService {
    */
   private static gruppo(doc: jsPDF, titolo: string): ApriGruppo {
     let aperto = false;
-    return (y: number) => {
+    return (y: number, bisogno?: number) => {
       if (aperto) return y;
       aperto = true;
       // Spazio per la fascia, il titolo del modulo e la sua prima riga: il
       // gruppo non deve restare orfano in fondo alla pagina. I due millimetri
       // in piu' staccano il nome del modulo dalla fascia, come il cardiologo
       // aveva chiesto l'8 settembre.
-      return this.sezione(doc, y, titolo, 34) + 2;
+      return this.sezione(doc, y, titolo, Math.max(34, bisogno ?? 0)) + 2;
     };
   }
 
@@ -1402,7 +1509,7 @@ export class PdfService {
     const haMisure = misure.some((m) => m.value);
     if (!haMisure && !ecg.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "Elettrocardiogramma");
+    y = this.sezione(doc, y, "Elettrocardiogramma", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 3)));
     y = this.drawMisureTable(doc, y, misure, 3, "Elettrocardiogramma");
     y = this.drawRefertoModulo(doc, y, ecg.referto);
     return y;
@@ -1482,7 +1589,7 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !eco.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "Ecocardiogramma color-Doppler transtoracico");
+    y = this.sezione(doc, y, "Ecocardiogramma color-Doppler transtoracico", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 4)));
     y = this.drawMisureTable(doc, y, misure, 4, "Ecocardiogramma");
     y = this.drawRefertoModulo(doc, y, eco.referto);
     return y;
@@ -1524,7 +1631,7 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !tc.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "TC coronarica");
+    y = this.sezione(doc, y, "TC coronarica", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 3)));
     y = this.drawMisureTable(doc, y, misure, 3, "TC coronarica");
     // L'avvertenza sul CAC resta nella maschera e non entra nel referto: "il
     // punteggio CAC non equivale a stenosi ostruttiva" e' una cosa che il
@@ -1619,8 +1726,9 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !sc.referto?.trim()) return y;
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Scompenso cardiaco");
+    const blocco = this.spazioBlocco(5.5, this.altezzeDettagli(doc, misure));
+    y = apriGruppo(y, FASCIA_H + ARIA_SOTTO_FASCIA + 2 + blocco);
+    y = this.sottosezione(doc, y, "Scompenso cardiaco", blocco);
     y = this.drawDettagliTable(doc, y, misure, "Scompenso cardiaco");
     // Sotto la tabella c'e' solo il testo del cardiologo. Le note che l'app
     // scriveva qui — la fascia HFmrEF di ESC 2021, l'avvertenza a non
@@ -1756,8 +1864,9 @@ export class PdfService {
       },
     ];
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Fibrillazione atriale");
+    const blocco = this.spazioBlocco(5.5, this.altezzeDettagli(doc, misure));
+    y = apriGruppo(y, FASCIA_H + ARIA_SOTTO_FASCIA + 2 + blocco);
+    y = this.sottosezione(doc, y, "Fibrillazione atriale", blocco);
     y = this.drawDettagliTable(doc, y, misure, "Fibrillazione atriale");
     y = this.drawRefertoModulo(doc, y, fa.referto);
     return y;
@@ -1797,7 +1906,7 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !erg.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "Test ergometrico");
+    y = this.sezione(doc, y, "Test ergometrico", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 3)));
     y = this.drawMisureTable(doc, y, misure, 3, "Test ergometrico");
     y = this.drawRefertoModulo(doc, y, erg.referto);
     return y;
@@ -1825,7 +1934,7 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !h.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "ECG dinamico secondo Holter");
+    y = this.sezione(doc, y, "ECG dinamico secondo Holter", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 3)));
     y = this.drawMisureTable(doc, y, misure, 3, "ECG dinamico secondo Holter");
     y = this.drawRefertoModulo(doc, y, h.referto);
     return y;
@@ -1872,7 +1981,7 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !h.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "Monitoraggio pressorio delle 24 ore");
+    y = this.sezione(doc, y, "Monitoraggio pressorio delle 24 ore", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 3)));
     y = this.drawMisureTable(doc, y, misure, 3, "Monitoraggio pressorio delle 24 ore");
     y = this.drawRefertoModulo(doc, y, h.referto);
     return y;
@@ -1953,8 +2062,9 @@ export class PdfService {
       },
     ];
 
-    y = apriGruppo(y);
-    y = this.sottosezione(doc, y, "Rischio cardiovascolare");
+    const blocco = this.spazioBlocco(5.5, this.altezzeDettagli(doc, misure));
+    y = apriGruppo(y, FASCIA_H + ARIA_SOTTO_FASCIA + 2 + blocco);
+    y = this.sottosezione(doc, y, "Rischio cardiovascolare", blocco);
     y = this.drawDettagliTable(doc, y, misure, "Rischio cardiovascolare");
     y = this.drawRefertoModulo(doc, y, sintesi);
     return y;
@@ -1994,7 +2104,7 @@ export class PdfService {
     ];
     if (!misure.some((m) => m.value) && !tsa.referto?.trim()) return y;
 
-    y = this.sezione(doc, y, "EcoColorDoppler dei tronchi sovraaortici");
+    y = this.sezione(doc, y, "EcoColorDoppler dei tronchi sovraaortici", this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeDettagli(doc, misure)));
     y = this.drawDettagliTable(doc, y, misure, "Doppler TSA");
     y = this.drawRefertoModulo(doc, y, tsa.referto);
     return y;
@@ -2130,7 +2240,7 @@ export class PdfService {
     const titolo = lab.dataPrelievo
       ? `Esami ematochimici (prelievo del ${fd(lab.dataPrelievo)})`
       : "Esami ematochimici";
-    y = this.sezione(doc, y, titolo);
+    y = this.sezione(doc, y, titolo, this.spazioBlocco(FASCIA_H + ARIA_SOTTO_FASCIA, this.altezzeMisure(doc, misure, 3)));
     y = this.drawMisureTable(doc, y, misure, 3, "Esami ematochimici");
     // Niente nota sui valori calcolati: che l'LDL sia di Friedewald e l'eGFR
     // una stima lo dice l'etichetta della cella, e chi legge il referto lo sa.
@@ -2142,11 +2252,34 @@ export class PdfService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ─── REFERTO DI VISITA ─────────────────────────────────────────────────────
+  /**
+   * Il referto di una visita.
+   *
+   * Si impagina due volte al piu': con il controllo degli orfani (nessuna
+   * tabella lascia una riga sola su un lato del salto pagina) e, se quel
+   * controllo allunga il referto di una pagina, senza. Tenere insieme le righe
+   * sposta i blocchi in basso, e sul referto di prova costava un quinto foglio
+   * con una riga sola: il cardiologo aveva chiesto di ridurre le pagine, e
+   * fra un orfano e un foglio in piu' il foglio in piu' pesa di piu'.
+   */
   static async generateVisitPDF(
     patient: Patient,
     visit: Visit,
     options?: VisitPdfOptions,
   ): Promise<Blob | undefined> {
+    const curato = await this.componiReferto(patient, visit, options, true);
+    if (!curato || curato.pagine <= 1) return curato?.blob;
+    const compatto = await this.componiReferto(patient, visit, options, false);
+    return compatto && compatto.pagine < curato.pagine ? compatto.blob : curato.blob;
+  }
+
+  private static async componiReferto(
+    patient: Patient,
+    visit: Visit,
+    options: VisitPdfOptions | undefined,
+    controlloOrfani: boolean,
+  ): Promise<{ blob: Blob; pagine: number } | undefined> {
+    this.controlloOrfani = controlloOrfani;
     const nv = this.norm(visit);
     if (!nv.visita) return;
     const vis = nv.visita;
@@ -2183,7 +2316,7 @@ export class PdfService {
     doc.setProperties({
       title: `Referto di visita cardiologica - ${this.nomePaziente(patient)} - ${fd(visit.dataVisita)}`,
       subject: "Referto di visita cardiologica",
-      author: doctor ? `Dott. ${doctor.nome} ${doctor.cognome}`.trim() : "",
+      author: doctor ? `${titoloMedico(doctor)} ${doctor.nome} ${doctor.cognome}`.trim() : "",
       creator: "Corioli Cardiologia",
     });
     doc.setLanguage("it");
@@ -2219,7 +2352,7 @@ export class PdfService {
     // Il fumo tiene l'etichetta perche' e' l'unico che si stampa anche in
     // negativo: la maschera lo chiede a tre stati, e "non fumatore" e' un dato,
     // "non rilevato" no.
-    const fumo = vis.fumatore === "si" ? "Si'" : vis.fumatore === "no" ? "No" : "";
+    const fumo = vis.fumatore === "si" ? "Sì" : vis.fumatore === "no" ? "No" : "";
 
     // "Variabili" e non "parametri": un parametro e' fisso, questi cambiano a
     // ogni controllo, ed e' il confronto con il valore precedente che si guarda.
@@ -2346,8 +2479,8 @@ export class PdfService {
     // senza, non varrebbero niente.
     try {
       this.finalizzaPagine(doc, patient, visit.dataVisita, doctor, fo);
-      return doc.output("blob") as Blob;
-    } finally { this.fCtx = null; }
+      return { blob: doc.output("blob") as Blob, pagine: doc.getNumberOfPages() };
+    } finally { this.fCtx = null; this.controlloOrfani = true; }
   }
 
   // ─── RICHIESTA ESAME ──────────────────────────────────────────────────────

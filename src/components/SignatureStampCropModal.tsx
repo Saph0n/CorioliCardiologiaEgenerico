@@ -195,7 +195,7 @@ export function SignatureStampCropModal({
                 }}
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-default-400 text-sm">
+              <div className="flex h-full items-center justify-center text-default-500 text-sm">
                 Caricamento…
               </div>
             )}
@@ -240,7 +240,7 @@ export function SignatureStampCropModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <ZoomOut size={16} className="text-default-400 shrink-0" />
+            <ZoomOut size={16} className="text-default-500 shrink-0" />
             <Slider
               aria-label="Zoom"
               size="sm"
@@ -251,7 +251,7 @@ export function SignatureStampCropModal({
               onChange={(v) => setScale(Array.isArray(v) ? v[0] : v)}
               className="flex-1"
             />
-            <ZoomIn size={16} className="text-default-400 shrink-0" />
+            <ZoomIn size={16} className="text-default-500 shrink-0" />
           </div>
 
           <p className="flex items-center gap-2 text-xs text-default-500">

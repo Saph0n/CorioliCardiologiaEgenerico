@@ -66,8 +66,9 @@ import {
   VisitService,
   DocumentService,
   PreferenceService,
+  BackupService,
 } from "../../services/OfflineServices";
-import { MedicalTemplate } from "../../types/Storage";
+import { MedicalTemplate, type TitoloMedico } from "../../types/Storage";
 import { normalizeRegistro } from "../../utils/gruppiRicerca";
 import { SOGLIA_CAC_PREDEFINITA } from "../../utils/tcCoronarica";
 import {
@@ -79,7 +80,11 @@ import {
   type ChiaveModuloOpzionale,
   type ModuliVisitaAttivi,
 } from "../../utils/moduliVisita";
-import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
+import {
+  getMissingDoctorProfileFields,
+  titoloMedico,
+  TITOLI_MEDICO,
+} from "../../utils/doctorProfile";
 import {
   AnamnesiConfig,
   AnamnesiVisitType,
@@ -96,8 +101,9 @@ import {
   genAnamnesiCustomKey,
 } from "../../utils/anamnesiStrutturata";
 import { AppModal } from "../../components/AppModal";
+import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
-type SettingsNoticeScope = "profilo" | "ambulatori" | "modelli" | "duplicati";
+type SettingsNoticeScope = "profilo" | "ambulatori" | "dati" | "modelli" | "duplicati";
 
 type SettingsNotice = {
   scope: SettingsNoticeScope;
@@ -156,8 +162,48 @@ function SettingsSectionNotice({
   );
 }
 
+function maiuscolaIniziale(testo: string): string {
+  return testo ? testo.charAt(0).toUpperCase() + testo.slice(1) : testo;
+}
+
+/** Le voci dell'indice a sinistra, nell'ordine della pagina. */
+const VOCI_INDICE_IMPOSTAZIONI: { id: string; label: string }[] = [
+  { id: "impostazioni-sicurezza", label: "Sicurezza" },
+  { id: "impostazioni-profilo", label: "Profilo" },
+  { id: "impostazioni-ambulatori", label: "Ambulatori" },
+  { id: "impostazioni-dati", label: "Dati e backup" },
+  { id: "impostazioni-visita", label: "Visita e referto" },
+  { id: "impostazioni-doppioni", label: "Pazienti doppi" },
+  { id: "impostazioni-modelli", label: "Modelli dei referti" },
+  { id: "impostazioni-info", label: "Informazioni" },
+];
+
 const SettingsScreen = () => {
   const navigate = useNavigate();
+  const mostraSicurezza =
+    isAppLockAvailable() ||
+    typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined";
+
+  /**
+   * La sezione che si sta leggendo, evidenziata nell'indice: senza, in una
+   * pagina lunga non si capiva a che punto si era.
+   */
+  const [sezioneAttiva, setSezioneAttiva] = useState<string | null>(null);
+  useEffect(() => {
+    const aggiorna = () => {
+      let attiva: string | null = null;
+      for (const v of VOCI_INDICE_IMPOSTAZIONI) {
+        const el = document.getElementById(v.id);
+        // Attiva e' la sezione che occupa la parte alta dello schermo: con una
+        // soglia fissa appena sotto la navbar l'indice restava indietro di una.
+        if (el && el.getBoundingClientRect().top <= window.innerHeight * 0.4) attiva = v.id;
+      }
+      setSezioneAttiva(attiva ?? VOCI_INDICE_IMPOSTAZIONI[0].id);
+    };
+    aggiorna();
+    window.addEventListener("scroll", aggiorna, { passive: true });
+    return () => window.removeEventListener("scroll", aggiorna);
+  }, []);
   // ... state declarations ...
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pdfTheme, setPdfTheme] = useState("light");
@@ -200,7 +246,15 @@ const SettingsScreen = () => {
     setNotice((current) => (current?.scope === scope ? null : current));
   }, []);
 
-  const [doctorInfo, setDoctorInfo] = useState({
+  const [doctorInfo, setDoctorInfo] = useState<{
+    titolo: TitoloMedico;
+    nome: string;
+    cognome: string;
+    email: string;
+    telefono: string;
+    specializzazione: string;
+  }>({
+    titolo: "Dott.",
     nome: "",
     cognome: "",
     email: "",
@@ -243,6 +297,7 @@ const SettingsScreen = () => {
   const [visitCount, setVisitCount] = useState(0);
   const [docCount, setDocCount] = useState(0);
   const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+  const [backupInCorso, setBackupInCorso] = useState(false);
 
   const [ambulatori, setAmbulatori] = useState<any[]>([]);
   const [savingAmbulatori, setSavingAmbulatori] = useState(false);
@@ -476,6 +531,7 @@ const SettingsScreen = () => {
       const doctor = await DoctorService.getDoctor();
       if (doctor) {
         setDoctorInfo({
+          titolo: titoloMedico(doctor),
           nome: doctor.nome,
           cognome: doctor.cognome,
           email: doctor.email,
@@ -976,7 +1032,7 @@ const SettingsScreen = () => {
       showNotice(
         "duplicati",
         "success",
-        `Doppioni uniti con successo (mantenuto: ${target.nome} ${target.cognome}).`,
+        `Doppioni uniti con successo (mantenuto: ${formatPatientDisplayName(target) ?? "senza nome"}).`,
       );
     } catch (e: any) {
       showNotice(
@@ -1424,6 +1480,7 @@ const SettingsScreen = () => {
 
     try {
       await DoctorService.updateDoctor({
+        titolo: doctorInfo.titolo,
         nome: doctorInfo.nome.trim(),
         cognome: doctorInfo.cognome.trim(),
         email: doctorInfo.email.trim(),
@@ -1450,18 +1507,59 @@ const SettingsScreen = () => {
   };
 
   return (
-    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
-      {/* Header */}
+    <div className="corioli-page space-y-6 animate-in fade-in duration-500">
       <PageHeader
         title="Impostazioni"
-        subtitle="Personalizza la tua esperienza dell'applicazione"
-        icon={SettingsIcon}
-        iconColor="primary"
       />
 
+      {/* Indice a sinistra e una colonna sola. Prima erano due colonne di
+          card affiancate: le altezze non coincidevano mai e lasciavano grandi
+          vuoti (la card degli ambulatori si allungava per pareggiare il
+          profilo), e per trovare una voce bisognava scorrere tutta la pagina. */}
+      <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+        <nav
+          aria-label="Sezioni delle impostazioni"
+          className="hidden lg:block"
+        >
+          <ul className="sticky top-[calc(8rem_+_var(--barra-finestra))] space-y-0.5 text-sm">
+            {VOCI_INDICE_IMPOSTAZIONI.filter(
+              (v) => v.id !== "impostazioni-sicurezza" || mostraSicurezza,
+            ).map((v) => (
+              <li key={v.id}>
+                <a
+                  href={`#${v.id}`}
+                  onClick={(e) => {
+                    // L'app usa l'hash per le rotte: l'ancora si fa a mano.
+                    e.preventDefault();
+                    document.getElementById(v.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  aria-current={sezioneAttiva === v.id ? "location" : undefined}
+                  className={`block rounded-lg px-3 py-1.5 transition-colors hover:bg-default-100 hover:text-foreground ${
+                    sezioneAttiva === v.id
+                      ? "bg-default-100 font-medium text-foreground"
+                      : "text-default-600"
+                  }`}
+                >
+                  {v.label}
+                </a>
+              </li>
+            ))}
+            <li className="mt-3 border-t border-default-200 pt-3">
+              <button
+                type="button"
+                onClick={() => navigate("/documents")}
+                className="block w-full rounded-lg px-3 py-1.5 text-left text-default-600 transition-colors hover:bg-default-100 hover:text-foreground"
+              >
+                Documenti personali →
+              </button>
+            </li>
+          </ul>
+        </nav>
+        <div className="min-w-0 space-y-8">
+
       {/* ── Sicurezza & Aggiornamenti ── */}
-      {(isAppLockAvailable() || typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined") ? (
-        <div>
+      {mostraSicurezza ? (
+        <div id="impostazioni-sicurezza" className="scroll-mt-32">
           <p className="section-label">Sicurezza</p>
           <Card className="shadow-sm border border-default-200 overflow-hidden">
             <CardBody className="p-0">
@@ -1504,10 +1602,11 @@ const SettingsScreen = () => {
       ) : null}
 
       <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-stretch [&>*]:h-full [&>*]:min-h-0">
-          {/* Profilo Dottore */}
+        <div className="grid grid-cols-1 gap-8">
+          {/* Profilo del medico */}
           <Card
-            className="shadow-lg w-full"
+            id="impostazioni-profilo"
+            className="shadow-lg w-full scroll-mt-32"
             classNames={{
               base: "h-full flex flex-col min-h-0",
               body: "flex flex-1 flex-col gap-6 min-h-0",
@@ -1517,15 +1616,29 @@ const SettingsScreen = () => {
               <div className="flex items-center gap-3">
                 <User className="w-5 h-5 text-primary" />
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Profilo Dottore
+                  Profilo del medico
                 </h2>
               </div>
             </CardHeader>
             <CardBody>
               <SettingsSectionNotice scope="profilo" notice={notice} />
-              <div className="flex flex-1 flex-col justify-between gap-5 py-1 min-h-0">
+              <div className="grid grid-cols-1 gap-4 py-1 md:grid-cols-2">
+                <Select
+                  label="Titolo"
+                  selectedKeys={[doctorInfo.titolo]}
+                  onSelectionChange={(keys) => {
+                    const t = Array.from(keys)[0] as TitoloMedico | undefined;
+                    if (t) handleDoctorInfoChange("titolo", t);
+                  }}
+                  variant="bordered"
+                  disallowEmptySelection
+                >
+                  {TITOLI_MEDICO.map((t) => (
+                    <SelectItem key={t}>{t}</SelectItem>
+                  ))}
+                </Select>
                 <Input
-                  label="Nome"
+                  label="Nome" placeholder=" "
                   value={doctorInfo.nome}
                   isRequired
                   onValueChange={(value) =>
@@ -1534,7 +1647,7 @@ const SettingsScreen = () => {
                   variant="bordered"
                 />
                 <Input
-                  label="Cognome"
+                  label="Cognome" placeholder=" "
                   value={doctorInfo.cognome}
                   isRequired
                   onValueChange={(value) =>
@@ -1543,7 +1656,7 @@ const SettingsScreen = () => {
                   variant="bordered"
                 />
                 <Input
-                  label="Email"
+                  label="Email" placeholder=" "
                   type="email"
                   value={doctorInfo.email}
                   isRequired
@@ -1560,7 +1673,7 @@ const SettingsScreen = () => {
                     handleDoctorInfoChange("telefono", value)
                   }
                   variant="bordered"
-                  placeholder="3331234567"
+                  placeholder=" "
                 />
                 <Input
                   label="Specializzazione"
@@ -1574,20 +1687,23 @@ const SettingsScreen = () => {
                 />
               </div>
 
-              <Button
-                color="primary"
-                className="corioli-cta w-full mt-auto"
-                onPress={saveDoctorInfo}
-                isLoading={isLoading}
-              >
-                {isLoading ? "Salvando..." : "Salva Modifiche"}
-              </Button>
+              <div className="flex justify-end">
+                <Button
+                  color="primary"
+                  className="corioli-cta"
+                  onPress={saveDoctorInfo}
+                  isLoading={isLoading}
+                >
+                  {isLoading ? "Salvataggio..." : "Salva profilo"}
+                </Button>
+              </div>
             </CardBody>
           </Card>
 
           {/* Ambulatori */}
           <Card
-            className="shadow-lg w-full"
+            id="impostazioni-ambulatori"
+            className="shadow-lg w-full scroll-mt-32"
             classNames={{
               base: "h-full flex flex-col min-h-0",
               body: "flex flex-1 flex-col gap-3 min-h-0",
@@ -1608,7 +1724,7 @@ const SettingsScreen = () => {
                 {ambulatori.length > 0 ? (
                   <>
                     <h3 className="font-medium text-gray-900 text-sm mb-2 px-0.5">
-                      Ambulatori Configurati
+                      Ambulatori configurati
                     </h3>
                     <div
                       className={`corioli-scroll space-y-2 pr-1 ${
@@ -1758,18 +1874,18 @@ const SettingsScreen = () => {
               {/* Form nuovo ambulatorio — ancorato in basso */}
               <div className="flex flex-col gap-2 flex-shrink-0 mt-auto">
                 <h3 className="font-medium text-gray-900 text-sm">
-                  Aggiungi Nuovo Ambulatorio
+                  Nuovo ambulatorio
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   <Input
                     size="sm"
-                    label="Nome Ambulatorio"
+                    label="Nome dell'ambulatorio"
                     value={newAmbulatorio.nome}
                     onValueChange={(value) =>
                       setNewAmbulatorio((prev) => ({ ...prev, nome: value }))
                     }
                     variant="bordered"
-                    placeholder="Studio Medico"
+                    placeholder=" "
                   />
                   <Input
                     size="sm"
@@ -1782,7 +1898,7 @@ const SettingsScreen = () => {
                       }))
                     }
                     variant="bordered"
-                    placeholder="0612345678"
+                    placeholder=" "
                   />
                 </div>
                 <Input
@@ -1793,7 +1909,7 @@ const SettingsScreen = () => {
                     setNewAmbulatorio((prev) => ({ ...prev, indirizzo: value }))
                   }
                   variant="bordered"
-                  placeholder="Via Roma 10"
+                  placeholder=" "
                 />
                 <div className="grid grid-cols-3 gap-2">
                   <Input
@@ -1804,7 +1920,7 @@ const SettingsScreen = () => {
                       setNewAmbulatorio((prev) => ({ ...prev, citta: value }))
                     }
                     variant="bordered"
-                    placeholder="Roma"
+                    placeholder=" "
                   />
                   <Input
                     size="sm"
@@ -1814,7 +1930,7 @@ const SettingsScreen = () => {
                       setNewAmbulatorio((prev) => ({ ...prev, cap: value }))
                     }
                     variant="bordered"
-                    placeholder="00100"
+                    placeholder=" "
                   />
                   <Input
                     size="sm"
@@ -1830,30 +1946,31 @@ const SettingsScreen = () => {
                 </div>
                 <Button
                   color="primary"
-                  className="corioli-cta w-full"
+                  className="corioli-cta self-end"
                   onPress={addAmbulatorio}
                   isLoading={savingAmbulatori}
                   isDisabled={savingAmbulatori}
                 >
-                  {savingAmbulatori ? "Salvataggio..." : "Aggiungi Ambulatorio"}
+                  {savingAmbulatori ? "Salvataggio..." : "Aggiungi ambulatorio"}
                 </Button>
               </div>
             </CardBody>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Backup e Dati */}
-          <Card className="shadow-lg h-full">
+        <div className="grid grid-cols-1 gap-8">
+          {/* Backup e dati */}
+          <Card id="impostazioni-dati" className="shadow-lg scroll-mt-32">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <Database className="w-5 h-5 text-primary shrink-0" />
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Backup e Dati
+                  Backup e dati
                 </h2>
               </div>
             </CardHeader>
             <CardBody className="flex flex-col space-y-4">
+              <SettingsSectionNotice scope="dati" notice={notice} />
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
@@ -1864,11 +1981,11 @@ const SettingsScreen = () => {
                       {patientCount}
                     </p>
                   </div>
-                  <div className="p-3 bg-brand-100 rounded-lg border border-brand-200">
-                    <p className="text-xs text-brand-800 font-semibold uppercase tracking-wider">
+                  <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
+                    <p className="text-xs text-primary-600 font-semibold uppercase tracking-wider">
                       Visite
                     </p>
-                    <p className="text-2xl font-bold text-brand-700 mt-1">
+                    <p className="text-2xl font-bold text-primary-700 mt-1">
                       {visitCount}
                     </p>
                   </div>
@@ -1882,14 +1999,15 @@ const SettingsScreen = () => {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-default-200 p-4 bg-default-50/30 space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Ultimo backup</span>
-                    </div>
+                {/* Lo stato del backup con l'azione accanto. Prima "Mai
+                    eseguito" stava da solo, e il backup vero era tre clic piu'
+                    in la': Gestione dati completa, scheda Backup, Esporta. */}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default-200 bg-default-50/30 p-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <RefreshCw className="w-4 h-4 text-default-600" />
+                    <span className="text-default-700">Ultimo backup:</span>
                     <span
-                      className={`font-semibold ${!lastBackupDate ? "text-warning-600" : "corioli-text-brand"}`}
+                      className={`font-semibold ${!lastBackupDate ? "text-warning-700" : "corioli-text-brand"}`}
                     >
                       {lastBackupDate
                         ? new Date(lastBackupDate).toLocaleDateString() +
@@ -1898,9 +2016,29 @@ const SettingsScreen = () => {
                             hour: "2-digit",
                             minute: "2-digit",
                           })
-                        : "Mai eseguito"}
+                        : "mai eseguito"}
                     </span>
                   </div>
+                  <Button
+                    color="primary"
+                    className="corioli-cta"
+                    startContent={!backupInCorso ? <Download className="w-4 h-4" /> : undefined}
+                    isLoading={backupInCorso}
+                    onPress={async () => {
+                      setBackupInCorso(true);
+                      try {
+                        await BackupService.downloadBackup();
+                        showNotice("dati", "success", "Backup salvato nella cartella dei download.");
+                      } catch (error) {
+                        console.error("Errore backup:", error);
+                        showNotice("dati", "error", "Backup non riuscito: " + (error as Error).message, 6000);
+                      } finally {
+                        setBackupInCorso(false);
+                      }
+                    }}
+                  >
+                    Fai un backup ora
+                  </Button>
                 </div>
               </div>
 
@@ -1940,26 +2078,23 @@ const SettingsScreen = () => {
                 </p>
               </div>
 
-              <div className="space-y-3 mt-auto">
-                <div className="w-full [&>button]:w-full">
-                  <BackupManager />
-                </div>
-
-                <p className="text-xs text-center text-default-400 px-4">
-                  Gestione avanzata permette importazioni, cancellazioni e reset.
+              <div className="flex flex-wrap items-center gap-3">
+                <BackupManager />
+                <p className="text-xs text-default-600">
+                  Ripristino da backup, importazione CSV, eliminazioni e cronologia delle visite.
                 </p>
               </div>
             </CardBody>
           </Card>
 
-          {/* Funzionalita Visite */}
-          <Card className="shadow-lg h-full">
+          {/* Visita e referto */}
+          <Card id="impostazioni-visita" className="shadow-lg scroll-mt-32">
             <CardHeader className="pb-1">
               <div className="flex items-center gap-3">
                 <SettingsIcon className="w-5 h-5 text-primary" />
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Funzionalita Visite
+                    Visita e referto
                   </h2>
                   <p className="text-xs text-default-500">
                     Configura comportamento visite e contenuto PDF
@@ -2207,11 +2342,11 @@ const SettingsScreen = () => {
         </div>
       </div>
 
-      {/* Sezione dedicata: Qualità Dati Pazienti */}
-      <div className="space-y-3">
+      {/* Sezione dedicata: Qualità dei dati */}
+      <div id="impostazioni-doppioni" className="space-y-3 scroll-mt-32">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">
-            Qualità Dati Pazienti
+            Qualità dei dati
           </h2>
           <p className="text-sm text-gray-600">
             Area dedicata al controllo dei possibili pazienti duplicati.
@@ -2224,7 +2359,7 @@ const SettingsScreen = () => {
               <div className="flex items-center gap-3">
                 <Users className="w-5 h-5 text-warning" />
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Controllo Doppioni
+                  Controllo dei doppioni
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -2275,7 +2410,7 @@ const SettingsScreen = () => {
                 variant="bordered"
                 value={duplicateSearch}
                 onValueChange={setDuplicateSearch}
-                startContent={<Search size={16} className="text-default-400" />}
+                startContent={<Search size={16} className="text-default-500" />}
               />
               {duplicateSearch && (
                 <Button
@@ -2346,14 +2481,14 @@ const SettingsScreen = () => {
                           <TableColumn>PAZIENTE</TableColumn>
                           <TableColumn>CF / NASCITA</TableColumn>
                           <TableColumn>CONTATTI</TableColumn>
-                          <TableColumn>AZIONI</TableColumn>
+                          <TableColumn><span className="sr-only">Azioni</span></TableColumn>
                         </TableHeader>
                         <TableBody>
                           {group.patients.map((p) => (
                             <TableRow key={p.id}>
                               <TableCell>
                                 <p className="font-medium text-gray-900">
-                                  {p.nome} {p.cognome}
+                                  {formatPatientDisplayName(p) ?? "Senza nome"}
                                 </p>
                               </TableCell>
                               <TableCell>
@@ -2413,12 +2548,12 @@ const SettingsScreen = () => {
       </div>
 
       {/* Gestione Modelli */}
-      <Card className="shadow-lg">
+      <Card id="impostazioni-modelli" className="shadow-lg scroll-mt-32">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-3">
             <FileText className="w-5 h-5 text-primary shrink-0" />
             <h2 className="text-xl font-semibold text-gray-900">
-              Gestione Modelli Referti
+              Modelli dei referti
             </h2>
           </div>
         </CardHeader>
@@ -2447,7 +2582,7 @@ const SettingsScreen = () => {
             </Button>
           </div>
           <Tabs
-            aria-label="Categorie Template"
+            aria-label="Categorie dei modelli"
             selectedKey={selectedCategory}
             onSelectionChange={(key) =>
               setSelectedCategory(key as MedicalTemplate["category"])
@@ -2465,7 +2600,7 @@ const SettingsScreen = () => {
               <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p className="text-xs leading-relaxed text-default-600">
                 I modelli <strong>Terapie</strong> compaiono nella sezione{" "}
-                <strong>Conclusioni e Terapie</strong> della visita. Scrivili in forma{" "}
+                <strong>Conclusioni e terapia</strong> della visita. Scrivili in forma{" "}
                 <strong>discorsiva</strong> (indicazioni e raccomandazioni). Per
                 l&apos;elenco dei farmaci da stampare in ricetta usa la scheda{" "}
                 <strong>Ricette</strong>.
@@ -2478,7 +2613,7 @@ const SettingsScreen = () => {
               <Pill className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p className="text-xs leading-relaxed text-default-600">
                 I modelli <strong>Ricette</strong> compaiono nel menu{" "}
-                <strong>Modelli Ricetta</strong> quando emetti una ricetta. Scrivi un
+                <strong>Modelli</strong> quando emetti una ricetta. Scrivi un
                 farmaco per riga (<em>Nome: posologia</em>) per compilare la ricetta
                 con un clic.
               </p>
@@ -2493,7 +2628,7 @@ const SettingsScreen = () => {
               <p className="text-xs leading-relaxed text-default-500">
                 <span className="font-semibold text-default-700">Nome in menu</span>{" "}
                 → titolo nel menu{" "}
-                <span className="text-default-400">·</span>{" "}
+                <span className="text-default-500">·</span>{" "}
                 <span className="font-semibold text-default-700">Contenuto</span>{" "}
                 → testo inserito nel referto
               </p>
@@ -2508,12 +2643,12 @@ const SettingsScreen = () => {
               Nuovo modello
             </Button>
           </div>
-          <Table aria-label="Tabella Modelli">
+          <Table aria-label="Tabella dei modelli">
             <TableHeader>
               <TableColumn>Nome in menu</TableColumn>
               <TableColumn>Sezione</TableColumn>
               <TableColumn>Contenuto inserito</TableColumn>
-              <TableColumn>AZIONI</TableColumn>
+              <TableColumn><span className="sr-only">Azioni</span></TableColumn>
             </TableHeader>
             <TableBody
               emptyContent={"Nessun modello trovato per questa categoria."}
@@ -2526,9 +2661,11 @@ const SettingsScreen = () => {
                       {template.label}
                     </TableCell>
                     <TableCell>
-                      <Chip size="sm" variant="flat" className="capitalize">
-                        {template.section === "esameObiettivo"
-                          ? "Visita / Eco Office"
+                      {/* Maiuscola solo all'inizio: la classe `capitalize` la
+                          metteva su ogni parola ("Esame Obiettivo"). */}
+                      <Chip size="sm" variant="flat">
+                        {maiuscolaIniziale(template.section === "esameObiettivo"
+                          ? "Esame obiettivo"
                           : template.section === "prestazione"
                             ? "Anamnesi"
                             : template.section === "conclusioni"
@@ -2539,14 +2676,14 @@ const SettingsScreen = () => {
                                   ? "Terapia"
                                   : template.section === "generale" && template.category === "certificato"
                                     ? "Testo"
-                                    : template.section}
+                                    : template.section)}
                       </Chip>
                     </TableCell>
                     <TableCell>
                       <div className="max-w-xs truncate text-default-500">
                         {template.text}
                         {template.note && (
-                          <span className="block text-xs italic text-default-400">
+                          <span className="block text-xs italic text-default-500">
                             {template.note}
                           </span>
                         )}
@@ -2558,15 +2695,22 @@ const SettingsScreen = () => {
                           isIconOnly
                           size="sm"
                           variant="light"
+                          aria-label="Modifica modello"
+                          title="Modifica modello"
                           onPress={() => handleEditTemplate(template)}
                         >
                           <Edit size={16} />
                         </Button>
+                        {/* Grigio come la matita, rosso solo al passaggio:
+                            un cestino rosso su ogni riga era la cosa piu'
+                            vistosa della tabella. La conferma resta. */}
                         <Button
                           isIconOnly
                           size="sm"
                           variant="light"
-                          color="danger"
+                          aria-label="Elimina modello"
+                          title="Elimina modello"
+                          className="text-default-500 hover:text-danger"
                           onPress={() => requestDeleteTemplate(template)}
                         >
                           <Trash2 size={16} />
@@ -2581,20 +2725,22 @@ const SettingsScreen = () => {
       </Card>
 
       {/* Info App */}
-      <Card className="shadow-lg">
+      <Card id="impostazioni-info" className="shadow-lg scroll-mt-32">
         <CardBody>
           <div className="text-center space-y-2">
             <h3 className="font-semibold text-gray-900">Corioli Cardiologia Desktop</h3>
             <div className="flex justify-center gap-4 text-sm text-gray-600 flex-wrap">
               <span>Versione {appVersion || "—"}</span>
               <span>•</span>
-              <span>{isOnline ? "Modalità Online" : "Modalità Offline"}</span>
+              <span>{isOnline ? "Modalità online" : "Modalità offline"}</span>
               <span>•</span>
-              <span>Dati Locali</span>
+              <span>Dati locali</span>
             </div>
           </div>
         </CardBody>
       </Card>
+        </div>
+      </div>
 
       <AppModal
         isOpen={mergeConflictOpen}
@@ -2757,7 +2903,7 @@ const SettingsScreen = () => {
                                   aria-label={`Sposta su ${meta.label}`}
                                   disabled={idx === 0}
                                   onClick={() => moveAnamnesiCampo(tipo, key, -1)}
-                                  className="text-default-400 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  className="text-default-500 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                 >
                                   <ChevronUp size={14} />
                                 </button>
@@ -2766,12 +2912,12 @@ const SettingsScreen = () => {
                                   aria-label={`Sposta giù ${meta.label}`}
                                   disabled={idx === enabled.length - 1}
                                   onClick={() => moveAnamnesiCampo(tipo, key, 1)}
-                                  className="text-default-400 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  className="text-default-500 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                 >
                                   <ChevronDown size={14} />
                                 </button>
                               </div>
-                              <span className="text-[11px] font-semibold text-default-400 w-7 shrink-0 tabular-nums">
+                              <span className="text-[11px] font-semibold text-default-500 w-7 shrink-0 tabular-nums">
                                 1.{idx + 1}
                               </span>
                               <Input
@@ -2795,7 +2941,7 @@ const SettingsScreen = () => {
                                 aria-label={`Elimina ${meta.label}`}
                                 title="Elimina sezione"
                                 onClick={() => removeAnamnesiSezione(tipo, key)}
-                                className="text-default-400 hover:text-danger"
+                                className="text-default-500 hover:text-danger"
                               >
                                 <Trash2 size={15} />
                               </button>
@@ -2945,7 +3091,7 @@ const SettingsScreen = () => {
                 <div className="grid grid-cols-2 gap-2">
                   <Input
                     size="sm"
-                    label="Nome Ambulatorio"
+                    label="Nome dell'ambulatorio"
                     value={editAmbulatorio.nome}
                     onValueChange={(value) =>
                       setEditAmbulatorio((prev) =>
@@ -2953,7 +3099,7 @@ const SettingsScreen = () => {
                       )
                     }
                     variant="bordered"
-                    placeholder="Studio Medico"
+                    placeholder=" "
                   />
                   <Input
                     size="sm"
@@ -2965,7 +3111,7 @@ const SettingsScreen = () => {
                       )
                     }
                     variant="bordered"
-                    placeholder="0612345678"
+                    placeholder=" "
                   />
                 </div>
                 <Input
@@ -2978,7 +3124,7 @@ const SettingsScreen = () => {
                     )
                   }
                   variant="bordered"
-                  placeholder="Via Roma 10"
+                  placeholder=" "
                 />
                 <div className="grid grid-cols-3 gap-2">
                   <Input
@@ -2991,7 +3137,7 @@ const SettingsScreen = () => {
                       )
                     }
                     variant="bordered"
-                    placeholder="Roma"
+                    placeholder=" "
                   />
                   <Input
                     size="sm"
@@ -3003,7 +3149,7 @@ const SettingsScreen = () => {
                       )
                     }
                     variant="bordered"
-                    placeholder="00100"
+                    placeholder=" "
                   />
                   <Input
                     size="sm"

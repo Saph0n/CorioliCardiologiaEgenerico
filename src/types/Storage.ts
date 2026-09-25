@@ -730,8 +730,13 @@ export interface Ambulatorio {
   isPrimario: boolean;
 }
 
+/** Come il medico vuole essere chiamato, nel saluto e nell'intestazione dei PDF. */
+export type TitoloMedico = "Dott." | "Dott.ssa" | "Prof." | "Prof.ssa";
+
 export interface Doctor {
   id: string;
+  /** Assente nei profili creati prima del campo: vale "Dott.". */
+  titolo?: TitoloMedico;
   nome: string;
   cognome: string;
   email: string;

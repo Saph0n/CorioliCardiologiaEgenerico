@@ -8,7 +8,6 @@ import {
   NavbarMenuItem,
   NavbarMenuToggle,
   Tooltip,
-  Button,
   Spinner,
   Badge,
   Dropdown,
@@ -18,29 +17,47 @@ import {
   DropdownSection,
 } from "@nextui-org/react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
-import { DoctorService } from "../services/OfflineServices";
+import { DoctorService, PreferenceService } from "../services/OfflineServices";
 import type { Ambulatorio } from "../types/Storage";
-import { RefreshCw } from "lucide-react";
+import { Search } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
 import { fetchClientUnreadCount } from "../services/SupportChatService";
 import { useUnsavedChanges } from "../contexts/UnsavedChangesContext";
+import { useCheckPatientModal } from "../contexts/CheckPatientModalContext";
 
 const SUPPORT_UNREAD_POLL_MS = 45_000;
 
+/**
+ * Voci principali. "Documenti" (corsi ECM e carte personali del medico) non
+ * c'e' piu': accanto a Pazienti e Visite prometteva i documenti dei pazienti,
+ * che stanno invece nella loro scheda. Si apre da Impostazioni.
+ */
 const menuItems = [
   { label: "Dashboard", href: "/" },
   { label: "Pazienti", href: "/pazienti" },
   { label: "Visite", href: "/visite" },
-  { label: "Documenti", href: "/documents" },
   { label: "Impostazioni", href: "/settings" },
   { label: "Aiuto", href: "/help" },
 ];
+
+const SU_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+
+/**
+ * "Gruppi" compare fra le voci solo con i gruppi di ricerca accesi in
+ * Impostazioni: prima, accesi, si raggiungevano soltanto dalla card in
+ * dashboard o dai chip nella scheda di un paziente.
+ */
+function vociMenu(gruppiAbilitati: boolean) {
+  if (!gruppiAbilitati) return menuItems;
+  return [...menuItems.slice(0, 3), { label: "Gruppi", href: "/gruppi-ricerca" }, ...menuItems.slice(3)];
+}
 
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { requestNavigation } = useUnsavedChanges();
+  const { openPatientSearch } = useCheckPatientModal();
 
   const goTo = (href: string) => {
     if (requestNavigation(href)) navigate(href);
@@ -56,6 +73,21 @@ export default function AppNavbar() {
   const [ambulatori, setAmbulatori] = useState<Ambulatorio[]>([]);
   const [switchingAmbulatorio, setSwitchingAmbulatorio] = useState(false);
   const [supportUnread, setSupportUnread] = useState(0);
+  const [gruppiAbilitati, setGruppiAbilitati] = useState(false);
+
+  // Si rilegge a ogni cambio di pagina: la preferenza si accende e si spegne
+  // da Impostazioni, e tornando da li' la voce deve esserci gia'.
+  useEffect(() => {
+    let attivo = true;
+    PreferenceService.getPreferences()
+      .then((prefs) => {
+        if (attivo) setGruppiAbilitati(Boolean(prefs?.gruppiRicercaEnabled));
+      })
+      .catch(() => {});
+    return () => {
+      attivo = false;
+    };
+  }, [location.pathname]);
 
   // Sede attualmente in uso: la primaria, con fallback alla prima (coerente col PDF/referto).
   const activeAmbulatorio =
@@ -175,10 +207,6 @@ export default function AppNavbar() {
     };
   }, [location.pathname]);
 
-  const handleReloadApp = () => {
-    window.location.reload();
-  };
-
   return (
     <Navbar
       classNames={{
@@ -193,7 +221,7 @@ export default function AppNavbar() {
         justify="center"
       >
         {/* Toggle */}
-        <NavbarMenuToggle className="text-default-400 ml-2 md:hidden" />
+        <NavbarMenuToggle className="text-default-500 ml-2 md:hidden" />
 
         {/* Logo brand */}
         <NavbarBrand className="mr-4 min-w-0 max-w-[min(56vw,260px)] shrink md:max-w-[220px] lg:max-w-[260px]">
@@ -215,13 +243,17 @@ export default function AppNavbar() {
         </NavbarBrand>
 
         {/* Navigation Items */}
-        {menuItems.map((item) => {
-          const isActive = location.pathname === item.href;
+        {vociMenu(gruppiAbilitati).map((item) => {
+          const isActive =
+            item.href === "/"
+              ? location.pathname === "/"
+              : location.pathname.startsWith(item.href);
           const link = (
             <Link
               to={item.href}
               onClick={(e) => onGuardedNavClick(e, item.href)}
-              className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-500"} hover:text-foreground transition-colors`}
+              aria-current={isActive ? "page" : undefined}
+              className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-600"} hover:text-foreground transition-colors`}
             >
               {item.label}
             </Link>
@@ -238,6 +270,21 @@ export default function AppNavbar() {
             </NavbarItem>
           );
         })}
+
+        {/* Ricerca del paziente da qualunque pagina (Ctrl+K). Prima per
+            trovare un paziente bisognava passare dall'elenco. */}
+        <NavbarItem className="hidden md:flex ml-2">
+          <button
+            type="button"
+            onClick={openPatientSearch}
+            className="navbar-search"
+            aria-label="Cerca paziente"
+          >
+            <Search size={15} aria-hidden />
+            <span>Cerca paziente</span>
+            <kbd className="corioli-kbd">{SU_MAC ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
+        </NavbarItem>
 
         {/* Ambulatorio in uso - menu a tendina per cambiarlo al volo (senza perdere dati) */}
         <NavbarItem className="hidden sm:flex ml-2 pl-2 border-l border-default-200">
@@ -314,25 +361,11 @@ export default function AppNavbar() {
           )}
         </NavbarItem>
 
-        <NavbarItem className="hidden md:flex">
-          <Tooltip content="Ricarica l'app (utile dopo import/backup)">
-            <Button
-              isIconOnly
-              size="sm"
-              variant="flat"
-              color="default"
-              aria-label="Ricarica app"
-              onPress={handleReloadApp}
-            >
-              <RefreshCw size={14} />
-            </Button>
-          </Tooltip>
-        </NavbarItem>
       </NavbarContent>
 
       {/* Mobile Menu */}
       <NavbarMenu
-        className="rounded-large border-small border-default-200 bg-white/95 shadow-medium top-[calc(var(--navbar-height)/2)] mx-auto mt-16 max-h-[40vh] max-w-[80vw] py-6 backdrop-blur-md backdrop-saturate-150"
+        className="rounded-large border-small border-default-200 bg-white/95 shadow-medium top-[calc(var(--navbar-height)_/_2_+_var(--barra-finestra))] mx-auto mt-16 max-h-[40vh] max-w-[80vw] py-6 backdrop-blur-md backdrop-saturate-150"
         motionProps={{
           initial: { opacity: 0, y: -20 },
           animate: { opacity: 1, y: 0 },
@@ -346,7 +379,7 @@ export default function AppNavbar() {
         <NavbarMenuItem className="pt-2 pb-3 border-b border-default-100">
           {activeAmbulatorio ? (
             <div className="flex w-full flex-col gap-1">
-              <span className="text-default-400 text-xs font-medium uppercase tracking-wide">
+              <span className="text-default-500 text-xs font-medium uppercase tracking-wide">
                 Sede in uso
               </span>
               {ambulatori.map((amb) => {
@@ -394,14 +427,14 @@ export default function AppNavbar() {
         <NavbarMenuItem className="pb-3 border-b border-default-100">
           <button
             type="button"
-            className="flex items-center gap-2 text-default-500 text-sm w-full text-left hover:text-foreground"
-            onClick={handleReloadApp}
+            className="flex items-center gap-2 text-default-600 text-sm w-full text-left hover:text-foreground"
+            onClick={openPatientSearch}
           >
-            <RefreshCw size={16} className="flex-shrink-0" />
-            <span>Ricarica app</span>
+            <Search size={16} className="flex-shrink-0" />
+            <span>Cerca paziente</span>
           </button>
         </NavbarMenuItem>
-        {menuItems.map((item, index) => (
+        {vociMenu(gruppiAbilitati).map((item, index) => (
           <NavbarMenuItem key={`${item.label}-${index}`}>
             <Link
               to={item.href}

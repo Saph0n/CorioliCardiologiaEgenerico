@@ -5,10 +5,9 @@
  *  PERCHE' ESISTE
  *
  *  I modelli di referto erano scritti con l'apostrofo al posto dell'accento
- *  ("attivita' fisica"). Non serviva: il PDF converte comunque gli accenti in
- *  ASCII per conto suo (vedi `san()` in `PdfService`), perche' il font standard
- *  di jsPDF non li disegna. La stampa quindi non cambia; cambia solo cio' che
- *  si legge nella maschera, dove "attivita'" e' semplicemente scritto male.
+ *  ("attivita' fisica"). Non serviva: Helvetica, il font standard di jsPDF,
+ *  disegna le vocali accentate (vedi `san()` in `PdfService`). Con l'apostrofo
+ *  "attivita'" era scritto male sia nella maschera sia nel referto stampato.
  *
  *  La conversione tocca **solo la tipografia**, mai il contenuto: per questo si
  *  puo' applicare anche a un modello che il medico ha modificato.

@@ -22,3 +22,12 @@ import { Modal, type ModalProps } from "@nextui-org/react";
 export function AppModal(props: ModalProps) {
   return <Modal disableAnimation {...props} />;
 }
+
+/**
+ * `classNames.base` dei modal a tutto schermo (`size="full"`): partono sotto la
+ * barra del titolo, se no la X del modal finisce proprio sotto il pulsante che
+ * chiude la finestra. I `!` servono perche' la variante "full" di NextUI fissa
+ * margini e altezze con classi responsive che altrimenti vincono.
+ */
+export const MODAL_SCHERMO_INTERO =
+  "m-0 !mt-barra max-w-[100vw] !h-finestra !min-h-finestra !max-h-finestra rounded-none";

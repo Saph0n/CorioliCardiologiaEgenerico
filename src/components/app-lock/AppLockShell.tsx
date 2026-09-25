@@ -112,7 +112,7 @@ export default function AppLockShell({
       className={
         overlay
           ? "min-h-full flex items-center justify-center p-6"
-          : "min-h-screen corioli-auth-bg flex items-center justify-center p-6"
+          : "min-h-finestra corioli-auth-bg flex items-center justify-center p-6"
       }
     >
       {card}
@@ -121,7 +121,7 @@ export default function AppLockShell({
 
   if (overlay) {
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto corioli-auth-bg">{centered}</div>
+      <div className="fixed inset-x-0 bottom-0 top-barra z-50 overflow-y-auto corioli-auth-bg">{centered}</div>
     );
   }
 

@@ -624,10 +624,10 @@ class LocalStorageFallbackService implements StorageService {
 
     // Accenti nei modelli gia' in archivio: migrazione una-tantum.
     //
-    // I predefiniti erano scritti con l'apostrofo ASCII ("attivita'"), forma che
-    // serviva alla stampa e che il PDF produce comunque da solo (vedi `san()`
-    // in PdfService). A schermo pero' si legge male, e i modelli seminati prima
-    // di questa correzione conservano la vecchia grafia.
+    // I predefiniti erano scritti con l'apostrofo ASCII ("attivita'"), nella
+    // convinzione che il PDF non sapesse stampare gli accenti (li stampa, vedi
+    // `san()` in PdfService). Si legge male a schermo e sul foglio, e i modelli
+    // seminati prima di questa correzione conservano la vecchia grafia.
     //
     // Cambia **solo la tipografia**, mai il contenuto: per questo si applica
     // anche ai modelli che il medico ha modificato, senza sovrascriverne il

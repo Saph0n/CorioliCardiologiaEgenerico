@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   Button,
   Card,
@@ -11,7 +11,7 @@ import {
   Tabs,
   Tooltip,
 } from "@nextui-org/react";
-import { ChevronDown, ChevronRight, Info } from "lucide-react";
+import { ChevronDown, ChevronRight, Info, LineChart } from "lucide-react";
 import type { CalcOutcome } from "../../utils/cardioCalcs";
 import type { LivelloSegnale, Segnale } from "../../utils/rangeClinici";
 import type { EsitoTarget } from "../../utils/rischioCv";
@@ -24,6 +24,7 @@ import {
 } from "../../utils/confrontoMisure";
 import { PannelloAndamento, Sparkline } from "./GraficoAndamento";
 import { numeroDaBozza } from "../../utils/bozzeMisure";
+import type { SuggerimentoUnita } from "../../utils/unitaEsami";
 
 /** Data di oggi in `aaaa-mm-gg`, ripiego quando la visita non passa la sua. */
 function oggiIso(): string {
@@ -48,7 +49,7 @@ const BORDO_SEGNALE: Record<LivelloSegnale, string> = {
  * Il 700 sale a 5,2 restando riconoscibile come giallo di avviso.
  */
 const TESTO_SEGNALE: Record<LivelloSegnale, string> = {
-  "nella-norma": "text-default-400",
+  "nella-norma": "text-default-500",
   attenzione: "text-warning-700",
   alterato: "text-danger-600",
 };
@@ -80,7 +81,7 @@ function RigaPrecedente({
 
   return (
     <Tooltip content={descriviPrecedente(precedente)} placement="bottom" delay={300}>
-      <span className="inline-flex min-w-0 items-center gap-1 text-[10px] leading-tight text-default-400 cursor-help">
+      <span className="inline-flex min-w-0 items-center gap-1 text-[11px] leading-tight text-default-500 cursor-help">
         <span className="font-medium text-default-500">
           prec. {String(precedente.valore).replace(".", ",")}
         </span>
@@ -99,12 +100,40 @@ function RigaPrecedente({
   );
 }
 
+/** "Sembra in µmol/L: in mg/dL fa 1,02", con il pulsante che converte. */
+function AvvisoUnita({
+  sospetto,
+  unita,
+  onUsa,
+}: {
+  sospetto: SuggerimentoUnita;
+  unita?: string;
+  onUsa?: (valore: number) => void;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-tight text-warning-700">
+      <span>
+        Sembra in {sospetto.unita}: in {unita} fa {sospetto.testo}
+      </span>
+      {onUsa && (
+        <button
+          type="button"
+          onClick={() => onUsa(sospetto.valore)}
+          className="rounded border border-warning-300 bg-warning-50 px-1.5 py-px font-medium text-warning-800 transition-colors hover:bg-warning-100"
+        >
+          Usa {sospetto.testo}
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** Riga sotto il campo con il motivo della segnalazione. */
 function RigaSegnale({ segnale }: { segnale: Segnale }) {
   if (segnale.livello === "nella-norma") return null;
   return (
     <span
-      className={`inline-flex items-start gap-1 text-[10px] leading-tight ${
+      className={`inline-flex items-start gap-1 text-[11px] leading-tight ${
         TESTO_SEGNALE[segnale.livello]
       }`}
     >
@@ -145,8 +174,13 @@ function BottoneAndamento({
   return (
     <Popover placement="right" showArrow>
       <PopoverTrigger>
+        {/* Fuori dal Tab: fra un campo e l'altro il fuoco finiva qui, e chi
+            copia i valori dal foglio ("186, Tab, 46, Tab…") perdeva il
+            secondo numero e faceva scivolare tutti gli altri di una riga.
+            Il grafico si apre col mouse. */}
         <button
           type="button"
+          tabIndex={-1}
           className="block w-full max-w-full rounded opacity-80 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
           aria-label={`Andamento di ${titolo} nel tempo`}
         >
@@ -196,6 +230,8 @@ export function MisuraInput({
   serie,
   dataCorrente,
   riferimento,
+  unitaSospetta,
+  onUsaConversione,
 }: {
   label: string;
   value: number | undefined;
@@ -213,6 +249,9 @@ export function MisuraInput({
   dataCorrente?: string;
   /** Intervallo di riferimento da ombreggiare nel grafico esteso. */
   riferimento?: { min?: number; max?: number };
+  /** Il numero sembra in un'altra unita' (vedi `utils/unitaEsami`). */
+  unitaSospetta?: SuggerimentoUnita | null;
+  onUsaConversione?: (valore: number) => void;
 }) {
   const pattern = decimals ? /^\d*[.,]?\d*$/ : /^\d*$/;
   const shown = draft ?? (value == null ? "" : String(value).replace(".", ","));
@@ -225,9 +264,13 @@ export function MisuraInput({
     storico.length + (value != null && Number.isFinite(value) ? 1 : 0) >= 2;
 
   const note =
-    precedente || livello !== "nella-norma" || mostraAndamento ? (
+    unitaSospetta || precedente || livello !== "nella-norma" || mostraAndamento ? (
       <span className="flex min-w-0 flex-col gap-0.5 pt-0.5">
-        {segnale && <RigaSegnale segnale={segnale} />}
+        {unitaSospetta ? (
+          <AvvisoUnita sospetto={unitaSospetta} unita={unit} onUsa={onUsaConversione} />
+        ) : (
+          segnale && <RigaSegnale segnale={segnale} />
+        )}
         {precedente && <RigaPrecedente precedente={precedente} corrente={value} />}
         {/* Il grafico sta su una riga sua: accanto al valore precedente non
             entrerebbe nella colonna stretta del laboratorio. */}
@@ -250,16 +293,19 @@ export function MisuraInput({
       size="sm"
       variant="bordered"
       labelPlacement="outside"
-      placeholder={placeholder}
+      // Con `outside` NextUI tiene l'etichetta sopra solo se il campo ha un
+      // valore o un segnaposto: i campi vuoti la mostravano dentro, e nella
+      // griglia dell'eco le righe uscivano sfalsate fra misure compilate e no.
+      placeholder={placeholder ?? " "}
       value={shown}
       description={note}
       classNames={{
-        inputWrapper: BORDO_SEGNALE[livello],
+        inputWrapper: unitaSospetta ? BORDO_SEGNALE.attenzione : BORDO_SEGNALE[livello],
         description: "m-0",
       }}
       endContent={
         unit ? (
-          <span className="text-[11px] text-default-400 whitespace-nowrap">{unit}</span>
+          <span className="text-[11px] text-default-500 whitespace-nowrap">{unit}</span>
         ) : undefined
       }
       onFocus={() => onDraftChange(shown)}
@@ -272,6 +318,244 @@ export function MisuraInput({
         onDraftChange(v);
       }}
     />
+  );
+}
+
+/**
+ * Tabella di trascrizione degli esami: nome, valore di oggi, precedente.
+ *
+ * Nasce dagli errori di inserimento. Il laboratorio stava nella colonna stretta
+ * dei parametri, e in 354px ogni disposizione confondeva: a due colonne il
+ * precedente e il grafico sotto a ogni campo allungavano la colonna per
+ * schermate; a righe "prec. 215" finiva attaccato al campo col 220 e non si
+ * capiva quale fosse il valore di oggi. Qui le colonne hanno un'intestazione
+ * ("Oggi", "Prec."), il precedente sta nella sua colonna in grigio e il campo
+ * e' l'unica cosa che si scrive. I figli sono `CampoEsame`.
+ *
+ * Invio passa al valore successivo, come il Tab: chi copia dal foglio con il
+ * tastierino numerico non deve staccare la mano.
+ */
+export function TabellaEsami({
+  intestazione = true,
+  children,
+}: {
+  /** Falso per il secondo pannello di una colonna: "Oggi" e "Prec." bastano una volta. */
+  intestazione?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-trascrizione
+      className="grid grid-cols-[minmax(0,1fr)_6.5rem_3.75rem] items-center gap-x-3 gap-y-1"
+    >
+      {intestazione && (
+        <>
+          <span />
+          <span className="pr-2 text-right text-[11px] font-medium text-default-500">Oggi</span>
+          <span className="text-right text-[11px] font-medium text-default-500">Prec.</span>
+        </>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/** Invio in un campo della tabella: fuoco al campo dopo, in qualunque tabella. */
+function vaiAlCampoSuccessivo(da: HTMLElement) {
+  const contenitore = da.closest("[data-trascrizione-finestra]") ?? da.closest("[data-trascrizione]");
+  if (!contenitore) return;
+  const campi = Array.from(
+    contenitore.querySelectorAll<HTMLInputElement>("input:not([type=hidden]):not([disabled])"),
+  );
+  const prossimo = campi[campi.indexOf(da as HTMLInputElement) + 1];
+  if (!prossimo) {
+    // Dopo l'ultimo valore, Invio porta a "Fatto": un altro Invio chiude.
+    document.querySelector<HTMLElement>("[data-fine-trascrizione]")?.focus();
+    return;
+  }
+  prossimo.focus();
+  prossimo.select();
+}
+
+/**
+ * Valore precedente nella sua colonna. Senza frecce: il confronto si fa a
+ * occhio fra le due colonne, e una freccia accanto al numero vecchio si
+ * leggeva come la direzione di quel numero. Con due rilevazioni o piu' un
+ * clic apre il grafico dell'andamento (fuori dal Tab, come altrove).
+ */
+function PrecedenteCella({
+  titolo,
+  unita,
+  precedente,
+  corrente,
+  serie,
+  dataCorrente,
+  riferimento,
+}: {
+  titolo: string;
+  unita?: string;
+  precedente?: ValorePrecedente;
+  corrente?: number;
+  serie?: PuntoStorico[];
+  dataCorrente?: string;
+  riferimento?: { min?: number; max?: number };
+}) {
+  if (!precedente) {
+    return <span className="text-right text-xs text-default-300">—</span>;
+  }
+  const storico = serie ?? [];
+  const conGrafico =
+    storico.length + (corrente != null && Number.isFinite(corrente) ? 1 : 0) >= 2;
+  const numero = (
+    <span className="tabular-nums">{String(precedente.valore).replace(".", ",")}</span>
+  );
+
+  if (!conGrafico) {
+    return (
+      <Tooltip content={descriviPrecedente(precedente)} placement="left" delay={300}>
+        <span className="cursor-help text-right text-xs text-default-500">{numero}</span>
+      </Tooltip>
+    );
+  }
+  return (
+    <Popover placement="left" showArrow>
+      <PopoverTrigger>
+        <button
+          type="button"
+          tabIndex={-1}
+          title={descriviPrecedente(precedente)}
+          aria-label={`Andamento di ${titolo} nel tempo`}
+          className="inline-flex items-center justify-end gap-1 justify-self-end rounded px-1 text-xs text-default-500 transition-colors hover:bg-default-100 hover:text-default-700"
+        >
+          {numero}
+          <LineChart size={12} aria-hidden className="text-default-400" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent>
+        <PannelloAndamento
+          titolo={titolo}
+          unita={unita}
+          serie={storico}
+          corrente={corrente}
+          dataCorrente={dataCorrente ?? oggiIso()}
+          riferimento={riferimento}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Una riga di `TabellaEsami`: tre celle, piu' la nota sotto se il valore e' fuori soglia. */
+export function CampoEsame({
+  nome,
+  label,
+  value,
+  onValueChange,
+  unit,
+  decimals = true,
+  draft,
+  onDraftChange,
+  precedente,
+  segnale,
+  serie,
+  dataCorrente,
+  riferimento,
+  unitaSospetta,
+  onUsaConversione,
+}: {
+  /** Per ritrovare il campo e portarci il fuoco (`input[name]`). */
+  nome: string;
+  label: string;
+  value: number | undefined;
+  onValueChange: (value: number | undefined) => void;
+  unit?: string;
+  decimals?: boolean;
+  draft: string | null;
+  onDraftChange: (draft: string | null) => void;
+  precedente?: ValorePrecedente;
+  segnale?: Segnale;
+  serie?: PuntoStorico[];
+  dataCorrente?: string;
+  riferimento?: { min?: number; max?: number };
+  /** Il numero sembra in un'altra unita' (vedi `utils/unitaEsami`). */
+  unitaSospetta?: SuggerimentoUnita | null;
+  onUsaConversione?: (valore: number) => void;
+}) {
+  const id = useId();
+  const pattern = decimals ? /^\d*[.,]?\d*$/ : /^\d*$/;
+  const shown = draft ?? (value == null ? "" : String(value).replace(".", ","));
+  const livello = segnale?.livello ?? "nella-norma";
+
+  return (
+    <>
+      <label htmlFor={id} className="min-w-0 text-[13px] leading-tight text-default-700">
+        {label}
+      </label>
+      <Input
+        id={id}
+        name={nome}
+        type="text"
+        inputMode={decimals ? "decimal" : "numeric"}
+        size="sm"
+        variant="bordered"
+        aria-label={label}
+        value={shown}
+        classNames={{
+          inputWrapper: `h-8 min-h-8 ${
+            unitaSospetta ? BORDO_SEGNALE.attenzione : BORDO_SEGNALE[livello]
+          }`,
+          input: "text-right tabular-nums text-sm font-medium",
+        }}
+        endContent={
+          unit ? (
+            <span className="pl-1 text-[11px] text-default-500 whitespace-nowrap">{unit}</span>
+          ) : undefined
+        }
+        onFocus={() => onDraftChange(shown)}
+        onBlur={() => {
+          if (draft !== null) onValueChange(numeroDaBozza(draft));
+          onDraftChange(null);
+        }}
+        onValueChange={(v) => {
+          if (v !== "" && !pattern.test(v)) return;
+          onDraftChange(v);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            vaiAlCampoSuccessivo(e.target as HTMLElement);
+          } else {
+            // react-aria ferma la propagazione dei tasti: senza, Ctrl+S dal
+            // campo non arriverebbe alla pagina.
+            if ("continuePropagation" in e) e.continuePropagation();
+          }
+        }}
+      />
+      <PrecedenteCella
+        titolo={label}
+        unita={unit}
+        precedente={precedente}
+        corrente={value}
+        serie={serie}
+        dataCorrente={dataCorrente}
+        riferimento={riferimento}
+      />
+      {/* L'unita' sospetta viene prima del semaforo clinico: un valore
+          scritto in un'altra unita' fa scattare soglie che non c'entrano
+          (90 di creatinina, eGFR zero) e il motivo vero e' l'unita'. */}
+      {unitaSospetta ? (
+        <div className="col-span-3 -mt-0.5 mb-0.5">
+          <AvvisoUnita sospetto={unitaSospetta} unita={unit} onUsa={onUsaConversione} />
+        </div>
+      ) : (
+        segnale &&
+        livello !== "nella-norma" && (
+          <div className="col-span-3 -mt-0.5 mb-0.5">
+            <RigaSegnale segnale={segnale} />
+          </div>
+        )
+      )}
+    </>
   );
 }
 
@@ -316,7 +600,7 @@ export function PrecedenteTesto({
   const testo = descrivi ? descrivi(grezzo) : grezzo;
   return (
     <Tooltip content={descriviPrecedente(precedente)} placement="bottom" delay={300}>
-      <p className="text-[10px] leading-tight text-default-400 cursor-help pt-0.5">
+      <p className="text-[11px] leading-tight text-default-500 cursor-help pt-0.5">
         <span className="font-medium text-default-500">prec. {testo}</span>
         <span className="text-default-300"> · </span>
         {dataBreve(precedente.data)}
@@ -330,6 +614,10 @@ export function PrecedenteTesto({
  * scritto in automatico nei campi del referto e riporta sempre la formula di
  * provenienza. Se il calcolo non è possibile mostra il motivo, così è chiaro
  * cosa manca invece di lasciare il riquadro vuoto.
+ *
+ * Il motivo sta su una riga grigia e non in un riquadro: un riquadro alto come
+ * un risultato, per dire "servono QT e frequenza", occupava lo spazio del dato
+ * che ancora non c'e'. Il riquadro compare col risultato.
  */
 export function CalcSuggestion({
   label,
@@ -348,15 +636,14 @@ export function CalcSuggestion({
   precedente?: ValorePrecedente;
 }) {
   if (!outcome.ok) {
+    // "Servono QT..." diventa "servono QT...", ma "LDL..." resta com'e'.
+    const motivo = /^[A-ZÀ-Ý][a-zà-ÿ]/.test(outcome.reason)
+      ? outcome.reason.charAt(0).toLowerCase() + outcome.reason.slice(1)
+      : outcome.reason;
     return (
-      <div className="rounded-lg border border-dashed border-default-200 bg-default-50/60 px-2.5 py-2">
-        <p className="text-[11px] font-semibold tracking-wide text-default-400">
-          {label}
-        </p>
-        <p className="mt-0.5 text-[11px] leading-snug text-default-400">
-          {outcome.reason}
-        </p>
-      </div>
+      <p className="text-[11px] leading-snug text-default-500">
+        <span className="font-semibold">{label}</span>: {motivo}
+      </p>
     );
   }
 
@@ -458,12 +745,12 @@ export function RiquadroTarget({
         {valore ? `${valore} ${unita} · ` : ""}
         {esito.testo}
       </p>
-      <p className="mt-0.5 text-[10px] leading-tight text-default-500">
+      <p className="mt-0.5 text-[11px] leading-tight text-default-500">
         {categoria ? `${categoria} · ` : ""}ESC/EAS 2019, agg. 2025
         {esito.opzionale ? " · obiettivo dato come opzione considerabile" : ""}
       </p>
       {nota && (
-        <p className="text-[10px] leading-tight text-default-500">{nota}</p>
+        <p className="text-[11px] leading-tight text-default-500">{nota}</p>
       )}
     </div>
   );
@@ -516,7 +803,7 @@ export function RigaCalcolata({
         <span className="flex items-baseline gap-1.5 whitespace-nowrap">
           {segnale?.etichetta && (
             <span
-              className={`text-[10px] font-medium ${TESTO_SEGNALE[livello]}`}
+              className={`text-[11px] font-medium ${TESTO_SEGNALE[livello]}`}
             >
               {segnale.etichetta}
             </span>
@@ -529,7 +816,7 @@ export function RigaCalcolata({
             {display}
           </span>
           {unit ? (
-            <span className="text-[10px] font-normal text-default-500">
+            <span className="text-[11px] font-normal text-default-500">
               {unit}
             </span>
           ) : null}
@@ -552,7 +839,7 @@ export function StrisciaCalcolati({ children }: { children: ReactNode }) {
       {/* `default-500` e non `400`: a 9px il grigio più chiaro scende sotto il
           contrasto minimo leggibile, e questa didascalia dice una cosa che deve
           restare leggibile, cioè che i valori sotto non sono dosati. */}
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-default-500">
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-default-500">
         Calcolati · non entrano nel referto
       </p>
       <div className="divide-y divide-default-200/70">{children}</div>
@@ -594,7 +881,7 @@ export function GruppoCampi({
         </h4>
         <span className="flex items-center gap-1">
           {compilati > 0 && (
-            <span className="text-[10px] tabular-nums text-default-500">
+            <span className="text-[11px] tabular-nums text-default-500">
               {compilati}/{totale}
             </span>
           )}
@@ -631,12 +918,15 @@ export function InfoTabella({
   return (
     <Popover placement="bottom-end" showArrow>
       <PopoverTrigger>
+        {/* Fuori dal Tab come il grafico dell'andamento: sta fra un gruppo
+            di campi e l'altro, e il Tab ci si fermava in mezzo ai valori. */}
         <Button
           type="button"
           isIconOnly
           size="sm"
           variant="light"
           radius="full"
+          tabIndex={-1}
           aria-label={`Tabella: ${titolo}`}
           className="h-5 w-5 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
         >
@@ -673,7 +963,7 @@ export function InfoTabella({
           </tbody>
         </table>
         {nota && (
-          <p className="mt-2 text-[10px] leading-snug text-default-500">{nota}</p>
+          <p className="mt-2 text-[11px] leading-snug text-default-500">{nota}</p>
         )}
       </PopoverContent>
     </Popover>
@@ -744,11 +1034,15 @@ export function ModuloCollassabile({
   sottotitolo,
   compilato,
   visibile = true,
+  aperto: apertoDaFuori,
+  onApertoChange,
+  id,
   azione,
   children,
 }: {
   numero: string;
   titolo: string;
+  /** Dopo il titolo a modulo chiuso e vuoto, es. "non eseguito". */
   sottotitolo?: string;
   /** Il modulo contiene dati: parte aperto e lo segnala nell'intestazione. */
   compilato: boolean;
@@ -759,6 +1053,13 @@ export function ModuloCollassabile({
    * il modulo resti una riga sola da leggere nel referto.
    */
   visibile?: boolean;
+  /**
+   * Aperto o chiuso deciso dalla pagina, che deve saperlo: nella visita un
+   * esame vuoto e chiuso esce dal referto e diventa un pulsante "+".
+   */
+  aperto?: boolean;
+  onApertoChange?: (aperto: boolean) => void;
+  id?: string;
   azione?: ReactNode;
   children: ReactNode;
 }) {
@@ -766,10 +1067,12 @@ export function ModuloCollassabile({
   // da `visibile`, che cambia quando si tocca un interruttore.
   const [apertoManualmente, setApertoManualmente] = useState<boolean | null>(null);
   if (!visibile) return null;
-  const aperto = apertoManualmente ?? compilato;
+  const aperto = apertoDaFuori ?? apertoManualmente ?? compilato;
+  const cambia = (a: boolean) =>
+    onApertoChange ? onApertoChange(a) : setApertoManualmente(a);
 
   return (
-    <div className="space-y-2 relative group">
+    <div id={id} className="space-y-2 relative group scroll-mt-36">
       <div className="flex justify-between items-center gap-2">
         <Button
           type="button"
@@ -777,19 +1080,19 @@ export function ModuloCollassabile({
           size="sm"
           disableRipple
           className="h-auto min-w-0 justify-start gap-1.5 px-0 py-0.5 data-[hover=true]:bg-transparent"
-          onPress={() => setApertoManualmente(!aperto)}
+          onPress={() => cambia(!aperto)}
           aria-expanded={aperto}
         >
           {aperto ? (
-            <ChevronDown size={15} className="text-default-400" />
+            <ChevronDown size={15} className="text-default-500" />
           ) : (
-            <ChevronRight size={15} className="text-default-400" />
+            <ChevronRight size={15} className="text-default-500" />
           )}
           <span className="text-sm font-bold text-gray-700">
             {numero}. {titolo}
           </span>
-          {!aperto && sottotitolo && (
-            <span className="text-xs font-normal text-default-400">
+          {!aperto && !compilato && sottotitolo && (
+            <span className="text-xs font-normal text-default-500">
               — {sottotitolo}
             </span>
           )}
@@ -799,7 +1102,7 @@ export function ModuloCollassabile({
               variant="flat"
               classNames={{
                 base: "h-4 bg-primary-50 border border-primary-200",
-                content: "px-1.5 text-[10px] font-medium text-primary-600",
+                content: "px-1.5 text-[11px] font-medium text-primary-600",
               }}
             >
               compilato
@@ -880,9 +1183,9 @@ export function CardColonna({
             {titolo}
           </span>
           {aperto ? (
-            <ChevronDown size={16} className="shrink-0 text-default-400" />
+            <ChevronDown size={16} className="shrink-0 text-default-500" />
           ) : (
-            <ChevronRight size={16} className="shrink-0 text-default-400" />
+            <ChevronRight size={16} className="shrink-0 text-default-500" />
           )}
         </span>
         {!aperto && sintesi && (

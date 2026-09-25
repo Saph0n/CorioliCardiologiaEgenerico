@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Visit } from "../../types/Storage";
-import { pazientiDaTenereDOcchio, riempimentoBarra } from "../pazientiARischio";
+import { pazientiDaTenereDOcchio, segmentiLdl } from "../pazientiARischio";
 
 /**
  * La colonna "Da tenere d'occhio" della dashboard. Le regole che contano sono
@@ -97,7 +97,8 @@ describe("pazienti da tenere d'occhio", () => {
     expect(voci).toHaveLength(1);
     expect(voci[0].aTarget).toBe(true);
     expect(voci[0].scostamento).toBeUndefined();
-    expect(riempimentoBarra(voci[0])).toBe(0);
+    // 48 su 55: la meta' dell'obiettivo quasi piena, niente oltre la tacca.
+    expect(segmentiLdl(voci[0])).toEqual({ entro: 9, oltre: 0 });
   });
 
   it("prende la classe dall'ultima visita e l'LDL dall'ultimo prelievo", () => {
@@ -134,7 +135,7 @@ describe("pazienti da tenere d'occhio", () => {
     ]);
     expect(voci).toHaveLength(1);
     expect(voci[0].ldl).toBeUndefined();
-    expect(riempimentoBarra(voci[0])).toBe(0);
+    expect(segmentiLdl(voci[0])).toBeNull();
   });
 
   it("si ferma al numero di righe che la colonna puo' mostrare", () => {
@@ -146,5 +147,39 @@ describe("pazienti da tenere d'occhio", () => {
     );
     expect(pazientiDaTenereDOcchio(visite)).toHaveLength(5);
     expect(pazientiDaTenereDOcchio(visite, 3)).toHaveLength(3);
+  });
+});
+
+describe("segmentiLdl", () => {
+  // Obiettivo a meta' di 20 segmenti: ognuno vale un decimo dell'obiettivo.
+  it("accende la meta' dell'obiettivo e, oltre la tacca, lo scostamento", () => {
+    // Molto alto, 100 contro 55: +45 sono 8 segmenti da 5,5 mg/dL.
+    expect(segmentiLdl({ ldl: 100, obiettivo: 55, scostamento: 45 })).toEqual({
+      entro: 10,
+      oltre: 8,
+    });
+  });
+
+  it("da' almeno un segmento oltre la tacca a chi e' sopra di poco", () => {
+    // 56 contro 55: arrotondando sarebbero zero segmenti, e il disegno
+    // direbbe "a obiettivo" accanto a un +1.
+    expect(segmentiLdl({ ldl: 56, obiettivo: 55, scostamento: 1 })).toEqual({
+      entro: 10,
+      oltre: 1,
+    });
+  });
+
+  it("si ferma al doppio dell'obiettivo", () => {
+    expect(segmentiLdl({ ldl: 300, obiettivo: 70, scostamento: 230 })).toEqual({
+      entro: 10,
+      oltre: 10,
+    });
+  });
+
+  it("segue il numero di segmenti chiesto", () => {
+    expect(segmentiLdl({ ldl: 105, obiettivo: 70, scostamento: 35 }, 40)).toEqual({
+      entro: 20,
+      oltre: 10,
+    });
   });
 });

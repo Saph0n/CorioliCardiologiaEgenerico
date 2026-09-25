@@ -1,4 +1,14 @@
-import { Doctor } from "../types/Storage";
+import { Doctor, TitoloMedico } from "../types/Storage";
+
+export const TITOLI_MEDICO: TitoloMedico[] = ["Dott.", "Dott.ssa", "Prof.", "Prof.ssa"];
+
+/**
+ * Il titolo del medico, "Dott." se non l'ha scelto. Prima era scritto fisso
+ * ovunque: una cardiologa veniva salutata e stampata come "Dott.".
+ */
+export function titoloMedico(doctor?: Pick<Doctor, "titolo"> | null): TitoloMedico {
+  return doctor?.titolo ?? "Dott.";
+}
 
 type DoctorProfileLike = Pick<
   Doctor,

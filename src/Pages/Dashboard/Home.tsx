@@ -14,15 +14,14 @@ import {
   FileText,
   ChevronRight,
   Calendar,
-  LayoutDashboard,
-  TrendingUp,
-  Cake,
   FlaskConical,
   Stethoscope,
-  Clock,
   ArrowRight,
-  ClipboardList,
   HeartPulse,
+  TrendingUp,
+  ClipboardList,
+  Cake,
+  Clock,
 } from "lucide-react";
 import {
   DoctorService,
@@ -50,7 +49,8 @@ import {
   type VoceRischio,
 } from "../../utils/pazientiARischio";
 import { RigaPazienteARischio } from "../../components/cardio/RigaPazienteARischio";
-import { formatPatientDisplayName } from "../../utils/patientDisplay";
+import { formatPatientDisplayName, patientInitials } from "../../utils/patientDisplay";
+import { titoloMedico } from "../../utils/doctorProfile";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -62,9 +62,10 @@ interface GroupedRecentVisit {
   mixedTypes: boolean;
 }
 
-/** Una riga della colonna del rischio, col nome gia' risolto. */
+/** Una riga della colonna del rischio, con nome e iniziali gia' risolti. */
 interface VoceRischioConNome extends VoceRischio {
   patientName: string;
+  iniziali: string;
 }
 
 interface DashboardStats {
@@ -103,10 +104,6 @@ const calculateAge = (birthDateString: string): number => {
   return Math.max(0, age);
 };
 
-const getVisitTypeLabel = (_tipo?: Visit["tipo"]) => "Visita";
-
-const getVisitTypeColor = (_tipo?: Visit["tipo"]): "primary" => "primary";
-
 const getVisitDateKey = (dataVisita: string): string => {
   const d = new Date(dataVisita);
   if (isNaN(d.getTime())) return dataVisita.slice(0, 10);
@@ -114,14 +111,6 @@ const getVisitDateKey = (dataVisita: string): string => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-};
-
-const getVisitTypePluralPhrase = (
-  tipo: Visit["tipo"] | undefined,
-  count: number,
-): string => {
-  if (count <= 1) return getVisitTypeLabel(tipo);
-  return `${count} visite`;
 };
 
 const groupRecentVisits = (
@@ -207,13 +196,24 @@ const buildDashboardSubtitle = (
     return `Ultima visita: ${when} con ${last.patientName}`;
   }
 
-  return "Ecco il riepilogo della tua attività";
+  return oggiPerEsteso();
 };
+
+/** "mercoledì 23 settembre": sotto al saluto, al posto di una frase di rito. */
+function oggiPerEsteso(): string {
+  const oggi = new Date().toLocaleDateString("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  return oggi.charAt(0).toUpperCase() + oggi.slice(1);
+}
 
 export default function Home() {
   const navigate = useNavigate();
   const { openCheckPatientModal } = useCheckPatientModal();
   const [doctorName, setDoctorName] = useState<string | null>(null);
+  const [titolo, setTitolo] = useState<string>("Dott.");
   const [stats, setStats] = useState<DashboardStats>({
     totalPatients: 0,
     totalVisits: 0,
@@ -223,7 +223,7 @@ export default function Home() {
     averageAge: 0,
     visitsThisMonth: 0,
     patientsThisMonth: 0,
-    subtitle: "Ecco il riepilogo della tua attività",
+    subtitle: "",
   });
   const [loading, setLoading] = useState(true);
 
@@ -254,6 +254,7 @@ export default function Home() {
         ]);
 
         setDoctorName(doctor.cognome);
+        setTitolo(titoloMedico(doctor));
 
         const now = new Date();
         const thisMonthStart = new Date(
@@ -268,6 +269,18 @@ export default function Home() {
         const patientsThisMonth = patients.filter(
           (p) => p.createdAt >= thisMonthStart,
         ).length;
+
+        let validAgesCount = 0;
+        const totalAge = patients.reduce((sum, p) => {
+          const age = calculateAge(p.dataNascita);
+          if (age > 0) {
+            validAgesCount++;
+            return sum + age;
+          }
+          return sum;
+        }, 0);
+        const averageAge =
+          validAgesCount > 0 ? Math.round(totalAge / validAgesCount) : 0;
 
         const visitDatesByPatient = new Map<string, number>();
         for (const v of visits) {
@@ -309,18 +322,6 @@ export default function Home() {
         const groupedRecentVisits = groupRecentVisits(sortedVisits, 5);
         const subtitle = buildDashboardSubtitle(sortedVisits);
 
-        let validAgesCount = 0;
-        const totalAge = patients.reduce((sum, p) => {
-          const age = calculateAge(p.dataNascita);
-          if (age > 0) {
-            validAgesCount++;
-            return sum + age;
-          }
-          return sum;
-        }, 0);
-        const averageAge =
-          validAgesCount > 0 ? Math.round(totalAge / validAgesCount) : 0;
-
         // Gruppi di ricerca: il pannello compare solo se la funzione e' attiva.
         try {
           const prefs = await PreferenceService.getPreferences();
@@ -345,6 +346,7 @@ export default function Home() {
             patientName: p
               ? formatPatientDisplayName(p) ?? "Paziente senza nome"
               : "Paziente sconosciuto",
+            iniziali: p ? patientInitials(p) : "?",
           };
         });
 
@@ -372,23 +374,25 @@ export default function Home() {
     return <PageLoadingSkeleton variant="home" pathname="/" />;
   }
 
+  // "Nuova visita" e' l'azione di tutti i giorni, "Nuovo paziente" solo
+  // per chi viene la prima volta: prima il pulsante pieno era il secondo.
   const HeaderActions = (
     <div className="flex gap-3 w-full md:w-auto">
       <Button
-        color="primary"
+        variant="bordered"
         startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
-        className="font-medium shadow-md shadow-primary/20 flex-1 md:flex-none"
-      >
-        Nuovo Paziente
-      </Button>
-      <Button
-        variant="bordered"
-        startContent={<Calendar size={18} />}
-        onPress={openCheckPatientModal}
         className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
       >
-        Nuova Visita
+        Nuovo paziente
+      </Button>
+      <Button
+        color="primary"
+        startContent={<Calendar size={18} />}
+        onPress={openCheckPatientModal}
+        className="corioli-cta font-medium flex-1 md:flex-none"
+      >
+        Nuova visita
       </Button>
     </div>
   );
@@ -396,14 +400,14 @@ export default function Home() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title={`${getGreetingMessage()}, ${doctorName ? `Dott. ${doctorName}` : "Dottore"}`}
+        title={`${getGreetingMessage()}, ${doctorName ? `${titolo} ${doctorName}` : "Dottore"}`}
         subtitle={stats.subtitle}
-        icon={LayoutDashboard}
-        iconColor="primary"
         actions={HeaderActions}
       />
 
       {/* ─── KPI Cards ────────────────────────────────────────── */}
+      {/* Sostituite per un giorno da una barra di ricerca e rimesse: sono
+          piaciute di piu'. La ricerca sta nella navbar (Ctrl K). */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card
           isPressable
@@ -413,7 +417,7 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Pazienti
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
@@ -441,7 +445,7 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Visite
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
@@ -465,14 +469,14 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Età Media
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Età media
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
                   {stats.averageAge > 0 ? (
                     <>
                       {stats.averageAge}
-                      <span className="text-base font-normal text-gray-400 ml-1">
+                      <span className="text-base font-normal text-gray-500 ml-1">
                         anni
                       </span>
                     </>
@@ -480,7 +484,7 @@ export default function Home() {
                     "—"
                   )}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">dei pazienti</p>
+                <p className="text-xs text-gray-500 mt-1">dei pazienti</p>
               </div>
               <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Cake size={22} />
@@ -497,13 +501,13 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Questo Mese
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Questo mese
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
                   {stats.visitsThisMonth}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">visite effettuate</p>
+                <p className="text-xs text-gray-500 mt-1">visite effettuate</p>
               </div>
               <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Clock size={22} />
@@ -518,13 +522,13 @@ export default function Home() {
           ricerca accesi la loro card scende sulla riga sotto, invece di
           stringere le altre in quattro. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Pazienti Recenti */}
+        {/* Pazienti recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
               <Users className="text-brand-700 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
-                Pazienti Recenti
+                Pazienti recenti
               </h3>
             </div>
             <Button
@@ -542,10 +546,7 @@ export default function Home() {
               <div className="divide-y divide-gray-100">
                 {stats.recentPatients.map((patient) => {
                   const displayName = formatPatientDisplayName(patient);
-                  const avatarInitials = displayName
-                    ? `${patient.nome?.[0] ?? ""}${patient.cognome?.[0] ?? ""}`.trim() ||
-                      displayName.slice(0, 2).toUpperCase()
-                    : "?";
+                  const avatarInitials = patientInitials(patient);
 
                   return (
                     <div
@@ -566,7 +567,7 @@ export default function Home() {
                               {displayName}
                             </p>
                           ) : (
-                            <p className="text-sm text-gray-400 italic truncate">
+                            <p className="text-sm text-gray-500 italic truncate">
                               Paziente senza nome
                             </p>
                           )}
@@ -601,7 +602,7 @@ export default function Home() {
                 })}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
+              <div className="flex flex-col items-center justify-center p-8 text-gray-500 gap-2">
                 <Users size={32} className="text-gray-200" />
                 <p className="text-sm">Nessun paziente registrato.</p>
                 <Button
@@ -618,13 +619,13 @@ export default function Home() {
           </CardBody>
         </Card>
 
-        {/* Visite Recenti */}
+        {/* Visite recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
               <FileText className="text-brand-700 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
-                Visite Recenti
+                Visite recenti
               </h3>
             </div>
             <Button
@@ -658,22 +659,10 @@ export default function Home() {
                           {group.patientName}
                         </p>
                         {/* div, non p: contiene una Chip (che rende un div) ed è usato come contenitore flex */}
-                        <div className="text-xs text-gray-500 truncate flex items-center gap-1 flex-wrap">
-                          {group.mixedTypes ? (
-                            <span>{group.count} visite</span>
-                          ) : (
-                            <Chip
-                              size="sm"
-                              variant="flat"
-                              color={getVisitTypeColor(group.tipo)}
-                              className="text-xs h-5"
-                            >
-                              {getVisitTypePluralPhrase(group.tipo, group.count)}
-                            </Chip>
-                          )}
-                          <span className="text-gray-400">·</span>
-                          <span>{group.dateLabel}</span>
-                        </div>
+                        <p className="text-xs text-default-600 truncate">
+                          {group.dateLabel}
+                          {group.count > 1 && <> · {group.count} visite</>}
+                        </p>
                       </div>
                     </div>
                     <ArrowRight
@@ -684,7 +673,7 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
+              <div className="flex flex-col items-center justify-center p-8 text-gray-500 gap-2">
                 <FileText size={32} className="text-gray-200" />
                 <p className="text-sm">Nessuna visita registrata.</p>
                 <Button
@@ -709,8 +698,9 @@ export default function Home() {
             medico, qui si legge soltanto; il numero a destra e' la distanza
             dall'obiettivo di LDL, che e' quello su cui si puo' agire.
 
-            La riga sta in `RigaPazienteARischio`, la stessa della pagina che
-            si apre da "Vedi tutti": la colonna e' quell'elenco accorciato. */}
+            La riga sta in `RigaPazienteARischio`; la pagina che si apre da
+            "Vedi tutti" e' lo stesso elenco intero, in tabella, con lo stesso
+            indicatore e gli stessi colori (`IndicatoreLdl`, `COLORI_CLASSE`). */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
@@ -737,6 +727,7 @@ export default function Home() {
                     key={voce.patientId}
                     voce={voce}
                     nome={voce.patientName}
+                    iniziali={voce.iniziali}
                     onApri={() => navigate(`/patient-history/${voce.patientId}`)}
                   />
                 ))}
@@ -806,7 +797,7 @@ export default function Home() {
                           </span>
                           {g.giorniAttivo != null && (
                             <>
-                              <span className="text-gray-400">·</span>
+                              <span className="text-gray-500">·</span>
                               <span>attivo da {formattaDurata(g.giorniAttivo)}</span>
                             </>
                           )}

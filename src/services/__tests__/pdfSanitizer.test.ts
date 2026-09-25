@@ -1,44 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { san } from "../PdfService";
+import { san, sanValore } from "../PdfService";
 
 /**
- * Il font standard di jsPDF non disegna le vocali accentate: `san` le converte
- * in apostrofo prima della stampa. La mappa si e' gia' rotta una volta senza
- * che niente lo segnalasse, perche' l'errore si vede solo aprendo un PDF.
+ * Le vocali accentate stanno nella codifica WinAnsi e Helvetica le disegna:
+ * `san` le deve lasciar passare. Fino al settembre 2026 le cambiava in
+ * apostrofo e il referto usciva con "eta'" e "attivita'".
  */
 describe("sanitizer del PDF", () => {
-  it("converte le minuscole accentate", () => {
-    expect(san("attività")).toBe("attivita'");
-    expect(san("perché")).toBe("perche'");
-    expect(san("è")).toBe("e'");
-    expect(san("così")).toBe("cosi'");
-    expect(san("può")).toBe("puo'");
-    expect(san("più")).toBe("piu'");
+  it("lascia passare le vocali accentate", () => {
+    expect(san("attività")).toBe("attività");
+    expect(san("perché")).toBe("perché");
+    expect(san("è così, può, più")).toBe("è così, può, più");
+    expect(san("ATTIVITÀ È Ì Ò Ù")).toBe("ATTIVITÀ È Ì Ò Ù");
   });
 
-  it("converte le maiuscole accentate", () => {
-    expect(san("ATTIVITÀ")).toBe("ATTIVITA'");
-    expect(san("È")).toBe("E'");
-    expect(san("Ì")).toBe("I'");
-    expect(san("Ò")).toBe("O'");
-    expect(san("Ù")).toBe("U'");
+  it("le lettere accentate restano nella tabella a un byte", () => {
+    // Se una finisse sopra 0xFF jsPDF ripiegherebbe su UTF-16 per tutta la riga.
+    for (const carattere of san("àèéìòù ÀÈÉÌÒÙ")) {
+      expect(carattere.charCodeAt(0)).toBeLessThanOrEqual(0xff);
+    }
   });
 
-  it("non lascia passare nessuna vocale accentata", () => {
-    const testo = "àèéìòù ÀÈÉÌÒÙ";
-    expect(san(testo)).not.toMatch(/[àèéìòùÀÈÉÌÒÙ]/);
+  it("ricompone gli accenti di un testo UTF-8 riletto come Latin-1", () => {
+    expect(san("attivit\u00c3\u00a0 fisica")).toBe("attività fisica");
+    expect(san("perch\u00c3\u00a9")).toBe("perché");
+    expect(san("\u00c3\u00a8 cos\u00c3\u00ac")).toBe("è così");
   });
 
   it("lascia intatto il resto del testo", () => {
     expect(san("Ritmo sinusale, FC 72 bpm")).toBe("Ritmo sinusale, FC 72 bpm");
     expect(san("E/e' > 14")).toBe("E/e' > 14");
+    expect(san("eta' scritta con l'apostrofo")).toBe("eta' scritta con l'apostrofo");
     expect(san("")).toBe("");
-  });
-
-  it("converte un referto intero", () => {
-    expect(san("Attività fisica regolare, non più di così")).toBe(
-      "Attivita' fisica regolare, non piu' di cosi'",
-    );
   });
 });
 
@@ -74,5 +67,20 @@ describe("simboli fuori dalla codifica del font", () => {
     for (const carattere of san("soglia \u2265 300 \u2192 \u4e2d")) {
       expect(carattere.charCodeAt(0)).toBeLessThanOrEqual(0xff);
     }
+  });
+});
+
+describe("valori delle tabelle", () => {
+  it("usa la virgola decimale", () => {
+    expect(sanValore("1.2 mg/dL")).toBe("1,2 mg/dL");
+    expect(sanValore("27.4")).toBe("27,4");
+    expect(sanValore("0.5-1.0")).toBe("0,5-1,0");
+  });
+
+  it("non tocca date, frazioni e punti fuori dai numeri", () => {
+    expect(sanValore("12/04/1950")).toBe("12/04/1950");
+    expect(sanValore("150/85 mmHg")).toBe("150/85 mmHg");
+    expect(sanValore("CAD-RADS 3/HRP")).toBe("CAD-RADS 3/HRP");
+    expect(sanValore("Bruce. 8 min")).toBe("Bruce. 8 min");
   });
 });

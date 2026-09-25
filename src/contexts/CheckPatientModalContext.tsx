@@ -5,7 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -17,298 +17,327 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@nextui-org/react";
-import { AlertCircle, ChevronRight, Search, UserPlus } from "lucide-react";
-import { PatientService } from "../services/OfflineServices";
+import { CalendarPlus, FileText, Search, UserPlus } from "lucide-react";
+import { PatientService, VisitService } from "../services/OfflineServices";
 import type { Patient } from "../types/Storage";
 import { CodiceFiscaleValue } from "../components/CodiceFiscaleValue";
-import { isValidCodiceFiscaleFormat } from "../utils/codiceFiscale";
 import { AppModal } from "../components/AppModal";
+import { useUnsavedChanges } from "./UnsavedChangesContext";
+import { calculateAge } from "../utils/dateUtils";
+import { formatPatientDisplayName, patientInitials } from "../utils/patientDisplay";
+import {
+  cercaPazienti,
+  sembraCodiceFiscale,
+  ultimaVisitaPerPaziente,
+} from "../utils/ricercaPazienti";
+
+/**
+ * Il pannello di ricerca del paziente, in due modi.
+ *
+ * - **visita** (Ctrl+N, "Nuova visita"): scelto il paziente si apre subito la
+ *   maschera della visita. Prima si passava dalla scheda e serviva un altro
+ *   clic su "Nuova visita", mentre il paziente e' gia' seduto davanti.
+ * - **cerca** (Ctrl+K, la ricerca nella barra in alto): scelto il paziente si
+ *   apre la scheda.
+ *
+ * In entrambi la riga ha l'azione dell'altro modo come pulsante secondario.
+ * La ricerca e' per cognome, nome o codice fiscale (`cercaPazienti`): prima
+ * era solo per codice fiscale, e bastava un paziente in archivio senza CF per
+ * spegnere i suggerimenti a tutti.
+ */
+type Modo = "visita" | "cerca";
 
 type CheckPatientModalContextValue = {
   openCheckPatientModal: () => void;
+  openPatientSearch: () => void;
   closeCheckPatientModal: () => void;
 };
 
 const CheckPatientModalContext =
   createContext<CheckPatientModalContextValue | null>(null);
 
-function patientInitials(patient: Patient): string {
-  const n = (patient.nome?.[0] ?? "").toUpperCase();
-  const c = (patient.cognome?.[0] ?? "").toUpperCase();
-  return `${c}${n}` || "?";
+const MAX_RISULTATI = 8;
+const MAX_RECENTI = 5;
+
+function formattaData(iso: string): string {
+  const [a, m, g] = iso.split("-");
+  return a && m && g ? `${g}/${m}/${a}` : iso;
 }
 
-function filterSuggestions(patients: Patient[], query: string): Patient[] {
-  if (
-    query.length < 4 ||
-    patients.some((p) => p.codiceFiscale === undefined)
-  ) {
-    return [];
-  }
-
-  const startsWithMatches = patients.filter(
-    (p) => p.codiceFiscale?.toUpperCase().startsWith(query) ?? false,
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return Boolean(
+    el &&
+      (el.tagName === "INPUT" ||
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "SELECT" ||
+        el.isContentEditable ||
+        el.getAttribute("role") === "textbox"),
   );
-
-  const includesMatches = patients.filter(
-    (p) =>
-      !(p.codiceFiscale?.toUpperCase().startsWith(query) ?? false) &&
-      (p.codiceFiscale?.toUpperCase().includes(query) ?? false),
-  );
-
-  return [...startsWithMatches, ...includesMatches].slice(0, 6);
 }
 
 export function CheckPatientModalProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const [isOpen, setIsOpen] = useState(false);
-  const [cf, setCf] = useState("");
-  const [allPatients, setAllPatients] = useState<Patient[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Il pannello si apre anche da dentro una visita (Ctrl+N, Ctrl+K): uscirne
+  // verso un altro paziente passa dalla stessa conferma delle modifiche.
+  const { guardAction } = useUnsavedChanges();
+  const [modo, setModo] = useState<Modo | null>(null);
+  const [query, setQuery] = useState("");
+  const [pazienti, setPazienti] = useState<Patient[]>([]);
+  const [ultimaVisita, setUltimaVisita] = useState<Map<string, string>>(new Map());
+  const [evidenziato, setEvidenziato] = useState(0);
 
-  const openCheckPatientModal = useCallback(() => {
-    setCf("");
-    setError(null);
-    setIsOpen(true);
+  const apri = useCallback((m: Modo) => {
+    setQuery("");
+    setEvidenziato(0);
+    setModo(m);
   }, []);
-
+  const openCheckPatientModal = useCallback(() => apri("visita"), [apri]);
+  const openPatientSearch = useCallback(() => apri("cerca"), [apri]);
   const closeCheckPatientModal = useCallback(() => {
-    setIsOpen(false);
-    setCf("");
-    setError(null);
-    setIsLoading(false);
+    setModo(null);
+    setQuery("");
   }, []);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!modo) return;
     let cancelled = false;
-    void PatientService.getAllPatients()
-      .then((patients) => {
-        if (!cancelled) setAllPatients(patients);
+    void Promise.all([PatientService.getAllPatients(), VisitService.getAllVisits()])
+      .then(([tutti, visite]) => {
+        if (cancelled) return;
+        setPazienti(tutti);
+        setUltimaVisita(ultimaVisitaPerPaziente(visite));
       })
       .catch((err) => {
-        console.error("Errore nel caricamento pazienti per suggerimenti:", err);
+        console.error("Errore nel caricamento pazienti per la ricerca:", err);
       });
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [modo]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isTypingContext = Boolean(
-        target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.tagName === "SELECT" ||
-            target.isContentEditable ||
-            target.getAttribute("role") === "textbox"),
-      );
-      if (isTypingContext || e.isComposing) return;
-
+      if (isTypingTarget(e.target) || e.isComposing) return;
       const hasCmdOrCtrl = e.ctrlKey || e.metaKey;
-      const noExtraModifiers = !e.altKey && !e.shiftKey;
-      if (hasCmdOrCtrl && noExtraModifiers && e.key.toLowerCase() === "n") {
+      if (!hasCmdOrCtrl || e.altKey || e.shiftKey) return;
+      const tasto = e.key.toLowerCase();
+      if (tasto === "n") {
         e.preventDefault();
-        openCheckPatientModal();
+        apri("visita");
+      } else if (tasto === "k") {
+        e.preventDefault();
+        apri("cerca");
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [openCheckPatientModal]);
+  }, [apri]);
 
-  const cfNormalized = cf.trim().toUpperCase();
-  const cfHasInput = cf.trim().length > 0;
-  const showCfFormatError =
-    cfHasInput && cfNormalized.length === 16 && !isValidCodiceFiscaleFormat(cfNormalized);
-  const suggestions = filterSuggestions(allPatients, cfNormalized);
+  const cercando = query.trim().length > 0;
+  const risultati = useMemo(() => {
+    if (cercando) return cercaPazienti(pazienti, query).slice(0, MAX_RISULTATI);
+    // Senza ricerca: i pazienti visti per ultimi, che sono quelli che si
+    // riaprono piu' spesso.
+    return [...pazienti]
+      .sort((a, b) => {
+        const va = ultimaVisita.get(a.id) ?? (a.updatedAt ?? "").slice(0, 10);
+        const vb = ultimaVisita.get(b.id) ?? (b.updatedAt ?? "").slice(0, 10);
+        return vb.localeCompare(va);
+      })
+      .slice(0, MAX_RECENTI);
+  }, [cercando, pazienti, query, ultimaVisita]);
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setCf(e.target.value.toUpperCase());
-    if (error) setError(null);
-  };
+  useEffect(() => {
+    setEvidenziato(0);
+  }, [query]);
 
-  const goToPatient = (patient: Patient) => {
+  const vai = (href: string) => {
     closeCheckPatientModal();
-    navigate(`/patient-history/${patient.id}`);
+    guardAction(() => navigate(href));
   };
+  const apriVisita = (p: Patient) => vai(`/add-visit?patientId=${encodeURIComponent(p.id)}`);
+  const apriScheda = (p: Patient) => vai(`/patient-history/${p.id}`);
+  const principale = modo === "visita" ? apriVisita : apriScheda;
+  const secondaria = modo === "visita" ? apriScheda : apriVisita;
 
-  const handleSuggestionClick = (patient: Patient) => {
-    setCf(patient.codiceFiscale?.toUpperCase() ?? "");
-    if (error) setError(null);
-    goToPatient(patient);
-  };
-
-  const handleRegisterNew = (cfValue?: string) => {
-    closeCheckPatientModal();
-    const q = (cfValue ?? cfNormalized).trim();
-    navigate(q ? `/add-patient?cf=${encodeURIComponent(q)}` : "/add-patient");
-  };
-
-  const handleCheck = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!cf.trim()) {
-      setError("Inserisci un codice fiscale");
-      return;
+  /**
+   * Registra un paziente nuovo portando con se' quello che si e' gia' scritto:
+   * il codice fiscale se la ricerca sembra un CF, altrimenti cognome e nome
+   * (la prima parola e' il cognome, come si cerca). Nel form il pulsante
+   * principale e' "Salva e inizia visita".
+   */
+  const registraNuovo = () => {
+    const params = new URLSearchParams();
+    const q = query.trim();
+    if (q && sembraCodiceFiscale(q)) {
+      params.set("cf", q.replace(/\s/g, "").toUpperCase());
+    } else if (q) {
+      const [cognome, ...nome] = q.split(/\s+/);
+      params.set("cognome", cognome);
+      if (nome.length) params.set("nome", nome.join(" "));
     }
+    const qs = params.toString();
+    vai(qs ? `/add-patient?${qs}` : "/add-patient");
+  };
 
-    if (!isValidCodiceFiscaleFormat(cf)) {
-      setError("Codice fiscale non valido (formato: RSSMRA80A01H501U)");
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const patient = await PatientService.getPatientByCF(cf);
-      if (patient) {
-        goToPatient(patient);
-      } else {
-        handleRegisterNew(cfNormalized);
-      }
-    } catch (err) {
-      console.error("Errore durante la verifica del paziente:", err);
-      setError("Errore durante la verifica del paziente");
-    } finally {
-      setIsLoading(false);
+  // L'Input di NextUI passa `onKeyDown` a react-aria, che ferma la
+  // propagazione di ogni tasto se non gli si dice il contrario: senza
+  // `continuePropagation` l'Esc non arrivava al modal e il pannello non si
+  // chiudeva.
+  const onKeyDown = (
+    e: ReactKeyboardEvent<HTMLInputElement> & { continuePropagation?: () => void },
+  ) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setEvidenziato((i) => Math.min(i + 1, Math.max(risultati.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setEvidenziato((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const scelto = risultati[evidenziato];
+      if (scelto) principale(scelto);
+      else if (cercando) registraNuovo();
+    } else {
+      e.continuePropagation?.();
     }
   };
 
   const value = useMemo(
-    () => ({ openCheckPatientModal, closeCheckPatientModal }),
-    [openCheckPatientModal, closeCheckPatientModal],
+    () => ({ openCheckPatientModal, openPatientSearch, closeCheckPatientModal }),
+    [openCheckPatientModal, openPatientSearch, closeCheckPatientModal],
   );
+
+  const titolo = modo === "visita" ? "Nuova visita" : "Cerca paziente";
 
   return (
     <CheckPatientModalContext.Provider value={value}>
       {children}
       <AppModal
-        isOpen={isOpen}
+        isOpen={modo !== null}
         onClose={closeCheckPatientModal}
-        placement="center"
+        placement="top"
         backdrop="blur"
-        size="md"
+        size="xl"
         scrollBehavior="inside"
         classNames={{
-          base: "border border-default-200",
+          base: "border border-default-200 mt-24",
           header: "border-b border-default-100",
           footer: "border-t border-default-100",
         }}
       >
         <ModalContent>
-          <ModalHeader className="flex flex-col gap-1 items-start">
-            <span className="text-base font-semibold text-gray-900">
-              Nuova visita
-            </span>
-            <span className="text-sm font-normal text-default-500">
-              Cerca il paziente per codice fiscale
-            </span>
+          <ModalHeader className="flex flex-col gap-3 items-stretch">
+            <span className="text-base font-semibold text-gray-900">{titolo}</span>
+            <Input
+              autoFocus
+              aria-label="Cerca per cognome, nome o codice fiscale"
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="Cognome, nome o codice fiscale"
+              value={query}
+              onValueChange={setQuery}
+              onKeyDown={onKeyDown}
+              variant="bordered"
+              size="lg"
+              startContent={<Search size={18} className="text-default-500" />}
+              classNames={{ input: "text-base", inputWrapper: "h-12" }}
+            />
           </ModalHeader>
-          <ModalBody>
-            <form id="check-patient-form" onSubmit={handleCheck} className="space-y-4">
-              {error && (
-                <div className="rounded-lg border border-danger-200 bg-danger-50/60 px-3 py-2.5">
-                  <p className="text-danger text-sm flex items-center gap-2">
-                    <AlertCircle size={16} className="shrink-0" />
-                    {error}
-                  </p>
-                </div>
-              )}
-
-              <Input
-                autoFocus
-                label="Codice fiscale"
-                placeholder="RSSMRA80A01H501U"
-                value={cf}
-                onChange={handleChange}
-                variant="bordered"
-                maxLength={16}
-                isRequired
-                isInvalid={showCfFormatError}
-                errorMessage={
-                  showCfFormatError
-                    ? "Codice fiscale non valido (16 caratteri)"
-                    : undefined
-                }
-                classNames={{
-                  label: "text-gray-700 font-medium",
-                  input: "uppercase font-mono tracking-wide",
-                }}
-                description="Dopo 4 caratteri compaiono i suggerimenti dall'anagrafica."
-              />
-
-              {suggestions.length > 0 && (
-                <div className="rounded-xl border border-default-200 overflow-hidden">
-                  <div className="px-3 py-2 bg-default-50 border-b border-default-200">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-default-500">
-                      Suggerimenti
-                    </p>
-                  </div>
-                  <div className="divide-y divide-default-100">
-                    {suggestions.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-default-50 group"
-                        onClick={() => handleSuggestionClick(patient)}
+          <ModalBody className="px-3 py-3">
+            {risultati.length > 0 && (
+              <>
+                <p className="px-2 text-xs font-medium text-default-600">
+                  {cercando ? "Pazienti trovati" : "Visti di recente"}
+                </p>
+                <ul role="listbox" aria-label={titolo} className="flex flex-col gap-0.5">
+                  {risultati.map((p, i) => {
+                    const eta = p.dataNascita ? calculateAge(p.dataNascita) : null;
+                    const ultima = ultimaVisita.get(p.id);
+                    const attivo = i === evidenziato;
+                    return (
+                      <li
+                        key={p.id}
+                        role="option"
+                        aria-selected={attivo}
+                        onMouseEnter={() => setEvidenziato(i)}
+                        className={`flex items-center gap-2 rounded-lg pr-2 transition-colors ${
+                          attivo ? "bg-default-100" : ""
+                        }`}
                       >
-                        <span className="dashboard-pregnancy-avatar">
-                          {patientInitials(patient)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {patient.cognome} {patient.nome}
-                          </p>
-                          <p className="text-xs text-default-500 mt-0.5">
-                            <CodiceFiscaleValue
-                              value={patient.codiceFiscale}
-                              generatedFromImport={Boolean(
-                                patient.codiceFiscaleGenerato,
-                              )}
-                            />
-                          </p>
-                        </div>
-                        <ChevronRight
-                          size={16}
-                          className="text-default-300 group-hover:text-brand-800 transition-colors shrink-0"
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </form>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => principale(p)}
+                          className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
+                        >
+                          <span className="dashboard-pregnancy-avatar">{patientInitials(p)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-gray-900">
+                              {formatPatientDisplayName(p) ?? "Paziente senza nome"}
+                            </span>
+                            <span className="mt-0.5 block truncate text-xs text-default-600">
+                              {eta != null && <>{eta} anni · </>}
+                              <CodiceFiscaleValue
+                                value={p.codiceFiscale}
+                                placeholder="CF non inserito"
+                                generatedFromImport={Boolean(p.codiceFiscaleGenerato)}
+                              />
+                              {" · "}
+                              {ultima ? `ultima visita ${formattaData(ultima)}` : "nessuna visita"}
+                            </span>
+                          </span>
+                        </button>
+                        <Button
+                          size="sm"
+                          variant="light"
+                          tabIndex={-1}
+                          className="shrink-0 text-default-700"
+                          startContent={
+                            modo === "visita" ? <FileText size={14} /> : <CalendarPlus size={14} />
+                          }
+                          onPress={() => secondaria(p)}
+                        >
+                          {modo === "visita" ? "Scheda" : "Nuova visita"}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+            {cercando && risultati.length === 0 && (
+              <div className="px-2 py-6 text-center">
+                <p className="text-sm font-medium text-gray-900">Nessun paziente trovato</p>
+                <p className="mt-1 text-sm text-default-600">
+                  Premi Invio per registrare «{query.trim()}» come nuovo paziente.
+                </p>
+              </div>
+            )}
+            {!cercando && risultati.length === 0 && (
+              <p className="px-2 py-6 text-center text-sm text-default-600">
+                Nessun paziente in archivio.
+              </p>
+            )}
           </ModalBody>
-          <ModalFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <ModalFooter className="flex items-center justify-between gap-3">
+            <p className="text-xs text-default-600">
+              <kbd className="corioli-kbd">↑</kbd> <kbd className="corioli-kbd">↓</kbd> per
+              scegliere · <kbd className="corioli-kbd">Invio</kbd>{" "}
+              {cercando && risultati.length === 0
+                ? "registra il paziente"
+                : modo === "visita"
+                  ? "apre la visita"
+                  : "apre la scheda"}
+            </p>
             <Button
-              variant="light"
+              variant="flat"
               startContent={<UserPlus size={16} />}
-              onPress={() => handleRegisterNew()}
-              className="text-default-600"
+              onPress={registraNuovo}
             >
-              Registra nuovo paziente
+              Nuovo paziente
             </Button>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button variant="flat" onPress={closeCheckPatientModal}>
-                Annulla
-              </Button>
-              <Button
-                type="submit"
-                form="check-patient-form"
-                color="primary"
-                className="corioli-cta flex-1 sm:flex-none"
-                isLoading={isLoading}
-                isDisabled={isLoading || !cf.trim() || showCfFormatError}
-                startContent={!isLoading ? <Search size={16} /> : undefined}
-              >
-                Verifica
-              </Button>
-            </div>
           </ModalFooter>
         </ModalContent>
       </AppModal>

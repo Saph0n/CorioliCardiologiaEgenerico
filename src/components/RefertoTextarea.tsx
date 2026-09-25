@@ -14,6 +14,11 @@ import { testoDaiNodi, testoInHtml } from "../utils/grassettoReferto";
  * Il grassetto si mette in tre modi: **Ctrl+B**, il **tasto destro** e la
  * scorciatoia di sistema, perche' dentro un'area modificabile il grassetto e'
  * quello del browser e non una nostra imitazione.
+ *
+ * Il tasto destro nell'app apre il menu di Windows (electron/main.js), con i
+ * suggerimenti del correttore, Taglia/Copia/Incolla e "Grassetto", che arriva
+ * qui come messaggio. Il menu disegnato dalla pagina, con le stesse voci di
+ * base, resta per il browser e per un'app avviata col preload di prima.
  */
 
 /** Altezza di una riga, in pixel: serve a dare al campo l'altezza minima. */
@@ -25,6 +30,42 @@ type Props = Omit<TextAreaProps, "ref"> & {
   /** Riga di spiegazione sotto il campo. */
   description?: React.ReactNode;
 };
+
+/** Presente solo nell'app: "Grassetto" scelto nel menu del tasto destro. */
+const onGrassettoDaMenu = (
+  window as unknown as {
+    electronAPI?: { onGrassettoReferto?: (callback: () => void) => () => void };
+  }
+).electronAPI?.onGrassettoReferto;
+
+/** Una voce del menu del tasto destro disegnato dalla pagina. */
+function VoceMenu({
+  etichetta,
+  tasti,
+  disabilitata,
+  onScegli,
+}: {
+  etichetta: React.ReactNode;
+  tasti: string;
+  disabilitata?: boolean;
+  onScegli: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabilitata}
+      className="flex w-full items-center justify-between gap-6 px-3 py-1.5 text-left text-sm text-default-700 hover:bg-default-100 disabled:cursor-default disabled:text-default-400 disabled:hover:bg-transparent"
+      // Il mouse giu' sposterebbe il fuoco fuori dal campo e con esso la
+      // selezione su cui agire.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onScegli}
+    >
+      <span>{etichetta}</span>
+      <span className="text-xs text-default-500">{tasti}</span>
+    </button>
+  );
+}
 
 /** Applica il grassetto alla selezione dentro l'area modificabile. */
 function comandoGrassetto(): void {
@@ -61,7 +102,8 @@ export function RefertoTextarea({
    * visita precedente, il caricamento di una visita in archivio.
    */
   const ultimoTestoInterno = useRef<string | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  /** Menu del tasto destro disegnato dalla pagina; `selezione`: c'e' testo selezionato. */
+  const [menu, setMenu] = useState<{ x: number; y: number; selezione: boolean } | null>(null);
   const [vuoto, setVuoto] = useState(!value);
 
   const testoCorrente = typeof value === "string" ? value : "";
@@ -83,6 +125,21 @@ export function RefertoTextarea({
     setVuoto(!testo);
     onValueChange?.(testo);
   }, [onValueChange]);
+
+  // Il messaggio arriva a tutti i campi del referto della pagina: agisce solo
+  // quello col cursore dentro. `propaga` passa da un ref per non staccare e
+  // riattaccare l'ascolto a ogni tasto premuto.
+  const propagaRef = useRef(propaga);
+  propagaRef.current = propaga;
+  useEffect(() => {
+    if (!onGrassettoDaMenu) return;
+    return onGrassettoDaMenu(() => {
+      const el = editorRef.current;
+      if (!el || !el.contains(document.activeElement)) return;
+      comandoGrassetto();
+      propagaRef.current();
+    });
+  }, []);
 
   /** Chiude il menu del tasto destro al primo clic o Esc fuori di esso. */
   useEffect(() => {
@@ -147,9 +204,16 @@ export function RefertoTextarea({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         onContextMenu={(e) => {
-          if (isDisabled) return;
+          if (isDisabled || onGrassettoDaMenu) return;
           e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY });
+          const sel = window.getSelection();
+          setMenu({
+            x: e.clientX,
+            y: e.clientY,
+            selezione: Boolean(
+              sel && !sel.isCollapsed && editorRef.current?.contains(sel.anchorNode),
+            ),
+          });
         }}
         data-placeholder={placeholder}
         title={props.title}
@@ -169,7 +233,7 @@ export function RefertoTextarea({
       {vuoto && placeholder && (
         <span
           aria-hidden
-          className="pointer-events-none absolute left-3 text-base leading-relaxed text-default-400"
+          className="pointer-events-none absolute left-3 text-base leading-relaxed text-default-500"
           style={{ top: label ? 30 : 8 }}
         >
           {placeholder}
@@ -180,25 +244,56 @@ export function RefertoTextarea({
       )}
       {menu && (
         <div
-          className="fixed z-50 min-w-[168px] rounded-lg border border-default-200 bg-white py-1 shadow-lg"
+          role="menu"
+          className="fixed z-50 min-w-[190px] rounded-lg border border-default-200 bg-white py-1 shadow-lg"
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-6 px-3 py-1.5 text-left text-sm text-default-700 hover:bg-default-100"
-            // Il mouse giu' sposterebbe il fuoco fuori dal campo e con esso la
-            // selezione da mettere in grassetto.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
+          <VoceMenu
+            etichetta="Taglia"
+            tasti="Ctrl+X"
+            disabilitata={!menu.selezione}
+            onScegli={() => {
+              document.execCommand("cut");
+              propaga();
+              setMenu(null);
+            }}
+          />
+          <VoceMenu
+            etichetta="Copia"
+            tasti="Ctrl+C"
+            disabilitata={!menu.selezione}
+            onScegli={() => {
+              document.execCommand("copy");
+              setMenu(null);
+            }}
+          />
+          <VoceMenu
+            etichetta="Incolla"
+            tasti="Ctrl+V"
+            onScegli={() => {
+              setMenu(null);
+              // Come Ctrl+V (`handlePaste`): entra solo il testo. Se leggere
+              // gli appunti non e' permesso, resta la tastiera.
+              void navigator.clipboard
+                .readText()
+                .then((testo) => {
+                  editorRef.current?.focus();
+                  document.execCommand("insertText", false, testo);
+                })
+                .catch(() => {});
+            }}
+          />
+          <div className="my-1 border-t border-default-100" />
+          <VoceMenu
+            etichetta={<span className="font-semibold">Grassetto</span>}
+            tasti="Ctrl+B"
+            onScegli={() => {
               comandoGrassetto();
               propaga();
               setMenu(null);
             }}
-          >
-            <span className="font-semibold">Grassetto</span>
-            <span className="text-xs text-default-400">Ctrl+B</span>
-          </button>
+          />
         </div>
       )}
     </div>

@@ -154,13 +154,34 @@ export function pazientiDaTenereDOcchio(
 }
 
 /**
- * Quanto riempire la barra della riga, da 0 a 1.
+ * Quanti segmenti accendere nell'indicatore dell'LDL, per meta'.
  *
- * Non e' una percentuale di rischio — non esiste — ma quanto l'LDL sta sopra il
- * suo obiettivo: pieno a un obiettivo mancato del doppio, che e' dove la
- * differenza smette di essere leggibile. A bersaglio la barra resta vuota.
+ * L'obiettivo sta sempre a meta' dell'indicatore: la meta' di sinistra va da 0
+ * all'obiettivo, quella di destra dall'obiettivo al suo doppio, dove la
+ * differenza smette di essere leggibile. Cosi' in colonna le tacche
+ * dell'obiettivo stanno una sotto l'altra, qualunque sia la classe, e si vede
+ * subito chi le passa e di quanto. Non e' una percentuale di rischio — non
+ * esiste — ma dove sta l'LDL rispetto al suo obiettivo.
+ *
+ * Chi e' sopra anche di 1 mg/dL ha almeno un segmento oltre la tacca:
+ * arrotondando sparirebbe, e il disegno direbbe "a obiettivo" accanto a un +1.
+ * `null` senza LDL: non si sa, e l'indicatore resta spento.
  */
-export function riempimentoBarra(voce: VoceRischio): number {
-  if (voce.ldl == null || voce.scostamento == null) return 0;
-  return Math.min(1, voce.scostamento / voce.obiettivo);
+export function segmentiLdl(
+  voce: Pick<VoceRischio, "ldl" | "obiettivo" | "scostamento">,
+  segmenti = 20,
+): { entro: number; oltre: number } | null {
+  if (voce.ldl == null) return null;
+  const meta = Math.floor(segmenti / 2);
+  const passo = voce.obiettivo / meta;
+  if (voce.scostamento != null && voce.scostamento > 0) {
+    return {
+      entro: meta,
+      oltre: Math.min(meta, Math.max(1, Math.round(voce.scostamento / passo))),
+    };
+  }
+  return {
+    entro: Math.min(meta, Math.max(1, Math.round(voce.ldl / passo))),
+    oltre: 0,
+  };
 }

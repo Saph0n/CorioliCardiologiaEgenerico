@@ -79,7 +79,7 @@ export function Sparkline({
         strokeWidth={1.25}
         strokeLinejoin="round"
         strokeLinecap="round"
-        className="text-default-400"
+        className="text-default-500"
       />
       {punti.slice(0, -1).map((p, i) => (
         <circle key={i} cx={p.x} cy={p.y} r={1.4} className="fill-default-300" />
@@ -142,7 +142,7 @@ export function PannelloAndamento({
     <div className="w-[300px] p-3">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <p className="text-xs font-semibold text-gray-800">{titolo}</p>
-        <p className="text-[10px] text-default-500">
+        <p className="text-[11px] text-default-500">
           {completa.length} rilevazioni
         </p>
       </div>
@@ -188,7 +188,7 @@ export function PannelloAndamento({
         })}
       </svg>
 
-      <div className="mt-1 flex justify-between text-[10px] text-default-500">
+      <div className="mt-1 flex justify-between text-[11px] text-default-500">
         <span>{dataBreve(primo.data)}</span>
         <span>
           min {formatta(min)} · max {formatta(max)}

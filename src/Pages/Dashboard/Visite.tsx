@@ -3,12 +3,9 @@ import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardBody,
-  CardHeader,
   Input,
   Button,
-  Chip,
   Spinner,
-  Avatar,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -20,14 +17,12 @@ import {
   ChevronRight,
   ChevronLeft,
   Calendar,
-  Eye,
   Printer,
   Maximize2,
   Minimize2,
   DownloadIcon,
   Trash2Icon,
-  Stethoscope,
-  ArrowRight,
+  Pencil,
 } from "lucide-react";
 import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService } from "../../services/OfflineServices";
@@ -39,7 +34,8 @@ import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
-import { AppModal } from "../../components/AppModal";
+import { AppModal, MODAL_SCHERMO_INTERO } from "../../components/AppModal";
+import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -65,13 +61,6 @@ const getVisitDescription = (visit: EnrichedVisit): string =>
   visit.descrizioneClinica ||
   visit.anamnesi ||
   "Nessuna descrizione";
-
-const getPatientInitials = (name: string): string => {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
-};
 
 export default function Visite() {
   const navigate = useNavigate();
@@ -175,7 +164,7 @@ export default function Visite() {
           const p = patientMap.get(v.patientId);
           return {
             ...v,
-            patientName: p ? `${p.nome} ${p.cognome}` : "Paziente Sconosciuto",
+            patientName: p ? formatPatientDisplayName(p) ?? "Paziente senza nome" : "Paziente sconosciuto",
             patientCf: p?.codiceFiscale || ""
           };
         });
@@ -318,7 +307,7 @@ export default function Visite() {
       const patientMap = new Map(allPatients.map((p) => [p.id, p]));
       const enriched = allVisits.map((v) => {
         const p = patientMap.get(v.patientId);
-        return { ...v, patientName: p ? `${p.nome} ${p.cognome}` : "Paziente Sconosciuto", patientCf: p?.codiceFiscale || "" };
+        return { ...v, patientName: p ? formatPatientDisplayName(p) ?? "Paziente senza nome" : "Paziente sconosciuto", patientCf: p?.codiceFiscale || "" };
       });
       enriched.sort((a, b) => new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime());
       setVisits(enriched);
@@ -341,50 +330,34 @@ export default function Visite() {
 
   const HeaderActions = (
     <Button
-      variant="bordered"
+      color="primary"
       startContent={<Calendar size={18} />}
       onPress={openCheckPatientModal}
-      className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
+      className="font-medium flex-1 md:flex-none"
     >
-      Nuova Visita
+      Nuova visita
     </Button>
   );
 
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title="Gestione Visite"
-        subtitle="Cerca e gestisci le tue visite"
-        icon={FileText}
-        iconColor="primary"
+        title="Visite"
         actions={HeaderActions}
       />
 
       <Card className="corioli-card">
-        <CardHeader className="corioli-card-header flex justify-between items-center gap-2">
-          <div className="dashboard-column-header-title min-w-0">
-            <FileText className="text-brand-700 shrink-0" size={16} />
-            <h3 className="text-base font-semibold text-gray-900 truncate">
-              Storico visite
-            </h3>
-          </div>
-          {totalPages > 1 && (
-            <span
-              className="text-xs shrink-0"
-              style={{ color: "var(--color-text-tertiary)" }}
-            >
-              Pagina {page} di {totalPages}
-            </span>
-          )}
-        </CardHeader>
         <CardBody className="p-4 gap-4">
-          <div className="flex w-full flex-col gap-3 md:flex-row md:items-end">
+          {/* Ricerca e date sulla stessa riga e della stessa altezza: le
+              etichette "Da" e "A" stavano sopra le date e le spingevano sotto
+              il filo della ricerca. */}
+          <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
             <div className="min-w-0 w-full md:flex-[1_1_58%]">
               <Input
                 isClearable
                 placeholder="Cerca per nome, CF o descrizione..."
                 startContent={
-                  <SearchIcon size={20} className="text-default-400" />
+                  <SearchIcon size={20} className="text-default-500" />
                 }
                 value={searchTerm}
                 onValueChange={(v) => {
@@ -407,9 +380,9 @@ export default function Visite() {
             </div>
             <Input
               type="date"
-              className="w-full md:w-[8.75rem] md:shrink-0"
-              label="Da"
-              labelPlacement="outside"
+              className="w-full md:w-[10.5rem] md:shrink-0"
+              aria-label="Dal"
+              startContent={<span className="text-xs font-medium text-default-600">Dal</span>}
               value={filterDateFrom}
               onValueChange={(v) => {
                 setFilterDateFrom(v);
@@ -423,9 +396,9 @@ export default function Visite() {
             />
             <Input
               type="date"
-              className="w-full md:w-[8.75rem] md:shrink-0"
-              label="A"
-              labelPlacement="outside"
+              className="w-full md:w-[10.5rem] md:shrink-0"
+              aria-label="Al"
+              startContent={<span className="text-xs font-medium text-default-600">Al</span>}
               value={filterDateTo}
               onValueChange={(v) => {
                 setFilterDateTo(v);
@@ -444,73 +417,40 @@ export default function Visite() {
               {items.map((visit) => (
                 <div
                   key={visit.id}
-                  className="flex items-center justify-between gap-3 p-4 hover:bg-default-50 transition-colors cursor-pointer group"
+                  className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] md:grid-cols-[6.5rem_minmax(0,16rem)_minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-3 hover:bg-default-50 transition-colors cursor-pointer group"
                   onClick={() => openPreview(visit)}
+                  title="Apri l'anteprima del referto"
                 >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="p-1.5 rounded-lg flex-shrink-0 bg-default-100 text-default-700">
-                      <Stethoscope size={14} />
-                    </div>
-                    <Avatar
-                      name={getPatientInitials(visit.patientName)}
-                      size="sm"
-                      color="default"
-                      className="flex-shrink-0 transition-transform group-hover:scale-105"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 group-hover:text-[var(--brand-cta)] transition-colors truncate text-sm">
-                        {visit.patientName}
+                  <span className="text-sm font-semibold tabular-nums text-gray-900">
+                    {new Date(visit.dataVisita).toLocaleDateString("it-IT")}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900 group-hover:text-[var(--brand-cta)]">
+                      {visit.patientName}
+                    </p>
+                    {visit.patientCf && (
+                      <p className="truncate text-xs text-default-600">
+                        <CodiceFiscaleValue value={visit.patientCf} />
                       </p>
-                      {/* div, non p: contiene una Chip (che rende un div) ed è usato come contenitore flex */}
-                      <div className="text-xs text-default-500 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
-                        <span>
-                          {new Date(visit.dataVisita).toLocaleDateString(
-                            "it-IT",
-                          )}
-                        </span>
-                      </div>
-                      {visit.patientCf && (
-                        <p className="text-xs text-default-400 font-mono truncate mt-0.5">
-                          <CodiceFiscaleValue value={visit.patientCf} />
-                        </p>
-                      )}
-                      <p className="text-xs text-default-400 truncate mt-1">
-                        {getVisitDescription(visit)}
-                      </p>
-                    </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <Button
-                      isIconOnly
-                      size="sm"
-                      variant="light"
-                      className="opacity-70 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPreview(visit);
-                      }}
-                      aria-label="Anteprima referto"
-                    >
-                      <Eye size={16} className="text-default-500" />
-                    </Button>
-                    <Button
-                      isIconOnly
-                      size="sm"
-                      variant="light"
-                      className="opacity-70 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/edit-visit/${visit.id}`);
-                      }}
-                      aria-label="Modifica visita"
-                    >
-                      <ChevronRight size={18} className="text-default-400" />
-                    </Button>
-                    <ArrowRight
-                      size={14}
-                      className="text-default-300 group-hover:text-[var(--brand-cta)] transition-colors hidden sm:block ml-0.5"
-                    />
-                  </div>
+                  <p className="hidden md:block truncate text-sm text-default-600">
+                    {getVisitDescription(visit)}
+                  </p>
+                  {/* Un'azione sola sulla riga, con la matita come nella scheda
+                      del paziente. Prima: occhio, chevron (che era "Modifica")
+                      e freccia, tre segni per due azioni. */}
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    title="Modifica visita"
+                    aria-label="Modifica visita"
+                    onClick={(e) => e.stopPropagation()}
+                    onPress={() => navigate(`/edit-visit/${visit.id}`)}
+                  >
+                    <Pencil size={16} className="text-default-600" />
+                  </Button>
                 </div>
               ))}
             </div>
@@ -588,20 +528,16 @@ export default function Visite() {
         onClose={onClose}
         size={previewFullscreen ? "full" : "5xl"}
         scrollBehavior="inside"
-        classNames={previewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] rounded-none" } : undefined}
+        classNames={previewFullscreen ? { base: MODAL_SCHERMO_INTERO } : undefined}
       >
         <ModalContent>
           {selectedVisit && (
             <>
-              <ModalHeader className="flex flex-col gap-1">
-                <div className="flex items-center justify-between w-full">
-                  <div>
-                    <h2 className="text-xl font-bold">Anteprima Referto</h2>
-                  </div>
-                  <Chip color="primary" variant="flat">
-                    Visita
-                  </Chip>
-                </div>
+              <ModalHeader className="flex flex-col gap-0.5 pr-10">
+                <h2 className="text-xl font-bold">Anteprima referto</h2>
+                <p className="text-sm font-normal text-default-600">
+                  {selectedVisit.patientName} · {new Date(selectedVisit.dataVisita).toLocaleDateString("it-IT")}
+                </p>
               </ModalHeader>
               <ModalBody>
                 {previewPdfLoading ? (
@@ -669,7 +605,7 @@ export default function Visite() {
                     navigate(`/edit-visit/${selectedVisit.id}`);
                   }}
                 >
-                  Modifica Visita
+                  Modifica visita
                 </Button>
               </ModalFooter>
             </>

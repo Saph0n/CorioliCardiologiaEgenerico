@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Button,
   ModalContent,
@@ -21,7 +22,6 @@ import {
   Spinner,
   Card,
   CardBody,
-  Textarea,
   Progress
 } from '@nextui-org/react';
 import {
@@ -54,8 +54,43 @@ import { CodiceFiscaleValue } from './CodiceFiscaleValue';
 import { ConfirmDangerModal } from './ConfirmDangerModal';
 import { AppModal } from "./AppModal";
 import AutoBackupPanel from "./AutoBackupPanel";
+import { formatPatientDisplayName } from "../utils/patientDisplay";
+import { senzaMarcatori } from "../utils/grassettoReferto";
+
+/**
+ * Azione su una riga delle tabelle del pannello: un vero pulsante (prima erano
+ * span cliccabili, fuori dalla tastiera), grigio; il cestino diventa rosso solo
+ * al passaggio, la conferma resta.
+ */
+function AzioneRiga({
+  etichetta,
+  pericolosa = false,
+  onPress,
+  children,
+}: {
+  etichetta: string;
+  pericolosa?: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip content={etichetta}>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="light"
+        aria-label={etichetta}
+        className={pericolosa ? "text-default-500 hover:text-danger" : "text-default-500 hover:text-foreground"}
+        onPress={onPress}
+      >
+        {children}
+      </Button>
+    </Tooltip>
+  );
+}
 
 const BackupManager: React.FC = () => {
+  const navigate = useNavigate();
   const { isOpen, onOpen, onOpenChange, onClose: closeManager } = useDisclosure();
   const {
     isOpen: isResetModalOpen,
@@ -82,7 +117,9 @@ const BackupManager: React.FC = () => {
   const [pendingBackupFile, setPendingBackupFile] = useState<File | null>(null);
   const [backupImportMode, setBackupImportMode] = useState<BackupImportMode>('merge');
   const [isImportModeModalOpen, setIsImportModeModalOpen] = useState(false);
-  const rowsPerPage = 5;
+  const rowsPerPage = 10;
+  /** Nome dei pazienti per la tabella delle visite, che prima mostrava l'id. */
+  const [nomiPazienti, setNomiPazienti] = useState<Map<string, string>>(new Map());
 
   // Edit State
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -112,9 +149,17 @@ const BackupManager: React.FC = () => {
         case "patients":
           result = await PatientService.getAllPatients();
           break;
-        case "visits":
-          result = await VisitService.getAllVisits();
+        case "visits": {
+          const [visite, pazienti] = await Promise.all([
+            VisitService.getAllVisits(),
+            PatientService.getAllPatients(),
+          ]);
+          result = visite;
+          setNomiPazienti(
+            new Map(pazienti.map((p) => [p.id, formatPatientDisplayName(p) ?? "Paziente senza nome"])),
+          );
           break;
+        }
         case "documents":
           result = await DocumentService.getAllDocuments();
           break;
@@ -223,21 +268,24 @@ const BackupManager: React.FC = () => {
     setEditingItem({ ...item }); // Clone to avoid direct mutation
   };
 
+  /**
+   * Pazienti e visite si modificano negli stessi form del resto dell'app.
+   * Prima il pannello aveva editor suoi: quello del paziente con altre regole,
+   * quello della visita che scriveva i vecchi campi piatti scavalcando il
+   * contenuto vero del referto.
+   */
+  const apriNelForm = (href: string) => {
+    closeManager();
+    navigate(href);
+  };
+
   const handleSaveEdit = async () => {
     if (!editingItem) return;
     setIsSaving(true);
     try {
-      switch (selectedTab) {
-        case "patients":
-          await PatientService.updatePatient(editingItem.id, editingItem);
-          break;
-        case "visits":
-          await VisitService.updateVisit(editingItem.id, editingItem);
-          break;
-        case "documents":
-          await DocumentService.updateDocument(editingItem.id, editingItem);
-          break;
-      }
+      // Pazienti e visite si aprono nei loro form (vedi apriNelForm): qui
+      // restano solo i documenti, che un form loro non ce l'hanno.
+      await DocumentService.updateDocument(editingItem.id, editingItem);
       setMessage({ text: "Modifiche salvate con successo", type: "success" });
       setEditingItem(null);
       loadData();
@@ -418,15 +466,15 @@ const BackupManager: React.FC = () => {
   const renderPatientsTable = () => (
     <Table aria-label="Tabella Pazienti">
       <TableHeader>
-        <TableColumn>NOME COMPLETO</TableColumn>
-        <TableColumn>CODICE FISCALE</TableColumn>
-        <TableColumn>CONTATTI</TableColumn>
-        <TableColumn>AZIONI</TableColumn>
+        <TableColumn>Paziente</TableColumn>
+        <TableColumn>Codice fiscale</TableColumn>
+        <TableColumn>Contatti</TableColumn>
+        <TableColumn><span className="sr-only">Azioni</span></TableColumn>
       </TableHeader>
       <TableBody emptyContent={"Nessun paziente trovato."} items={items}>
         {(item: any) => (
           <TableRow key={item.id}>
-            <TableCell>{item.nome} {item.cognome}</TableCell>
+            <TableCell>{formatPatientDisplayName(item) ?? "—"}</TableCell>
             <TableCell>
               <CodiceFiscaleValue
                 value={item.codiceFiscale}
@@ -440,17 +488,13 @@ const BackupManager: React.FC = () => {
               </div>
             </TableCell>
             <TableCell>
-              <div className="flex gap-2">
-                <Tooltip content="Modifica">
-                  <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
-                    <Edit size={18} />
-                  </span>
-                </Tooltip>
-                <Tooltip content="Elimina">
-                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => requestDelete(item.id)}>
-                    <Trash2 size={18} />
-                  </span>
-                </Tooltip>
+              <div className="flex gap-1">
+                <AzioneRiga etichetta="Modifica" onPress={() => apriNelForm(`/add-patient?mode=edit&id=${encodeURIComponent(item.id)}`)}>
+                  <Edit size={17} />
+                </AzioneRiga>
+                <AzioneRiga etichetta="Elimina" pericolosa onPress={() => requestDelete(item.id)}>
+                  <Trash2 size={17} />
+                </AzioneRiga>
               </div>
             </TableCell>
           </TableRow>
@@ -460,33 +504,33 @@ const BackupManager: React.FC = () => {
   );
 
   const renderVisitsTable = () => (
-    <Table aria-label="Tabella Visite">
+    <Table aria-label="Tabella visite">
       <TableHeader>
-        <TableColumn>DATA</TableColumn>
-        <TableColumn>PAZIENTE ID</TableColumn>
-        <TableColumn>DESCRIZIONE</TableColumn>
-        <TableColumn>AZIONI</TableColumn>
+        <TableColumn>Data</TableColumn>
+        <TableColumn>Paziente</TableColumn>
+        <TableColumn>Descrizione</TableColumn>
+        <TableColumn><span className="sr-only">Azioni</span></TableColumn>
       </TableHeader>
       <TableBody emptyContent={"Nessuna visita trovata."} items={items}>
         {(item: any) => (
           <TableRow key={item.id}>
             <TableCell>{new Date(item.dataVisita).toLocaleDateString()}</TableCell>
             <TableCell>
-              <Chip size="sm" variant="flat">{item.patientId?.substring(0, 8)}...</Chip>
+              {nomiPazienti.get(item.patientId) ?? "Paziente non trovato"}
             </TableCell>
-            <TableCell className="truncate max-w-xs">{item.descrizioneClinica}</TableCell>
+            {/* Il motivo della visita: `descrizioneClinica` e' il vecchio campo
+                piatto, vuoto nelle visite di oggi. */}
+            <TableCell className="truncate max-w-xs">
+              {senzaMarcatori(item.visita?.problemaClinico || item.descrizioneClinica) || "—"}
+            </TableCell>
             <TableCell>
-              <div className="flex gap-2">
-                <Tooltip content="Modifica">
-                  <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
-                    <Edit size={18} />
-                  </span>
-                </Tooltip>
-                <Tooltip content="Elimina">
-                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => requestDelete(item.id)}>
-                    <Trash2 size={18} />
-                  </span>
-                </Tooltip>
+              <div className="flex gap-1">
+                <AzioneRiga etichetta="Modifica" onPress={() => apriNelForm(`/edit-visit/${encodeURIComponent(item.id)}`)}>
+                  <Edit size={17} />
+                </AzioneRiga>
+                <AzioneRiga etichetta="Elimina" pericolosa onPress={() => requestDelete(item.id)}>
+                  <Trash2 size={17} />
+                </AzioneRiga>
               </div>
             </TableCell>
           </TableRow>
@@ -496,12 +540,12 @@ const BackupManager: React.FC = () => {
   );
 
   const renderDocumentsTable = () => (
-    <Table aria-label="Tabella Documenti">
+    <Table aria-label="Tabella documenti">
       <TableHeader>
-        <TableColumn>NOME FILE</TableColumn>
-        <TableColumn>CATEGORIA</TableColumn>
-        <TableColumn>DATA UPLOAD</TableColumn>
-        <TableColumn>AZIONI</TableColumn>
+        <TableColumn>Nome file</TableColumn>
+        <TableColumn>Categoria</TableColumn>
+        <TableColumn>Caricato il</TableColumn>
+        <TableColumn><span className="sr-only">Azioni</span></TableColumn>
       </TableHeader>
       <TableBody emptyContent={"Nessun documento trovato."} items={items}>
         {(item: any) => (
@@ -512,22 +556,16 @@ const BackupManager: React.FC = () => {
             </TableCell>
             <TableCell>{new Date(item.uploadDate).toLocaleDateString()}</TableCell>
             <TableCell>
-              <div className="flex gap-3">
-                <Tooltip content="Scarica">
-                  <span className="text-lg text-primary cursor-pointer active:opacity-50" onClick={() => DocumentService.downloadDocument(item)}>
-                    <FileDown size={18} />
-                  </span>
-                </Tooltip>
-                <Tooltip content="Modifica">
-                  <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
-                    <Edit size={18} />
-                  </span>
-                </Tooltip>
-                <Tooltip content="Elimina">
-                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => requestDelete(item.id)}>
-                    <Trash2 size={18} />
-                  </span>
-                </Tooltip>
+              <div className="flex gap-1">
+                <AzioneRiga etichetta="Scarica" onPress={() => DocumentService.downloadDocument(item)}>
+                  <FileDown size={17} />
+                </AzioneRiga>
+                <AzioneRiga etichetta="Modifica" onPress={() => handleEdit(item)}>
+                  <Edit size={17} />
+                </AzioneRiga>
+                <AzioneRiga etichetta="Elimina" pericolosa onPress={() => requestDelete(item.id)}>
+                  <Trash2 size={17} />
+                </AzioneRiga>
               </div>
             </TableCell>
           </TableRow>
@@ -601,7 +639,7 @@ const BackupManager: React.FC = () => {
                       </span>
                       <ArrowRight
                         size={14}
-                        className="text-default-400 mt-0.5 shrink-0"
+                        className="text-default-500 mt-0.5 shrink-0"
                       />
                       <span className="flex-1 text-success-700 whitespace-pre-wrap break-words">
                         {change.newValue}
@@ -620,33 +658,17 @@ const BackupManager: React.FC = () => {
   const renderEditModal = () => (
     <AppModal isOpen={!!editingItem} onClose={() => setEditingItem(null)}>
       <ModalContent>
-        <ModalHeader>Modifica {selectedTab === 'patients' ? 'Paziente' : selectedTab === 'visits' ? 'Visita' : 'Documento'}</ModalHeader>
+        <ModalHeader>Modifica documento</ModalHeader>
         <ModalBody>
-          {editingItem && selectedTab === 'patients' && (
-            <div className="space-y-4">
-              <Input label="Nome" value={editingItem.nome} onChange={(e) => setEditingItem({ ...editingItem, nome: e.target.value })} />
-              <Input label="Cognome" value={editingItem.cognome} onChange={(e) => setEditingItem({ ...editingItem, cognome: e.target.value })} />
-              <Input label="Codice Fiscale" value={editingItem.codiceFiscale} onChange={(e) => setEditingItem({ ...editingItem, codiceFiscale: e.target.value })} />
-              <Input label="Telefono" value={editingItem.telefono || ''} onChange={(e) => setEditingItem({ ...editingItem, telefono: e.target.value })} />
-              <Input label="Email" value={editingItem.email || ''} onChange={(e) => setEditingItem({ ...editingItem, email: e.target.value })} />
-            </div>
-          )}
-          {editingItem && selectedTab === 'visits' && (
-            <div className="space-y-4">
-              <Input type="date" label="Data Visita" value={editingItem.dataVisita} onChange={(e) => setEditingItem({ ...editingItem, dataVisita: e.target.value })} />
-              <Textarea label="Descrizione Clinica" value={editingItem.descrizioneClinica} onChange={(e) => setEditingItem({ ...editingItem, descrizioneClinica: e.target.value })} />
-              <Textarea label="Terapie" value={editingItem.terapie} onChange={(e) => setEditingItem({ ...editingItem, terapie: e.target.value })} />
-            </div>
-          )}
           {editingItem && selectedTab === 'documents' && (
             <div className="space-y-4">
-              <Input label="Nome File" value={editingItem.fileName} onChange={(e) => setEditingItem({ ...editingItem, fileName: e.target.value })} />
+              <Input label="Nome file" value={editingItem.fileName} onChange={(e) => setEditingItem({ ...editingItem, fileName: e.target.value })} />
               <Input label="Descrizione" value={editingItem.description || ''} onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })} />
             </div>
           )}
         </ModalBody>
         <ModalFooter>
-          <Button color="danger" variant="light" onPress={() => setEditingItem(null)}>Annulla</Button>
+          <Button variant="light" onPress={() => setEditingItem(null)}>Annulla</Button>
           <Button color="primary" onPress={handleSaveEdit} isLoading={isSaving} startContent={<Save size={18} />}>Salva</Button>
         </ModalFooter>
       </ModalContent>
@@ -655,8 +677,8 @@ const BackupManager: React.FC = () => {
 
   return (
     <>
-      <Button onPress={onOpen} color="primary" variant="shadow">
-        Gestione Dati Completa
+      <Button onPress={onOpen} variant="bordered" className="border-default-300 bg-white">
+        Gestione avanzata dei dati
       </Button>
 
       <AppModal
@@ -673,10 +695,10 @@ const BackupManager: React.FC = () => {
               <ModalHeader className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <Database className="text-primary" />
-                  <h2 className="text-xl">Pannello di Controllo Dati</h2>
+                  <h2 className="text-xl">Gestione dei dati</h2>
                 </div>
                 <p className="text-sm font-normal text-gray-500">
-                  Gestisci visute, pazienti, documenti e backup centralizzati.
+                  Pazienti, visite, documenti, backup e importazioni.
                 </p>
               </ModalHeader>
               <ModalBody className="py-6">
@@ -691,7 +713,7 @@ const BackupManager: React.FC = () => {
                 )}
 
                 <Tabs
-                  aria-label="Opzioni Dati"
+                  aria-label="Opzioni dati"
                   color="primary"
                   variant="underlined"
                   selectedKey={selectedTab}
@@ -775,7 +797,7 @@ const BackupManager: React.FC = () => {
                   <Tab key="backup" title={
                     <div className="flex items-center gap-2">
                       <Database size={18} />
-                      <span>Backup & Ripristino</span>
+                      <span>Backup e ripristino</span>
                     </div>
                   }>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
@@ -787,7 +809,7 @@ const BackupManager: React.FC = () => {
                         <CardBody className="gap-4">
                           <div className="flex items-center gap-3 text-primary">
                             <Download size={24} />
-                            <h3 className="text-lg font-semibold">Esporta Backup</h3>
+                            <h3 className="text-lg font-semibold">Esporta backup</h3>
                           </div>
                           <p className="text-sm text-gray-600">
                             Scarica un file JSON contenente tutti i dati (Pazienti, Visite, Documenti).
@@ -799,7 +821,7 @@ const BackupManager: React.FC = () => {
                             isLoading={isLoading}
                             startContent={<Download size={18} />}
                           >
-                            Scarica Dati
+                            Scarica i dati
                           </Button>
                         </CardBody>
                       </Card>
@@ -808,7 +830,7 @@ const BackupManager: React.FC = () => {
                         <CardBody className="gap-4">
                           <div className="flex items-center gap-3 text-primary">
                             <Upload size={24} />
-                            <h3 className="text-lg font-semibold">Importa Backup</h3>
+                            <h3 className="text-lg font-semibold">Importa backup</h3>
                           </div>
                           <p className="text-sm text-gray-600">
                             Ripristina i dati da un file di backup precedente.
@@ -830,7 +852,7 @@ const BackupManager: React.FC = () => {
                               onPress={() => fileInputRef.current?.click()}
                               isLoading={isLoading}
                             >
-                              Seleziona File
+                              Seleziona file
                             </Button>
                           </div>
                         </CardBody>
@@ -841,7 +863,7 @@ const BackupManager: React.FC = () => {
                           <div>
                             <div className="flex items-center gap-2 text-danger font-semibold mb-1">
                               <AlertTriangle size={20} />
-                              <h3>Zona Pericolo</h3>
+                              <h3>Zona pericolosa</h3>
                             </div>
                             <p className="text-xs text-gray-500">
                               Cancellazione irreversibile di tutti i dati locali.
@@ -852,7 +874,7 @@ const BackupManager: React.FC = () => {
                             variant="flat"
                             onPress={onResetModalOpen}
                           >
-                            Reset Totale
+                            Reset totale
                           </Button>
                         </CardBody>
                       </Card>
@@ -861,7 +883,7 @@ const BackupManager: React.FC = () => {
                         <CardBody className="gap-4">
                           <div className="flex items-center gap-3 corioli-text-brand">
                             <FileSpreadsheet size={24} />
-                            <h3 className="text-lg font-semibold">Import CSV Pazienti + Appuntamenti</h3>
+                            <h3 className="text-lg font-semibold">Importa CSV di pazienti e appuntamenti</h3>
                           </div>
                           <p className="text-sm text-gray-600">
                             Importa i dati dai file CSV sorgente. Vengono mantenuti solo i campi essenziali,
@@ -903,7 +925,7 @@ const BackupManager: React.FC = () => {
                             >
                               {appointmentsCsvFile
                                 ? `Appuntamenti: ${appointmentsCsvFile.name}`
-                                : "Seleziona CSV Appuntamenti"}
+                                : "Seleziona CSV degli appuntamenti"}
                             </Button>
                           </div>
 
@@ -916,7 +938,7 @@ const BackupManager: React.FC = () => {
                           >
                             {csvImportProgress
                               ? `${csvImportProgress.phase}: ${csvImportProgress.current} / ${csvImportProgress.total}`
-                              : "Importa Dati CSV"}
+                              : "Importa dati CSV"}
                           </Button>
                           {csvImportProgress && (
                             <Progress
@@ -934,7 +956,7 @@ const BackupManager: React.FC = () => {
                         <CardBody className="gap-4">
                           <div className="flex items-center gap-3 text-warning-700">
                             <FileSpreadsheet size={24} />
-                            <h3 className="text-lg font-semibold">Import CSV Doctorlib</h3>
+                            <h3 className="text-lg font-semibold">Importa CSV da Doctorlib</h3>
                           </div>
                           <p className="text-sm text-gray-600">
                             Importa anagrafica pazienti da export Doctorlib (file unico).
@@ -970,7 +992,7 @@ const BackupManager: React.FC = () => {
                           >
                             {csvImportProgress
                               ? `${csvImportProgress.phase}: ${csvImportProgress.current} / ${csvImportProgress.total}`
-                              : "Importa Dati Doctorlib"}
+                              : "Importa dati Doctorlib"}
                           </Button>
                           {csvImportProgress && (
                             <Progress
@@ -1027,7 +1049,6 @@ const BackupManager: React.FC = () => {
               </ModalBody>
               <ModalFooter>
                 <Button
-                  color="danger"
                   variant="light"
                   onPress={() => {
                     closeManager();

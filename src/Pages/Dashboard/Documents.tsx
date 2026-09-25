@@ -35,7 +35,7 @@ import { AppModal } from "../../components/AppModal";
 
 const CATEGORY_OPTIONS = [
   { key: "all", label: "Tutte le categorie" },
-  { key: "corso_aggiornamento", label: "Corsi Aggiornamento" },
+  { key: "corso_aggiornamento", label: "Corsi di aggiornamento" },
   { key: "certificato", label: "Certificati" },
   { key: "altro", label: "Altro" }
 ];
@@ -262,17 +262,15 @@ export default function Documents() {
       startContent={<FileText size={18} />}
       className="font-medium border-default-300 text-default-700 bg-white"
     >
-      Carica Documento
+      Carica documento
     </Button>
   );
 
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title="Gestione Documenti"
-        subtitle="Archivia e consulta corsi ECM, certificati e documenti professionali."
-        icon={FileText}
-        iconColor="primary"
+        title="Documenti personali"
+        subtitle="Corsi ECM, attestati e documenti professionali tuoi: le carte dei pazienti stanno nella loro scheda."
         actions={HeaderActions}
       />
 
@@ -283,7 +281,7 @@ export default function Documents() {
               placeholder="Cerca per titolo, descrizione o nome file..."
               value={searchTerm}
               onValueChange={setSearchTerm}
-              startContent={<Search size={18} className="text-default-400" />}
+              startContent={<Search size={18} className="text-default-500" />}
               className="flex-1"
               variant="bordered"
               isClearable
@@ -341,14 +339,18 @@ export default function Documents() {
                     : "Inizia caricando i tuoi primi documenti di aggiornamento professionale."
                   }
                 </p>
-                <Button
-                  variant="bordered"
-                  onPress={onUploadOpen}
-                  startContent={<FileText size={18} />}
-                  className="font-medium border-default-300 text-default-700 bg-white"
-                >
-                  Carica Primo Documento
-                </Button>
+                {/* self-center: nel CardBody in colonna il pulsante si
+                    allargava a tutta la card. */}
+                {!searchTerm && (
+                  <Button
+                    color="primary"
+                    onPress={onUploadOpen}
+                    startContent={<FileText size={18} />}
+                    className="self-center font-medium"
+                  >
+                    Carica il primo documento
+                  </Button>
+                )}
               </CardBody>
             </Card>
           ) : (
@@ -493,12 +495,12 @@ export default function Documents() {
       <AppModal isOpen={isUploadOpen} onClose={onUploadClose} size="2xl">
         <ModalContent>
           <ModalHeader>
-            <h2 className="text-xl font-bold">Carica Nuovo Documento</h2>
+            <h2 className="text-xl font-bold">Carica un documento</h2>
           </ModalHeader>
           <ModalBody>
             <div className="space-y-4">
               <Input
-                label="Titolo Documento"
+                label="Titolo del documento"
                 placeholder="Es. Corso ECM Cardiologia 2024"
                 value={uploadData.title}
                 onValueChange={(value) => setUploadData(prev => ({ ...prev, title: value }))}
@@ -527,7 +529,7 @@ export default function Documents() {
               >
                 {CATEGORY_OPTIONS.filter((option) => option.key !== "all").map((option) => (
                   <SelectItem key={option.key} value={option.key}>
-                    {option.label === "Corsi Aggiornamento" ? "Corso di Aggiornamento" : option.label}
+                    {option.label === "Corsi di aggiornamento" ? "Corso di aggiornamento" : option.label}
                   </SelectItem>
                 ))}
               </Select>
@@ -542,7 +544,7 @@ export default function Documents() {
                   variant="bordered"
                 />
                 <Input
-                  label="Data Scadenza (Opzionale)"
+                  label="Data di scadenza"
                   type="date"
                   value={uploadData.expiryDate}
                   onValueChange={(value) => setUploadData(prev => ({ ...prev, expiryDate: value }))}
@@ -560,7 +562,7 @@ export default function Documents() {
                 />
                 <label htmlFor="file-upload" className="cursor-pointer">
                   <div className="space-y-2">
-                    <Upload className="mx-auto w-8 h-8 text-gray-400" />
+                    <Upload className="mx-auto w-8 h-8 text-gray-500" />
                     <p className="text-sm text-gray-600">
                       {selectedFile ? selectedFile.name : "Clicca per selezionare un file PDF"}
                     </p>
@@ -591,7 +593,7 @@ export default function Documents() {
               isLoading={loading}
               isDisabled={!selectedFile || !uploadData.title.trim()}
             >
-              Carica Documento
+              Carica documento
             </Button>
           </ModalFooter>
         </ModalContent>

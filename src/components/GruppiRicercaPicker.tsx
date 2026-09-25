@@ -134,7 +134,7 @@ export function GruppiRicercaPicker({
         )}
 
         {!disabled && disponibili.length === 0 && (
-          <span className="text-[11px] text-default-400">
+          <span className="text-[11px] text-default-500">
             Nessun gruppo: creali in Impostazioni
           </span>
         )}
@@ -212,7 +212,7 @@ export function GruppiRicercaPicker({
       )}
 
       {pieno && !disabled && (
-        <span className="text-[11px] text-default-400">
+        <span className="text-[11px] text-default-500">
           Massimo {MAX_GRUPPI_PER_PAZIENTE} gruppi per paziente.
         </span>
       )}

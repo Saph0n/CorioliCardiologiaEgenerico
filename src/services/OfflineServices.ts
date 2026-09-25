@@ -189,6 +189,7 @@ export class DoctorService {
   }
 
   static async updateDoctor(doctorData: {
+    titolo?: Doctor["titolo"];
     nome?: string;
     cognome?: string;
     email?: string;

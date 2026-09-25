@@ -80,7 +80,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
 
   return (
     <>
-      <div className="min-h-screen corioli-auth-bg flex items-center justify-center p-6">
+      <div className="min-h-finestra corioli-auth-bg flex items-center justify-center p-6">
         <Card className="w-full max-w-md shadow-lg corioli-card">
           <CardBody className="p-6 sm:p-8 space-y-6">
             <div className="flex flex-col items-center text-center gap-3">

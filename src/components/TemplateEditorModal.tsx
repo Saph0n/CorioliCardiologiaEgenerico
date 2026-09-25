@@ -8,7 +8,6 @@ import {
   Input,
   Select,
   SelectItem,
-  Divider,
 } from "@nextui-org/react";
 import { FileText, ClipboardList, ChevronDown, Pill } from "lucide-react";
 import type { MedicalTemplate } from "../types/Storage";
@@ -67,7 +66,7 @@ const SECTION_TO_CAMPO = Object.fromEntries(
  */
 const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
   prestazione: "Anamnesi (campo unico)",
-  esameObiettivo: "Esame Obiettivo",
+  esameObiettivo: "Esame obiettivo",
   ecg: "ECG",
   ecocardiogramma: "Ecocardiogramma",
   tcCoronarica: "TC coronarica",
@@ -77,7 +76,7 @@ const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
   dopplerTsa: "Doppler TSA",
   scompenso: "Scompenso cardiaco",
   fibrillazioneAtriale: "Fibrillazione atriale",
-  conclusioni: "Conclusioni e Terapia",
+  conclusioni: "Conclusioni e terapia",
   anamnesiFamiliare: "Anamnesi · Familiare",
   anamnesiFisiologica: "Anamnesi · Fisiologica",
   anamnesiPatologica: "Anamnesi · Patologica",
@@ -117,7 +116,7 @@ const DEFAULT_SECTION: Record<TemplateCategory, TemplateSection> = {
   certificato: "generale",
 };
 
-/** Per le terapie la sezione DB è "generale" ma in UI compare in Conclusioni e Terapie */
+/** Per le terapie la sezione DB è "generale" ma in UI compare in Conclusioni e terapia */
 function getPreviewSection(category: TemplateCategory, section: TemplateSection): TemplateSection {
   if (category === "terapie") return "conclusioni";
   return section;
@@ -132,11 +131,11 @@ type VisitFieldMock = {
 const VISITA_FIELDS: VisitFieldMock[] = [
   { section: "prestazione", label: "Anamnesi", hasModello: true },
   { label: "Motivo della visita", hasModello: false },
-  { section: "esameObiettivo", label: "Esame Obiettivo", hasModello: true },
+  { section: "esameObiettivo", label: "Esame obiettivo", hasModello: true },
   { section: "ecg", label: "ECG", hasModello: true },
   { section: "ecocardiogramma", label: "Ecocardiogramma", hasModello: true },
   { section: "tcCoronarica", label: "TC coronarica", hasModello: true },
-  { section: "conclusioni", label: "Conclusioni e Terapia", hasModello: true },
+  { section: "conclusioni", label: "Conclusioni e terapia", hasModello: true },
 ];
 
 type LivePreviewContent = {
@@ -163,7 +162,7 @@ function getContentPlaceholder(category: TemplateCategory): string {
     return "Scrivi l'intera ricetta in testo libero: farmaci, posologie, durata e indicazioni. Comparirà già compilata quando emetti una ricetta.";
   }
   if (category === "terapie") {
-    return "Scrivi le indicazioni in forma discorsiva. Comparirà nella sezione Conclusioni e Terapie della visita.";
+    return "Scrivi le indicazioni in forma discorsiva. Comparirà nella sezione Conclusioni e terapia della visita.";
   }
   return "Scrivi il testo completo che verrà inserito quando selezioni questo modello...";
 }
@@ -184,10 +183,10 @@ function MockModelloControl({
   return (
     <div className="relative shrink-0">
       <span
-        className={`inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+        className={`inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
           open
             ? "bg-primary text-white shadow-sm"
-            : "bg-default-100 text-default-400"
+            : "bg-default-100 text-default-500"
         }`}
       >
         <ClipboardList size={10} />
@@ -201,14 +200,14 @@ function MockModelloControl({
           }`}
         >
           <div className="border-b border-primary-100 bg-primary-50 px-2.5 py-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-primary">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-primary">
               Menu modelli
             </p>
           </div>
           <div className="px-2.5 py-2">
             <p className="text-xs font-semibold text-gray-900">{menuLabel}</p>
             {menuDescription && (
-              <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-default-500">
+              <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-default-500">
                 {menuDescription}
               </p>
             )}
@@ -246,7 +245,7 @@ function MockLiveField({
       } ${
         active
           ? isEmpty
-            ? "border-primary/30 bg-white text-default-400 italic"
+            ? "border-primary/30 bg-white text-default-500 italic"
             : "border-primary/50 bg-white text-gray-800 shadow-inner"
           : "border-dashed border-default-200 bg-white/50 text-default-300"
       }`}
@@ -286,7 +285,7 @@ function VisitFormMock({
           Anteprima live
         </p>
         <p className="text-xs font-semibold text-gray-800">
-          {visitLabel} · Referto Medico
+          {visitLabel} · Referto medico
         </p>
       </div>
       <div className="space-y-1.5 overflow-visible p-3">
@@ -371,7 +370,7 @@ function EsameFormMock({ preview }: { preview: LivePreviewContent }) {
       <div className="space-y-2 p-3">
         <div className="flex justify-end">
           <MockModelloControl
-            label="Modelli Esame"
+            label="Modelli"
             open={menuOpen}
             menuLabel={menuDisplay}
             menuDescription={preview.fieldNote?.trim() || undefined}
@@ -415,7 +414,7 @@ function CertificatoFormMock({ preview }: { preview: LivePreviewContent }) {
       <div className="space-y-2 p-3">
         <div className="flex justify-end">
           <MockModelloControl
-            label="Modelli Certificato"
+            label="Modelli"
             open={menuOpen}
             menuLabel={menuDisplay}
             menuDescription={
@@ -457,7 +456,7 @@ function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
       </div>
       <div className="space-y-2 p-3">
         <div className="flex justify-end">
-          <MockModelloControl label="Modelli Ricetta" open={menuOpen} menuLabel={menuDisplay} />
+          <MockModelloControl label="Modelli" open={menuOpen} menuLabel={menuDisplay} />
         </div>
         <div className="rounded-lg border border-primary bg-primary-50/80 px-2.5 py-2 ring-2 ring-primary/20">
           <span className="text-xs font-bold text-primary-900">Prescrizione</span>
@@ -661,7 +660,7 @@ export function TemplateEditorModal({
     <AppModal
       isOpen={isOpen}
       onClose={onClose}
-      size="2xl"
+      size="5xl"
       scrollBehavior="inside"
       classNames={{
         base: "max-h-[90vh]",
@@ -680,13 +679,19 @@ export function TemplateEditorModal({
                 {isEditing ? "Modifica modello" : "Nuovo modello referto"}
               </h2>
               <p className="mt-0.5 text-sm font-normal text-default-500">
-                Scegli dove va, scrivi sotto e guarda l&apos;anteprima aggiornarsi.
+                Scegli dove va e scrivi il testo: a destra vedi dove comparirà.
               </p>
             </div>
           </div>
         </ModalHeader>
 
-        <ModalBody className="gap-5 py-6" onContextMenu={(e) => e.stopPropagation()}>
+        {/* Form a sinistra e anteprima a destra. Prima era tutto in colonna:
+            i due campi da compilare stavano sotto un'anteprima di tutto il
+            referto alta 650px, e all'apertura non si vedevano. Sotto i 1024px
+            si torna in colonna, ma il form viene prima. */}
+        <ModalBody className="py-6" onContextMenu={(e) => e.stopPropagation()}>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Select
               label="Tipo"
@@ -725,7 +730,7 @@ export function TemplateEditorModal({
                 <p className="text-xs text-default-500">Sezione</p>
                 <p className="text-sm font-medium text-default-800">
                   {category === "terapie"
-                    ? "4. Conclusioni e Terapie"
+                    ? "Conclusioni e terapia"
                     : category === "ricette"
                       ? "Nuova ricetta"
                       : category === "esame_complementare"
@@ -741,10 +746,10 @@ export function TemplateEditorModal({
               <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-gray-900">
-                  Modello di Terapia (visita)
+                  Modello di terapia (visita)
                 </p>
                 <p className="text-xs leading-relaxed text-default-600">
-                  Comparirà nella sezione <strong>Conclusioni e Terapie</strong> della
+                  Comparirà nella sezione <strong>Conclusioni e terapia</strong> della
                   visita. Scrivilo in forma <strong>discorsiva</strong> (indicazioni e
                   raccomandazioni). Per l&apos;elenco dei farmaci da stampare in ricetta
                   usa invece la categoria <strong>Ricette</strong>.
@@ -758,10 +763,10 @@ export function TemplateEditorModal({
               <Pill className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-gray-900">
-                  Modello di Ricetta (testo libero)
+                  Modello di ricetta (testo libero)
                 </p>
                 <p className="text-xs leading-relaxed text-default-600">
-                  Comparirà nel menu <strong>Modelli Ricetta</strong> quando emetti una
+                  Comparirà nel menu <strong>Modelli</strong> quando emetti una
                   ricetta. Scrivi <strong>tutto in un unico testo</strong> (farmaci,
                   posologie, durata e indicazioni): comparirà già compilato.
                 </p>
@@ -769,31 +774,16 @@ export function TemplateEditorModal({
             </div>
           )}
 
-          <TemplatePlacementMap
-            category={category}
-            section={section}
-            onSectionChange={(nextSection) =>
-              setDraft((prev) => ({ ...prev, section: nextSection }))
-            }
-            preview={preview}
-            resolveSubLabel={resolveSubLabel}
-            isAnamnesiSection={isAnamnesiSection}
-          />
-
-          <Divider />
 
           <section className="space-y-4">
-            <p className="text-xs text-default-500">
-              Compila qui: l&apos;anteprima sopra si aggiorna in tempo reale.
-            </p>
 
             <Input
               autoFocus={!isEditing}
               label="Nome in menu"
               placeholder={
                 category === "esame_complementare"
-                  ? "Es. Emocromo, Eco addome..."
-                  : "Es. EO negativo, Terapia standard..."
+                  ? "Es. Ecocardiogramma, Holter ECG..."
+                  : "Es. EO negativo, terapia standard..."
               }
               value={draft.label ?? ""}
               onValueChange={(val) => {
@@ -845,6 +835,21 @@ export function TemplateEditorModal({
               />
             )}
           </section>
+          </div>
+          <div className="lg:sticky lg:top-0 lg:self-start">
+          <TemplatePlacementMap
+            category={category}
+            section={section}
+            onSectionChange={(nextSection) =>
+              setDraft((prev) => ({ ...prev, section: nextSection }))
+            }
+            preview={preview}
+            resolveSubLabel={resolveSubLabel}
+            isAnamnesiSection={isAnamnesiSection}
+          />
+
+          </div>
+          </div>
         </ModalBody>
 
         <ModalFooter>

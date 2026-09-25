@@ -42,10 +42,6 @@ export function parseHeightFieldBlur(s: string): number | undefined {
   return n;
 }
 
-export function clampWeightKg(value: number): number {
-  return Math.min(MAX_WEIGHT_KG, Math.max(MIN_WEIGHT_KG, Math.round(value * 10) / 10));
-}
-
 /** Consente cifre e un separatore decimale mentre si digita. */
 export function isValidWeightInputDraft(s: string): boolean {
   return s === "" || /^\d*[.,]?\d*$/.test(s);
@@ -61,13 +57,19 @@ export function parseWeightFieldLive(s: string): number | "incomplete" {
   return n;
 }
 
-/** Valore finale al blur: vuoto → 0, altrimenti clamp nel range consentito. */
+/**
+ * Valore finale al blur: vuoto → 0, altrimenti arrotondato al decimo.
+ *
+ * Non riporta il valore dentro il range: prima lo faceva, e "870" (volendo
+ * 87,0) diventava 200 kg senza avviso. Un valore fuori scala resta com'e' e lo
+ * segnala `validateBodyWeight`, accanto al campo e al salvataggio.
+ */
 export function parseWeightFieldBlur(s: string): number {
   const t = s.trim().replace(",", ".");
   if (t === "" || t === ".") return 0;
   const n = parseFloat(t);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return clampWeightKg(n);
+  return Math.round(n * 10) / 10;
 }
 
 export function parseOptionalHeight(raw: string): number | undefined {

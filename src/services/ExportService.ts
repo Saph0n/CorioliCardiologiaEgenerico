@@ -2,6 +2,7 @@ import { PatientService, VisitService, DoctorService } from './OfflineServices';
 import { Patient, Visit, Doctor } from '../types/Storage';
 import jsPDF from 'jspdf';
 import { todayIsoDate } from "../utils/dateUtils";
+import { titoloMedico } from "../utils/doctorProfile";
 
 export interface ExportData {
   doctor: Doctor | null;
@@ -233,7 +234,7 @@ export class ExportService {
       
       if (doctor) {
         doc.setFontSize(12);
-        doc.text(`Dott. ${doctor.nome} ${doctor.cognome}`, 105, 24, { align: "center" });
+        doc.text(`${titoloMedico(doctor)} ${doctor.nome} ${doctor.cognome}`, 105, 24, { align: "center" });
       }
 
       // Reset colori

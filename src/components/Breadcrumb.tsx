@@ -26,7 +26,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
     <nav className="flex items-center gap-1 text-sm text-gray-500 mb-2" aria-label="Breadcrumb">
       {items.map((item, i) => (
         <React.Fragment key={i}>
-          {i > 0 && <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+          {i > 0 && <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />}
           {item.path ? (
             <button
               type="button"

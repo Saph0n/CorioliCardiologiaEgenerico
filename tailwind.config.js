@@ -98,6 +98,29 @@ export default {
           "sans-serif",
         ],
         /**
+         * I titoli delle pagine (`PageHeader`). Segoe UI Variable ha tre tagli
+         * dello stesso disegno: Small, Text e Display. Il Text, quello
+         * dell'interfaccia, ha aste piu' grosse e lettere piu' larghe per
+         * reggere a 12-14px, e a 24px diventa pesante. Il titolo prima lo
+         * stringeva con `tracking-tight` e accanto al sottotitolo sembrava un
+         * altro carattere ("non e' armonico come carattere e grandezza", 25
+         * settembre 2026). Il Display e' tagliato per i corpi grandi: nella
+         * scala di Windows 11 il titolo e' Display semibold a 28px.
+         *
+         * Senza Windows 11 la riga scivola su `system-ui`, come `sans`: su Mac
+         * San Francisco passa da solo al suo taglio Display sopra i 20 punti.
+         */
+        titolo: [
+          "Segoe UI Variable Display",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        /**
          * Solo i campi in cui si scrive il referto (`RefertoTextarea`): devono
          * seguire la stampa, non l'interfaccia. Se cambia questa riga cambia
          * anche quello che il medico vede mentre scrive rispetto a quello che
@@ -112,6 +135,24 @@ export default {
           muted: "#F1F5F9",
           page: "#F8FAFC",
         },
+      },
+      /**
+       * Spazio della barra del titolo (`--barra-finestra` in index.css, 0 nel
+       * browser). `top-barra` per cio' che resta attaccato in alto,
+       * `min-h-finestra` per cio' che riempie la finestra: con `min-h-screen`
+       * la pagina sarebbe sempre piu' alta della finestra quanto la barra.
+       */
+      spacing: {
+        barra: "var(--barra-finestra)",
+      },
+      height: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
+      minHeight: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
+      maxHeight: {
+        finestra: "calc(100vh - var(--barra-finestra))",
       },
     },
   },

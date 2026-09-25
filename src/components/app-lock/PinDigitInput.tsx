@@ -174,7 +174,7 @@ export default function PinDigitInput({
         }}
       />
       {showHint ? (
-        <p className="mt-3 text-center text-xs text-default-400">4 cifre</p>
+        <p className="mt-3 text-center text-xs text-default-500">4 cifre</p>
       ) : null}
     </div>
   );

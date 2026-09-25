@@ -43,7 +43,7 @@ export const visitaDiProva: Visit = {
     problemaClinico:
       "Il paziente riferisce dispnea da sforzo comparsa da circa due mesi, con progressiva riduzione della tolleranza all'esercizio. Nega dolore toracico a riposo, cardiopalmo, sincopi o lipotimie.",
     prestazione:
-      "Ipertensione arteriosa nota da quindici anni, in trattamento con ACE-inibitore.\nDislipidemia in terapia con statina a media intensita'.\nPregresso infarto miocardico inferiore nel 2019, trattato con angioplastica e impianto di stent medicato su coronaria destra.\nNega diabete mellito. Familiarita' paterna per cardiopatia ischemica precoce.\nEx fumatore, sospensione nel 2019. Attivita' fisica saltuaria.",
+      "Ipertensione arteriosa nota da quindici anni, in trattamento con ACE-inibitore.\nDislipidemia in terapia con statina a media intensità.\nPregresso infarto miocardico inferiore nel 2019, trattato con angioplastica e impianto di stent medicato su coronaria destra.\nNega diabete mellito. Familiarità paterna per cardiopatia ischemica precoce.\nEx fumatore, sospensione nel 2019. Attività fisica saltuaria.",
     terapiaInAtto:
       "Acido acetilsalicilico 100 mg, 1 cp al mattino.\nRamipril 5 mg, 1 cp al mattino.\nBisoprololo 2,5 mg, 1 cp al mattino.\nAtorvastatina 40 mg, 1 cp la sera.",
     esameObiettivo:
@@ -51,7 +51,7 @@ export const visitaDiProva: Visit = {
     accertamenti:
       "Si richiede ecocardiogramma color-Doppler di controllo a sei mesi e nuovo profilo lipidico completo a tre mesi dall'ottimizzazione della terapia ipolipemizzante.",
     terapiaSpecifica:
-      "Quadro compatibile con cardiopatia ischemica cronica in paziente a rischio cardiovascolare molto alto, attualmente in compenso emodinamico, classe NYHA II.\nSi conferma la terapia antiaggregante e antipertensiva in atto.\nSi incrementa la statina ad alta intensita' per il mancato raggiungimento dell'obiettivo lipidico previsto dalla classe di rischio.\nSi raccomanda attivita' fisica aerobica regolare e controllo cardiologico a sei mesi, o prima in caso di comparsa di sintomi.",
+      "Quadro compatibile con cardiopatia ischemica cronica in paziente a rischio cardiovascolare molto alto, attualmente in compenso emodinamico, classe NYHA II.\nSi conferma la terapia antiaggregante e antipertensiva in atto.\nSi incrementa la statina ad alta intensità per il mancato raggiungimento dell'obiettivo lipidico previsto dalla classe di rischio.\nSi raccomanda attività fisica aerobica regolare e controllo cardiologico a sei mesi, o prima in caso di comparsa di sintomi.",
     pesoCorporeo: 84,
     pressioneArteriosa: "150/85",
     frequenzaCardiaca: "78",
@@ -119,7 +119,7 @@ export const visitaDiProva: Visit = {
       motivoInterruzione: "Esaurimento muscolare degli arti inferiori",
       esito: "Negativo per ischemia inducibile",
       referto:
-        "Test massimale interrotto per esaurimento muscolare. Risposta pressoria di tipo ipertensivo al picco dello sforzo. Non alterazioni del tratto ST significative ne' aritmie da sforzo.",
+        "Test massimale interrotto per esaurimento muscolare. Risposta pressoria di tipo ipertensivo al picco dello sforzo. Non alterazioni del tratto ST significative né aritmie da sforzo.",
     },
     holterEcg: {
       dataEsame: "2026-06-20",
@@ -132,7 +132,7 @@ export const visitaDiProva: Visit = {
       bev: 1450,
       pausaMaxSec: 2.1,
       referto:
-        "Ritmo sinusale per tutta la durata della registrazione. Rari battiti ectopici sopraventricolari isolati. Extrasistolia ventricolare monomorfa a bassa densita'. Nessuna pausa patologica.",
+        "Ritmo sinusale per tutta la durata della registrazione. Rari battiti ectopici sopraventricolari isolati. Extrasistolia ventricolare monomorfa a bassa densità. Nessuna pausa patologica.",
     },
     holterPressorio: {
       dataEsame: "2026-06-21",

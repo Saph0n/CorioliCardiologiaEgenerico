@@ -276,7 +276,7 @@ export function calcolaClearanceCockcroftGault(
   if (scr == null || age == null || kg == null || (sesso !== "M" && sesso !== "F")) {
     return {
       ok: false,
-      reason: "Servono creatininemia, eta', peso corporeo e sesso del paziente.",
+      reason: "Servono creatininemia, età, peso corporeo e sesso del paziente.",
     };
   }
   if (scr <= 0 || kg <= 0 || age <= 0) {

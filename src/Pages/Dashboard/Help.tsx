@@ -20,6 +20,7 @@ import {
   Search,
   Paperclip,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { PageHeader } from "../../components/PageHeader";
@@ -67,7 +68,7 @@ const ACCEPTED_FILES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,vide
 function ModelliMapSchema() {
   const rows = [
     { cat: "Visita", dest: "Campi del referto di visita", hot: false },
-    { cat: "Terapie", dest: "Visita → “Conclusioni e Terapia” (testo discorsivo)", hot: true },
+    { cat: "Terapie", dest: "Visita → “Conclusioni e terapia” (testo discorsivo)", hot: true },
     { cat: "Ricette", dest: "Nuova ricetta → testo libero", hot: true },
     { cat: "Esami", dest: "Nuova richiesta esame", hot: false },
     { cat: "Certificati", dest: "Nuovo certificato", hot: false },
@@ -87,7 +88,7 @@ function ModelliMapSchema() {
             >
               {r.cat}
             </span>
-            <span className="text-default-400" aria-hidden>→</span>
+            <span className="text-default-500" aria-hidden>→</span>
             <span className="text-xs leading-snug text-default-700">{r.dest}</span>
           </div>
         ))}
@@ -102,7 +103,7 @@ function TerapieVsRicetteSchema() {
     <div className="my-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
       <div className="rounded-xl border border-default-200 bg-default-50/60 p-3">
         <p className="text-sm font-semibold text-gray-900">Terapie</p>
-        <p className="mt-0.5 text-[11px] text-default-500">Visita · Conclusioni e Terapie</p>
+        <p className="mt-0.5 text-[11px] text-default-500">Visita · Conclusioni e terapia</p>
         <div className="mt-2 rounded-md border border-default-200 bg-white p-2 text-[11px] leading-relaxed text-default-700">
           Si consiglia di proseguire i controlli di routine e mantenere uno stile di vita sano…
         </div>
@@ -143,7 +144,7 @@ function CreaModelloSteps() {
             {i + 1}. {s}
           </span>
           {i < steps.length - 1 && (
-            <span className="text-default-400" aria-hidden>→</span>
+            <span className="text-default-500" aria-hidden>→</span>
           )}
         </span>
       ))}
@@ -427,12 +428,12 @@ export default function HelpAndFeedback() {
         {
           title: "Come aggiungo un nuovo paziente?",
           content:
-            "Vai alla sezione 'Pazienti' (o Dashboard) e clicca sul pulsante '+ Nuovo Paziente' in alto a destra. Compila i campi obbligatori (Nome, Cognome, Data di nascita, Sesso) e salva. Il Codice Fiscale verrà calcolato automaticamente se non inserito.",
+            "Dalla Dashboard o da «Pazienti» premi «Nuovo paziente» (oppure Ctrl+P). Basta il cognome o il codice fiscale: con un CF valido data e luogo di nascita e sesso si compilano da soli. «Salva e inizia visita» apre subito la visita del paziente appena registrato; «Salva» apre la sua scheda. Se cerchi un paziente che non c'è, dal pannello di ricerca premi Invio: si apre il form con il cognome già scritto.",
         },
         {
           title: "Come posso cercare un paziente?",
           content:
-            "Nella Dashboard o nella sezione Pazienti, usa la barra di ricerca in alto. Puoi cercare per Nome, Cognome o Codice Fiscale. Il sistema riconosce automaticamente se stai inserendo un CF (alfanumerico) o un nome.",
+            "Da qualunque pagina premi Ctrl+K (⌘K sul Mac) o «Cerca paziente» nella barra in alto: scrivi il cognome, il nome o il codice fiscale, anche solo in parte e senza accenti. Con le frecce scegli, con Invio apri la scheda. Ctrl+N apre lo stesso pannello per una nuova visita: Invio apre direttamente la maschera della visita.",
         },
         {
           title: "Cosa significa l'asterisco rosso (*) accanto al Codice Fiscale?",
@@ -442,7 +443,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come modifico o elimino un paziente?",
           content:
-            "Dalla lista pazienti, clicca sulla card del paziente per aprire la sua scheda. Usa il pulsante 'Modifica' (icona matita) in alto a destra per cambiare i dati. Per eliminare, usa il pulsante 'Elimina' (icona cestino) nel modal di modifica. Attenzione: l'eliminazione cancella anche tutte le visite associate.",
+            "Dall'elenco dei pazienti, clicca sulla riga del paziente per aprire la sua scheda. Usa il pulsante «Modifica» (icona matita) in alto a destra per cambiare i dati. Per eliminare, usa il pulsante «Elimina» (icona cestino) nel modal di modifica. Attenzione: l'eliminazione cancella anche tutte le visite associate.",
         },
       ],
     },
@@ -452,7 +453,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come creo una nuova visita?",
           content:
-            "Dalla scheda del paziente, clicca su '+ Nuova Visita'. Il referto è diviso in sezioni: Anamnesi, Motivo della visita, Terapia in atto (riportata dall'ultima visita, da rileggere), Esame obiettivo, elettrocardiogramma, Accertamenti e Conclusioni con terapia. Ecocardiogramma, TC coronarica, test ergometrico, Holter ECG e pressorio, Doppler TSA, scompenso e fibrillazione atriale sono moduli facoltativi: si accendono uno per uno da Impostazioni, nella card «Moduli della visita». Nella colonna di sinistra registri le variabili cliniche (pressione arteriosa, frequenza cardiaca, peso con calcolo del BMI), gli esami di laboratorio e alleghi eventuali immagini.",
+            "Dalla scheda del paziente o dall'elenco premi «Nuova visita», oppure Ctrl+N e cerca il paziente. Mentre scrivi, Ctrl+S salva senza uscire e Ctrl+P stampa, e se l'app si chiude prima del salvataggio alla riapertura della visita ti viene proposta la bozza. Il referto è diviso in sezioni: Anamnesi, Motivo della visita, Terapia in atto (riportata dall'ultima visita, da rileggere), Esame obiettivo, elettrocardiogramma, Accertamenti e Conclusioni con terapia. Ecocardiogramma, TC coronarica, test ergometrico, Holter ECG e pressorio, Doppler TSA, scompenso e fibrillazione atriale sono moduli facoltativi: si accendono uno per uno da Impostazioni, nella card «Moduli della visita», e nella visita si aggiungono al referto con i pulsanti «+» sotto l'elettrocardiogramma. Nella colonna di sinistra registri le variabili cliniche (pressione arteriosa, frequenza cardiaca, peso con calcolo del BMI) e alleghi eventuali immagini. Gli esami del sangue si scrivono con «Inserisci esami»: una finestra fatta come il foglio del laboratorio, con il valore di oggi accanto al precedente, dove Invio passa al valore successivo; nella colonna resta il riepilogo. Se un numero sembra scritto in un'altra unità (la creatinina in µmol/L, l'HbA1c in mmol/mol) il campo lo segnala e propone la conversione. «Copia visita precedente» porta i testi, non gli esami: i valori di allora restano visibili come precedenti. Terapia in atto e fattori di rischio riportati dall'ultima visita restano segnalati finché non li rileggi, e prima di stampare l'app elenca quello che merita un secondo sguardo (unità sospette, esami senza data, terapia non riletta): puoi correggere o stampare comunque.",
         },
         {
           title: "Posso evidenziare una parte del referto?",
@@ -467,7 +468,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come stampo o salvo il referto in PDF?",
           content:
-            "Dalla schermata di compilazione visita o dallo storico, clicca su 'Stampa'. Verrà generato un PDF professionale con l'intestazione del medico, i dati del paziente e il referto completo, pronto per essere stampato o salvato.",
+            "Dalla schermata di compilazione visita o dallo storico, clicca su «Stampa». Verrà generato un PDF professionale con l'intestazione del medico, i dati del paziente e il referto completo, pronto per essere stampato o salvato.",
         },
       ],
     },
@@ -477,7 +478,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come prescrivo esami complementari?",
           content:
-            "Dalla scheda paziente, nella colonna di destra 'Esami', clicca su 'Nuovo Esame'. Puoi scegliere un esame dalla lista dei modelli (es. elettrocardiogramma, esami ematochimici) o scriverne uno nuovo. Anche qui puoi generare un PDF di richiesta/prescrizione.",
+            "Dalla scheda paziente, nella colonna di destra «Esami», clicca su «Nuovo Esame». Puoi scegliere un esame dalla lista dei modelli (es. elettrocardiogramma, esami ematochimici) o scriverne uno nuovo. Anche qui puoi generare un PDF di richiesta/prescrizione.",
         },
         {
           title: "Posso allegare file esterni?",
@@ -492,7 +493,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come modifico l'intestazione dei referti?",
           content:
-            "Vai su 'Impostazioni > Ambulatori'. Qui puoi inserire i tuoi dati (Nome, Specializzazione) e aggiungere uno o più ambulatori (Indirizzo, Città, Contatti). L'ambulatorio impostato come 'Primario' apparirà nell'intestazione dei PDF.",
+            "Vai su «Impostazioni > Ambulatori». Qui puoi inserire i tuoi dati (Nome, Specializzazione) e aggiungere uno o più ambulatori (Indirizzo, Città, Contatti). L'ambulatorio impostato come «Primario» apparirà nell'intestazione dei PDF.",
         },
         {
           title: "I miei dati sono al sicuro? Dove vengono salvati?",
@@ -502,7 +503,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come faccio il backup dei dati?",
           content:
-            "Vai su 'Impostazioni > Backup e Dati'. Clicca su 'Esporta Backup' per scaricare un file unico (.json) contenente tutti i pazienti, visite e impostazioni. Puoi usare questo file per ripristinare i dati su un altro computer o per sicurezza.",
+            "Vai su «Impostazioni > Backup e Dati». Clicca su «Esporta Backup» per scaricare un file unico (.json) contenente tutti i pazienti, visite e impostazioni. Puoi usare questo file per ripristinare i dati su un altro computer o per sicurezza.",
         },
       ],
     },
@@ -637,7 +638,7 @@ export default function HelpAndFeedback() {
             <div key={`${msg.id}-att-${i}`}>{renderAttachment(att, isUser)}</div>
           ))}
         </div>
-        <span className="text-[10px] text-gray-400 mt-1 px-1">{msg.time}</span>
+        <span className="text-[11px] text-gray-500 mt-1 px-1">{msg.time}</span>
       </div>
     );
   };
@@ -651,20 +652,31 @@ export default function HelpAndFeedback() {
   return (
     <div className="corioli-page space-y-6 animate-in fade-in duration-500 flex flex-col min-h-0">
       <PageHeader
-        title="Assistenza e Feedback"
-        subtitle="Siamo qui per aiutarti. Trova risposte o contattaci direttamente."
-        icon={LifeBuoy}
-        iconColor="primary"
+        title="Aiuto"
+        actions={
+          // Era un pulsante fisso nella navbar. Dopo un import di backup l'app
+          // si ricarica da sola: qui resta come rimedio quando qualcosa non si
+          // aggiorna.
+          <Button
+            variant="light"
+            size="sm"
+            startContent={<RefreshCw size={14} />}
+            onPress={() => window.location.reload()}
+            className="text-default-600"
+          >
+            Ricarica l'app
+          </Button>
+        }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 lg:h-[calc(100vh-220px)] lg:max-h-[720px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 lg:h-[calc(100vh_-_220px_-_var(--barra-finestra))] lg:max-h-[720px]">
         {/* FAQ — scroll interno, non influenza l'altezza della chat */}
         <div className="flex flex-col min-h-0 h-[420px] lg:h-full">
           <Card className="shadow-md flex flex-col h-full min-h-0 overflow-hidden">
             <CardHeader className="flex gap-3 px-6 pt-6 shrink-0">
               <HelpCircle className="w-6 h-6 text-primary shrink-0" />
               <div className="flex flex-col min-w-0">
-                <p className="text-md font-bold">Domande Frequenti</p>
+                <p className="text-md font-bold">Domande frequenti</p>
                 <p className="text-small text-default-500">Risposte immediate ai dubbi più comuni</p>
               </div>
             </CardHeader>
@@ -673,7 +685,7 @@ export default function HelpAndFeedback() {
                 placeholder="Cerca nelle FAQ..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                startContent={<Search size={18} className="text-default-400" />}
+                startContent={<Search size={18} className="text-default-500" />}
                 variant="flat"
                 radius="lg"
                 classNames={{
@@ -707,7 +719,7 @@ export default function HelpAndFeedback() {
                           <span className="text-xs font-bold text-primary uppercase tracking-wider">
                             {group.category}
                           </span>
-                          <span className="text-[10px] font-medium text-default-400 normal-case tracking-normal shrink-0">
+                          <span className="text-[11px] font-medium text-default-500 normal-case tracking-normal shrink-0">
                             {group.items.length}{" "}
                             {group.items.length === 1 ? "domanda" : "domande"}
                           </span>
@@ -718,6 +730,9 @@ export default function HelpAndFeedback() {
                         title: "text-sm",
                         trigger: "py-3 px-4",
                         content: "px-2 pb-3",
+                        // Chiuso punta a destra, aperto in basso: il chevron di
+                        // NextUI chiuso puntava a sinistra, verso il titolo.
+                        indicator: "rotate-180",
                       }}
                     >
                       <Accordion selectionMode="multiple" variant="light" className="px-0">
@@ -728,7 +743,7 @@ export default function HelpAndFeedback() {
                             title={
                               <span className="font-medium text-gray-700 text-sm">{item.title}</span>
                             }
-                            classNames={{ title: "text-sm", content: "text-sm text-gray-600 px-2" }}
+                            classNames={{ title: "text-sm", content: "text-sm text-gray-600 px-2", indicator: "rotate-180" }}
                           >
                             <p className="pb-2 pl-1 whitespace-pre-line leading-relaxed">{item.content}</p>
                             {"node" in item && item.node ? item.node : null}
@@ -742,7 +757,7 @@ export default function HelpAndFeedback() {
                 <div className="py-12 text-center flex flex-col items-center justify-center animate-in fade-in">
                   <Search className="w-12 h-12 text-default-200 mb-4" />
                   <p className="text-default-600 font-medium">Nessun risultato trovato</p>
-                  <p className="text-default-400 text-sm mt-1">
+                  <p className="text-default-500 text-sm mt-1">
                     Nessuna risposta per &quot;{searchQuery}&quot;
                   </p>
                   <Button variant="light" color="primary" className="mt-4" onPress={() => setSearchQuery("")}>
@@ -763,7 +778,7 @@ export default function HelpAndFeedback() {
                 classNames={{ base: "bg-brand-100 shrink-0" }}
               />
               <div className="flex flex-col min-w-0">
-                <p className="text-md font-bold text-gray-800">Chat con Operatore</p>
+                <p className="text-md font-bold text-gray-800">Chat con l'assistenza</p>
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 ${
@@ -803,7 +818,7 @@ export default function HelpAndFeedback() {
                 className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4"
               >
                 {chatLoading && (
-                  <p className="text-center text-sm text-default-400 py-8">Caricamento chat…</p>
+                  <p className="text-center text-sm text-default-500 py-8">Caricamento chat…</p>
                 )}
                 {!chatLoading && chatError && (
                   <p className="text-center text-sm text-warning-600 py-2 px-2">{chatError}</p>
@@ -812,7 +827,7 @@ export default function HelpAndFeedback() {
                   <div className="flex flex-1 flex-col items-center justify-center text-center px-4">
                     <LifeBuoy className="w-10 h-10 text-default-300 mb-3" />
                     <p className="text-sm font-medium text-default-600">Nessun messaggio ancora</p>
-                    <p className="text-xs text-default-400 mt-1 max-w-[260px]">
+                    <p className="text-xs text-default-500 mt-1 max-w-[260px]">
                       Scrivi per primo per contattare il team assistenza Corioli.
                     </p>
                   </div>
@@ -847,7 +862,7 @@ export default function HelpAndFeedback() {
                         <button
                           type="button"
                           onClick={() => removePendingAttachment(i)}
-                          className="text-gray-400 hover:text-danger ml-1"
+                          className="text-gray-500 hover:text-danger ml-1"
                           aria-label="Rimuovi allegato"
                         >
                           ×
@@ -907,7 +922,7 @@ export default function HelpAndFeedback() {
                     <Send size={18} className="ml-0.5" />
                   </Button>
                 </form>
-                <p className="text-[10px] text-center text-gray-400 mt-2">
+                <p className="text-[11px] text-center text-gray-500 mt-2">
                   Immagini fino a {MAX_IMAGE_MB} MB · video fino a {MAX_VIDEO_MB} MB
                 </p>
               </div>

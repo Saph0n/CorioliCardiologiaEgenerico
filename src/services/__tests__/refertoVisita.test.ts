@@ -158,7 +158,7 @@ describe("referto di visita: fibrillazione atriale", () => {
   it("porta accanto al punteggio i dati che decidono la dose del DOAC", async () => {
     const testo = await testoDelPdf(conFa);
     expect(testo).toContain("78 kg");
-    expect(testo).toContain("1.1 mg/dL");
+    expect(testo).toContain("1,1 mg/dL");
     expect(testo).toContain("76 anni");
     expect(testo).toContain("eGFR");
   });
@@ -248,7 +248,7 @@ describe("referto di visita: Doppler TSA", () => {
       }),
     );
     expect(testo).toContain("ECOCOLORDOPPLER DEI TRONCHI SOVRAAORTICI");
-    expect(testo).toContain("1.1 mm");
+    expect(testo).toContain("1,1 mm");
     // La stenosi porta con se' la sede: un 45% senza vaso non e' refertabile.
     // Le parentesi tonde nel flusso del PDF sono protette da una barra
     // rovesciata, quindi si cercano i due pezzi.
@@ -314,7 +314,7 @@ describe("referto di visita: misure nuove e tolte", () => {
     expect(testo).toContain("AVA");
     // Il "²" nel flusso del PDF e' un byte WinAnsi, non UTF-8: letto come
     // testo non si riconosce, e il controllo si ferma prima.
-    expect(testo).toContain("0.9 cm");
+    expect(testo).toContain("0,9 cm");
   });
 
   it("stampa i gradienti transvalvolari mitralici", async () => {
@@ -351,7 +351,7 @@ describe("referto di visita: misure nuove e tolte", () => {
     const testo = await testoDelPdf(
       visita({ laboratorio: { hsPcr: 2.4, oxLdl: 78 } }),
     );
-    expect(testo).toContain("2.4 mg/L");
+    expect(testo).toContain("2,4 mg/L");
     expect(testo).toContain("78 U/L");
   });
 
@@ -693,7 +693,7 @@ describe("referto di visita: il grassetto segnala i valori fuori norma", () => {
     // questo test cadrebbe.
     const v = visita({ laboratorio: { glicemia: 140, tsh: 2.1 } });
     expect(await carattereDi(v, "140 mg/dL")).toContain("Bold");
-    expect(await carattereDi(v, "2.1 mU/L")).not.toContain("Bold");
+    expect(await carattereDi(v, "2,1 mU/L")).not.toContain("Bold");
   });
 });
 
@@ -960,5 +960,37 @@ describe("referto di visita: grassetto scritto dal medico", () => {
     // Chi scrive "vedi ** nota" non stava chiedendo il grassetto.
     const testo = await testoDelPdf(visita({ esameObiettivo: "vedi ** nota" }));
     expect(dalTitolo(testo, "ESAME OBIETTIVO")).toContain("**");
+  });
+});
+
+describe("referto di visita: separatore decimale", () => {
+  it("stampa i valori scritti dal medico con la virgola, come a schermo", async () => {
+    // Prima uscivano col punto ("1.2 mg/dL") accanto ai valori calcolati con
+    // la virgola ("CT / HDL 5,0"), nella stessa tabella.
+    const testo = await testoDelPdf(
+      visita({ laboratorio: { creatinina: 1.2, emoglobina: 14.2, colesteroloTotale: 210, hdl: 42 } }),
+    );
+    expect(testo).toContain("1,2 mg/dL");
+    expect(testo).toContain("14,2 g/dL");
+    expect(testo).not.toContain("1.2 mg/dL");
+    expect(testo).not.toContain("14.2 g/dL");
+  });
+
+  it("lascia com'e' la prosa scritta dal medico", async () => {
+    const testo = await testoDelPdf(visita({ esameObiettivo: "Versione 1.2 del protocollo" }));
+    expect(testo).toContain("Versione 1.2 del protocollo");
+  });
+});
+
+describe("referto di visita: salti pagina", () => {
+  it("il controllo degli orfani non allunga il referto di prova", async () => {
+    // Il cardiologo aveva chiesto meno pagine ("se no ci fa 3 pagine"): tenere
+    // insieme le righe delle tabelle non deve costare un foglio. Il referto di
+    // prova sta in quattro pagine, e ci resta.
+    const { pazienteDiProva, visitaDiProva } = await import("./refertoDiProva");
+    const blob = await PdfService.generateVisitPDF(pazienteDiProva, visitaDiProva);
+    const testo = await blob!.text();
+    const pagine = testo.match(/\/Type \/Page\b(?!s)/g)?.length ?? 0;
+    expect(pagine).toBe(4);
   });
 });

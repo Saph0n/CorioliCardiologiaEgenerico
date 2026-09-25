@@ -51,6 +51,7 @@ import {
   validaNomeGruppo,
   type StatoGruppo,
 } from "../../utils/gruppiRicerca";
+import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
 /** Paziente arruolato in un progetto, con la sua data di ingresso. */
 interface Arruolato {
@@ -68,12 +69,12 @@ interface Sezione {
 function iniziali(p: Patient): string {
   const n = (p.nome ?? "").trim();
   const c = (p.cognome ?? "").trim();
-  const s = `${n[0] ?? ""}${c[0] ?? ""}`.toUpperCase();
+  const s = `${c[0] ?? ""}${n[0] ?? ""}`.toUpperCase();
   return s || "?";
 }
 
 function nomeCompleto(p: Patient): string {
-  return [p.nome, p.cognome].filter((x) => (x ?? "").trim()).join(" ") || "Senza nome";
+  return formatPatientDisplayName(p) ?? "Senza nome";
 }
 
 /** Testo su cui lavora la ricerca: nome e codice fiscale. */
@@ -561,13 +562,17 @@ export default function GruppiRicerca() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Chip
-            size="sm"
-            variant="flat"
-            color={arruolati.length === 0 ? "default" : "secondary"}
-          >
-            {arruolati.length}
-          </Chip>
+          {/* Il conteggio c'e' gia' sotto il nome: il chip serve solo mentre si
+              cerca, per dire quanti arruolati del progetto corrispondono. */}
+          {arruolati.length !== stato.partecipanti && (
+            <Chip
+              size="sm"
+              variant="flat"
+              color={arruolati.length === 0 ? "default" : "secondary"}
+            >
+              {arruolati.length} {arruolati.length === 1 ? "trovato" : "trovati"}
+            </Chip>
+          )}
           {/* Il div ferma il click: l'intestazione, nell'elenco, apre il
               progetto, e un cestino che ci entra dentro sarebbe una trappola. */}
           <div onClick={(e) => e.stopPropagation()}>
@@ -576,7 +581,7 @@ export default function GruppiRicerca() {
                 isIconOnly
                 size="sm"
                 variant="light"
-                className="text-default-400 data-[hover=true]:text-danger"
+                className="text-default-500 data-[hover=true]:text-danger"
                 aria-label={`Elimina il progetto ${stato.nome}`}
                 onPress={() => {
                   setErroreElimina(null);
@@ -630,7 +635,7 @@ export default function GruppiRicerca() {
                   <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                     {nomeCompleto(patient)}
                     {calculateAge(patient.dataNascita) && (
-                      <span className="text-default-400 font-normal ml-1">
+                      <span className="text-default-500 font-normal ml-1">
                         ({calculateAge(patient.dataNascita)} anni)
                       </span>
                     )}
@@ -654,7 +659,7 @@ export default function GruppiRicerca() {
                         {giorni != null && <> · da {formattaDurata(giorni)}</>}
                       </span>
                     ) : (
-                      <span className="text-default-400">
+                      <span className="text-default-500">
                         data di arruolamento non registrata
                       </span>
                     )}
@@ -670,7 +675,7 @@ export default function GruppiRicerca() {
                     isIconOnly
                     size="sm"
                     variant="light"
-                    className="text-default-400 data-[hover=true]:text-danger"
+                    className="text-default-500 data-[hover=true]:text-danger"
                     aria-label={`Togli ${nomeCompleto(patient)} dal progetto ${stato.nome}`}
                     onPress={() => {
                       setErroreRimozione(null);
@@ -698,8 +703,6 @@ export default function GruppiRicerca() {
       <PageHeader
         title={progettoAperto ? progettoAperto.nome : "Gruppi di ricerca"}
         subtitle={sottotitolo}
-        icon={FlaskConical}
-        iconColor="primary"
         actions={azioni}
       />
 
@@ -710,7 +713,7 @@ export default function GruppiRicerca() {
             <p className="text-sm font-medium text-default-600">
               I gruppi di ricerca non sono attivi
             </p>
-            <p className="text-xs text-default-400 max-w-[320px]">
+            <p className="text-xs text-default-500 max-w-[320px]">
               Attivali da Impostazioni per poter arruolare i pazienti nei tuoi
               progetti.
             </p>
@@ -733,7 +736,7 @@ export default function GruppiRicerca() {
             <p className="text-sm font-medium text-default-600">
               Progetto non trovato
             </p>
-            <p className="text-xs text-default-400 max-w-[320px]">
+            <p className="text-xs text-default-500 max-w-[320px]">
               Il progetto &quot;{soloGruppo}&quot; non esiste più.
             </p>
             <Button
@@ -760,7 +763,7 @@ export default function GruppiRicerca() {
                     <p className="text-sm font-medium text-default-600">
                       Nessun paziente in questo progetto
                     </p>
-                    <p className="text-xs text-default-400 max-w-[320px]">
+                    <p className="text-xs text-default-500 max-w-[320px]">
                       Arruola i primi pazienti: la data di arruolamento parte da
                       oggi e si corregge dalla scheda del paziente.
                     </p>
@@ -802,7 +805,7 @@ export default function GruppiRicerca() {
                     <p className="text-sm font-medium text-default-600">
                       Nessun gruppo di ricerca
                     </p>
-                    <p className="text-xs text-default-400 max-w-[320px]">
+                    <p className="text-xs text-default-500 max-w-[320px]">
                       Crea il tuo primo progetto, poi arruolaci i pazienti.
                     </p>
                     <Button
@@ -849,7 +852,7 @@ export default function GruppiRicerca() {
                 }
               }}
             />
-            <p className="text-xs text-default-400">
+            <p className="text-xs text-default-500">
               Il gruppo nasce vuoto: aprilo per arruolare i pazienti.
             </p>
           </ModalBody>
@@ -1034,7 +1037,7 @@ export default function GruppiRicerca() {
                         <p className="truncate text-sm font-medium text-gray-900">
                           {nomeCompleto(p)}
                           {calculateAge(p.dataNascita) && (
-                            <span className="ml-1 font-normal text-default-400">
+                            <span className="ml-1 font-normal text-default-500">
                               ({calculateAge(p.dataNascita)} anni)
                             </span>
                           )}

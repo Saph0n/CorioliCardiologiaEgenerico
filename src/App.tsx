@@ -2,7 +2,6 @@ import React, { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import Documents from "./Pages/Dashboard/Documents";
 import DesktopShell from "./components/DesktopShell";
-import { ContextMenu } from "./components/ContextMenu";
 import {
   AppStartupGate,
   RoutePageSkeleton,
@@ -71,39 +70,37 @@ const App: React.FC = () => {
   }, [navigate]);
 
   return (
-    <ContextMenu>
-      <AppStartupGate>
-        <Routes>
-          <Route element={<BlockedPage />} path="/blocked" />
-          <Route
-            path="/*"
-            element={
-              <DesktopShell>
-                <Suspense fallback={<RoutePageSkeleton />}>
-                  <Routes>
-                    <Route element={<Home />} path="/" />
-                    <Route element={<PatientList />} path="/pazienti" />
-                    <Route element={<PazientiARischio />} path="/pazienti-a-rischio" />
-                    <Route element={<AboutUs />} path="/about-us" />
-                    <Route element={<AddPatient />} path="/add-patient" />
-                    <Route element={<CheckPatientOpener />} path="/check-patient" />
-                    <Route element={<AddVisit />} path="/add-visit" />
-                    <Route element={<AddVisit />} path="/edit-visit/:visitId" />
-                    <Route element={<Visite />} path="/visite" />
-                    <Route element={<GruppiRicerca />} path="/gruppi-ricerca" />
-                    <Route element={<Documents />} path="/documents" />
-                    <Route element={<Settings />} path="/settings" />
-                    <Route element={<PatientHistory />} path="/patient-history/:patientId" />
-                    <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
-                    <Route element={<Help />} path="/help" />
-                  </Routes>
-                </Suspense>
-              </DesktopShell>
-            }
-          />
-        </Routes>
-      </AppStartupGate>
-    </ContextMenu>
+    <AppStartupGate>
+      <Routes>
+        <Route element={<BlockedPage />} path="/blocked" />
+        <Route
+          path="/*"
+          element={
+            <DesktopShell>
+              <Suspense fallback={<RoutePageSkeleton />}>
+                <Routes>
+                  <Route element={<Home />} path="/" />
+                  <Route element={<PatientList />} path="/pazienti" />
+                  <Route element={<PazientiARischio />} path="/pazienti-a-rischio" />
+                  <Route element={<AboutUs />} path="/about-us" />
+                  <Route element={<AddPatient />} path="/add-patient" />
+                  <Route element={<CheckPatientOpener />} path="/check-patient" />
+                  <Route element={<AddVisit />} path="/add-visit" />
+                  <Route element={<AddVisit />} path="/edit-visit/:visitId" />
+                  <Route element={<Visite />} path="/visite" />
+                  <Route element={<GruppiRicerca />} path="/gruppi-ricerca" />
+                  <Route element={<Documents />} path="/documents" />
+                  <Route element={<Settings />} path="/settings" />
+                  <Route element={<PatientHistory />} path="/patient-history/:patientId" />
+                  <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
+                  <Route element={<Help />} path="/help" />
+                </Routes>
+              </Suspense>
+            </DesktopShell>
+          }
+        />
+      </Routes>
+    </AppStartupGate>
   );
 };
 export default App;

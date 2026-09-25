@@ -39,6 +39,8 @@ export interface ModuloOpzionale {
   chiave: ChiaveModuloOpzionale;
   /** Titolo del modulo nella maschera della visita. */
   titolo: string;
+  /** Nome sul pulsante "+" della visita, quando il titolo e' troppo lungo. */
+  breve?: string;
   /** Riga di spiegazione nelle impostazioni. */
   descrizione: string;
   gruppo: GruppoModuloOpzionale;
@@ -77,18 +79,21 @@ export const MODULI_OPZIONALI: readonly ModuloOpzionale[] = [
   {
     chiave: "holterEcg",
     titolo: "ECG dinamico secondo Holter",
+    breve: "Holter ECG",
     descrizione: "Frequenze delle 24 ore, extrasistoli e pause.",
     gruppo: "strumentali",
   },
   {
     chiave: "holterPressorio",
     titolo: "Monitoraggio pressorio delle 24 ore",
+    breve: "Holter pressorio",
     descrizione: "Medie delle 24 ore, diurne e notturne, calo notturno.",
     gruppo: "strumentali",
   },
   {
     chiave: "dopplerTsa",
     titolo: "EcoColorDoppler dei tronchi sovraaortici",
+    breve: "Doppler TSA",
     descrizione: "Spessore medio-intimale e grado di stenosi carotidea.",
     gruppo: "strumentali",
   },

@@ -1,119 +1,95 @@
-import { CATEGORIA_RISCHIO_LABELS } from "../../utils/rischioCv";
-import { riempimentoBarra, type VoceRischio } from "../../utils/pazientiARischio";
+import { ArrowRight } from "lucide-react";
+import { COLORI_CLASSE, classeBreve } from "./classeRischio";
+import { IndicatoreLdl } from "./IndicatoreLdl";
+import type { VoceRischio } from "../../utils/pazientiARischio";
 
 /**
- * Una riga dell'elenco dei pazienti a rischio.
+ * Una riga della colonna "Pazienti a rischio" in dashboard.
  *
- * Sta in un componente suo perche' la usano in due — la colonna in dashboard e
- * la pagina che si apre da "Vedi tutti" — e le due devono leggersi uguali: e'
- * lo stesso elenco, una volta accorciato e una volta intero.
+ * Il disegno e' quello della colonna delle gravidanze in corso di
+ * ginecologia, da cui la colonna e' nata: avatar e nome, sotto l'indicatore a
+ * segmenti e una riga di dettaglio. La terza versione, 25 settembre 2026: la
+ * seconda ("mi sembra un po' banale") aveva una striscia rosa, una barra
+ * arancione di 220px senza nessun riferimento, e tutto sottile e grigio.
  *
  * La riga dice tre cose e si ferma: chi, quanto manca all'obiettivo, da quale
  * classe discende quell'obiettivo. L'unita' di misura non si ripete a ogni
  * riga (sono tutti mg/dL) e l'obiettivo non si scrive per esteso: erano le due
- * cose che rendevano la colonna un muro di testo.
+ * cose che rendevano la prima versione un muro di testo.
  */
-
-/** Colore della striscia a sinistra: la classe, senza scriverla due volte. */
-const STRISCIA: Record<VoceRischio["categoria"], string> = {
-  "molto-alto-ricorrente": "bg-danger-400",
-  "molto-alto": "bg-danger-300",
-  alto: "bg-warning-400",
-  moderato: "bg-default-300",
-  basso: "bg-default-300",
-};
-
-/** La classe in due parole, senza il "Rischio " davanti. */
-function classeBreve(categoria: VoceRischio["categoria"]): string {
-  return CATEGORIA_RISCHIO_LABELS[categoria]
-    .replace("Rischio ", "")
-    .replace("Molto alto con evento ricorrente entro 2 anni", "molto alto, recidiva");
-}
 
 export function RigaPazienteARischio({
   voce,
   nome,
+  iniziali,
   onApri,
 }: {
   voce: VoceRischio;
   nome: string;
+  iniziali: string;
   onApri: () => void;
 }) {
   const fuori = voce.scostamento != null;
   const senzaEsami = voce.ldl == null;
-  const percentuale = Math.round(riempimentoBarra(voce) * 100);
+  const colori = COLORI_CLASSE[voce.categoria];
 
   return (
     <div
       className="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer group"
       onClick={onApri}
     >
-      <div className="flex gap-3">
+      <div className="flex items-center gap-3">
         <span
           aria-hidden
-          className={`mt-1 w-1 shrink-0 rounded-full ${STRISCIA[voce.categoria]}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${colori.avatar}`}
+        >
+          {iniziali}
+        </span>
+        <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
+          {nome}
+        </p>
+        {/* Senza esami non si dice "a obiettivo": non lo sappiamo, e la
+            riga starebbe dicendo che va tutto bene. Si dice cosa manca. */}
+        {senzaEsami ? (
+          <span className="shrink-0 text-sm text-default-500">da dosare</span>
+        ) : fuori ? (
+          <span className={`shrink-0 text-base font-semibold tabular-nums ${colori.testo}`}>
+            +{Math.round(voce.scostamento!)}
+          </span>
+        ) : (
+          <span className="shrink-0 text-sm font-medium text-brand-700">a obiettivo</span>
+        )}
+        <ArrowRight
+          size={14}
+          className="shrink-0 text-gray-300 group-hover:text-brand-600 transition-colors"
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
-              {nome}
-            </p>
-            {/* Senza esami non si dice "a obiettivo": non lo sappiamo, e la
-                riga starebbe dicendo che va tutto bene. Si dice cosa manca. */}
-            <span
-              className={`shrink-0 text-sm font-semibold tabular-nums ${
-                senzaEsami
-                  ? "text-default-400"
-                  : fuori
-                    ? "text-warning-600"
-                    : "text-success-600"
-              }`}
-            >
-              {senzaEsami
-                ? "da dosare"
-                : fuori
-                  ? `+${Math.round(voce.scostamento!)}`
-                  : "a obiettivo"}
-            </span>
-          </div>
-          <p className="mt-0.5 truncate text-xs text-gray-500">
-            {voce.ldl != null ? (
-              <>
-                <span
-                  title={
-                    voce.fonteLdl === "stimato"
-                      ? "LDL stimato con Friedewald"
-                      : "LDL dosato"
-                  }
-                >
-                  LDL {voce.fonteLdl === "stimato" ? "≈" : ""}
-                  {Math.round(voce.ldl)}
-                </span>
-                {" · obiettivo "}
-                {voce.obiettivo}
-              </>
-            ) : (
-              "nessun assetto lipidico"
-            )}
-            {" · "}
-            {classeBreve(voce.categoria)}
-          </p>
-          {/* La barra e' lo scostamento dall'obiettivo, non una percentuale di
-              rischio: quella non esiste. Si disegna solo per chi e' fuori —
-              senza esami non sappiamo, e a obiettivo lo dice gia' la scritta
-              verde, mentre una barra piena vorrebbe dire il contrario.
-
-              Larghezza fissa e non a tutta riga: nella pagina intera una barra
-              da un margine all'altro pesa piu' del numero che racconta. */}
-          {fuori && (
-            <div className="mt-1.5 h-1 w-full max-w-[220px] overflow-hidden rounded-full bg-default-100">
-              <div
-                className="h-full rounded-full bg-warning-400"
-                style={{ width: `${Math.max(6, percentuale)}%` }}
-              />
-            </div>
+      </div>
+      {/* Sotto il nome, non sotto l'avatar: le tacche dell'obiettivo si
+          allineano solo se tutti gli indicatori partono dallo stesso punto. */}
+      <div className="ml-11 mt-2">
+        <IndicatoreLdl voce={voce} />
+        <p className="mt-1.5 truncate text-xs text-gray-500">
+          {voce.ldl != null ? (
+            <>
+              <span
+                title={
+                  voce.fonteLdl === "stimato"
+                    ? "LDL stimato con Friedewald"
+                    : "LDL dosato"
+                }
+              >
+                LDL {voce.fonteLdl === "stimato" ? "≈" : ""}
+                {Math.round(voce.ldl)}
+              </span>
+              {" · obiettivo "}
+              {voce.obiettivo}
+            </>
+          ) : (
+            "nessun assetto lipidico"
           )}
-        </div>
+          {" · "}
+          {classeBreve(voce.categoria)}
+        </p>
       </div>
     </div>
   );
