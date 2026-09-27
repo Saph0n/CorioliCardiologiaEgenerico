@@ -591,9 +591,10 @@
     pointer-events: auto;
   }
 
+  /* Gli angoli li decide il Riflettore: quelli del modal, se il buco ci sta
+     dentro. */
   .guida-riflettore-buco {
     position: absolute;
-    border-radius: 16px;
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 0 0 9999px rgba(12, 32, 29, 0.55);
     pointer-events: none;
   }

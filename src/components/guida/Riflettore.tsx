@@ -5,6 +5,8 @@ import { ATTRIBUTI_LIVELLO_GUIDA, trovaNellaPagina } from "./livelloGuida";
 
 /** Aria fra l'elemento illuminato e il bordo del riflettore. */
 const MARGINE_RIFLETTORE = 10;
+/** Angoli del riflettore attorno a un elemento della pagina. */
+const RAGGIO_RIFLETTORE = 16;
 /** Distanza fra il riflettore e il fumetto. */
 const STACCO_FUMETTO = 16;
 /** Distanza minima del fumetto dai bordi della finestra. */
@@ -28,12 +30,38 @@ const SPAZIO_TESTATA = 96;
 
 type Rettangolo = { left: number; top: number; width: number; height: number };
 
+/** I bersagli misurati, e la finestra dell'app in cui stanno, se c'e'. */
+type Misura = Rettangolo & { finestra: (Rettangolo & { raggio: number }) | null };
+
+/** Il riquadro illuminato, con gli angoli: e' quello che anima `motion`. */
+type Buco = Rettangolo & { borderRadius: number };
+
+/**
+ * La finestra dell'app (un modal) che contiene tutti gli elementi, con i
+ * suoi angoli. Nessuna se stanno nella pagina o in finestre diverse.
+ */
+function finestraDegli(elementi: HTMLElement[]): Misura["finestra"] {
+  const finestre = new Set(
+    elementi.map((el) => el.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')),
+  );
+  const [finestra] = finestre;
+  if (finestre.size !== 1 || !finestra) return null;
+  const r = finestra.getBoundingClientRect();
+  return {
+    left: r.left,
+    top: r.top,
+    width: r.width,
+    height: r.height,
+    raggio: parseFloat(getComputedStyle(finestra).borderTopLeftRadius) || 0,
+  };
+}
+
 /**
  * Rettangolo che contiene tutti gli elementi visibili dei selettori, in
  * coordinate della finestra. Piu' elementi insieme servono per le voci del
  * menu, per un campo col suo menu a tendina aperto, per due sezioni vicine.
  */
-function misuraBersagli(selettori: string[]): Rettangolo | "nascosto" | null {
+function misuraBersagli(selettori: string[]): Misura | "nascosto" | null {
   const elementi = selettori.flatMap((s) =>
     Array.from(document.querySelectorAll<HTMLElement>(s)).filter(
       (el) => !el.closest("[data-guida-ui]"),
@@ -49,7 +77,40 @@ function misuraBersagli(selettori: string[]): Rettangolo | "nascosto" | null {
   const top = Math.min(...rettangoli.map((r) => r.top));
   const right = Math.max(...rettangoli.map((r) => r.right));
   const bottom = Math.max(...rettangoli.map((r) => r.bottom));
-  return { left, top, width: right - left, height: bottom - top };
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+    finestra: finestraDegli(elementi),
+  };
+}
+
+/**
+ * Il riquadro illuminato: gli elementi con un po' d'aria attorno. In una
+ * finestra dell'app l'aria si ferma ai bordi della finestra e gli angoli sono
+ * i suoi: oltre si vedeva lo sfondo sfocato del modal, una cornice grigia fra
+ * la finestra e l'anello del riflettore.
+ */
+function bucoAttorno(r: Misura): Buco {
+  let left = r.left - MARGINE_RIFLETTORE;
+  let top = r.top - MARGINE_RIFLETTORE;
+  let right = r.left + r.width + MARGINE_RIFLETTORE;
+  let bottom = r.top + r.height + MARGINE_RIFLETTORE;
+  const f = r.finestra;
+  if (f) {
+    left = Math.max(left, f.left);
+    top = Math.max(top, f.top);
+    right = Math.min(right, f.left + f.width);
+    bottom = Math.min(bottom, f.top + f.height);
+  }
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+    borderRadius: f ? f.raggio : RAGGIO_RIFLETTORE,
+  };
 }
 
 /** L'elemento, o un suo contenitore, resta fermo mentre la pagina scorre. */
@@ -69,6 +130,20 @@ function uguali(a: Rettangolo | null, b: Rettangolo | null): boolean {
     Math.abs(a.width - b.width) < 0.5 &&
     Math.abs(a.height - b.height) < 0.5
   );
+}
+
+function stessaMisura(a: Misura | null, b: Misura | null): boolean {
+  if (a === null || b === null) return a === b;
+  return uguali(a, b) && uguali(a.finestra, b.finestra) && a.finestra?.raggio === b.finestra?.raggio;
+}
+
+/** La misura spostata in coordinate dell'area della guida, che sta sotto la barra. */
+function inArea(m: Misura, alto: number): Misura {
+  return {
+    ...m,
+    top: m.top - alto,
+    finestra: m.finestra && { ...m.finestra, top: m.finestra.top - alto },
+  };
 }
 
 type Props = {
@@ -170,10 +245,10 @@ export default function Riflettore({
 }: Props) {
   const contenitoreRef = useRef<HTMLDivElement>(null);
   const fumettoRef = useRef<HTMLDivElement>(null);
-  const [rettangolo, setRettangolo] = useState<Rettangolo | null>(null);
+  const [rettangolo, setRettangolo] = useState<Misura | null>(null);
   const [scaduto, setScaduto] = useState(false);
   const [altezzaFumetto, setAltezzaFumetto] = useState(220);
-  const [finestra, setFinestra] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const [area, setArea] = useState({ w: window.innerWidth, h: window.innerHeight });
   const selettori = bersagli.join("|");
   const selettoriMano = (punta ?? []).join("|");
   const [mano, setMano] = useState<Punto | null>(null);
@@ -186,7 +261,7 @@ export default function Riflettore({
     const elenco = selettori.split("|");
     const elencoMano = selettoriMano ? selettoriMano.split("|") : [];
     let fotogramma = 0;
-    let ultimo: Rettangolo | null = null;
+    let ultimo: Misura | null = null;
     let ultimaMano: Punto | null = null;
     let scorso = false;
     const inizio = performance.now();
@@ -216,7 +291,7 @@ export default function Riflettore({
         ultimaMano = puntoMano;
         setMano(puntoMano);
       }
-      const relativo = r ? { ...r, top: r.top - alto } : null;
+      const relativo = r ? inArea(r, alto) : null;
       if (r && !scorso) {
         scorso = true;
         // Una volta per passo. Se il fumetto non ci sta ne' sopra ne' sotto
@@ -243,7 +318,7 @@ export default function Riflettore({
           primo?.scrollIntoView({ block: "center", behavior: "smooth" });
         }
       }
-      if (!uguali(relativo, ultimo)) {
+      if (!stessaMisura(relativo, ultimo)) {
         ultimo = relativo;
         setRettangolo(relativo);
       }
@@ -266,10 +341,19 @@ export default function Riflettore({
     };
   }, [selettori, selettoriMano, chiave]);
 
-  useEffect(() => {
-    const suResize = () => setFinestra({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener("resize", suResize);
-    return () => window.removeEventListener("resize", suResize);
+  // La misura e' quella dell'area e non della finestra: la pagina tiene il
+  // posto della barra di scorrimento (`scrollbar-gutter: stable`), e con la
+  // larghezza della finestra i pannelli uscivano di 12px a destra. L'area,
+  // `overflow: hidden` ma scorrevole dal browser, al primo fuoco scorreva e
+  // riflettore e fumetto finivano 12px a sinistra degli elementi veri.
+  useLayoutEffect(() => {
+    const el = contenitoreRef.current;
+    if (!el) return;
+    const misura = () => setArea({ w: el.clientWidth, h: el.clientHeight });
+    const osservatore = new ResizeObserver(misura);
+    osservatore.observe(el);
+    misura();
+    return () => osservatore.disconnect();
   }, []);
 
   useLayoutEffect(() => {
@@ -281,19 +365,11 @@ export default function Riflettore({
     return () => osservatore.disconnect();
   }, []);
 
-  const alto = contenitoreRef.current?.getBoundingClientRect().top ?? 0;
-  const areaW = finestra.w;
-  const areaH = finestra.h - alto;
+  const areaW = area.w;
+  const areaH = area.h;
   const larghezza = Math.min(LARGHEZZA_FUMETTO, areaW - 2 * BORDO_FINESTRA);
 
-  const buco = rettangolo
-    ? {
-        left: rettangolo.left - MARGINE_RIFLETTORE,
-        top: rettangolo.top - MARGINE_RIFLETTORE,
-        width: rettangolo.width + 2 * MARGINE_RIFLETTORE,
-        height: rettangolo.height + 2 * MARGINE_RIFLETTORE,
-      }
-    : null;
+  const buco = rettangolo ? bucoAttorno(rettangolo) : null;
 
   // Il fumetto va sotto il riflettore se c'e' posto, poi sopra, poi di
   // fianco; centrato sull'elemento finche' i bordi della finestra lo
