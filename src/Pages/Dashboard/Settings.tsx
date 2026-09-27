@@ -111,11 +111,10 @@ type SettingsNotice = {
   message: string;
 };
 
-// TODO(store): ID della scheda Microsoft Store. Questo e' ancora quello di
-// Corioli (edizione ginecologica): va sostituito con l'ID della scheda di
-// "Corioli Cardiologia" appena la app viene pubblicata, altrimenti il pulsante
-// "Cerca aggiornamenti" porta alla scheda sbagliata.
-const CORIOLI_MS_STORE_ID = "9P24WMFJW58N";
+// ID della scheda Microsoft Store di "Corioli Cardiologia" (Partner Center).
+// Non e' quello di Corioli ginecologia (9P24WMFJW58N): con quello il pulsante
+// "Cerca aggiornamenti" porterebbe alla scheda dell'altra app.
+const CORIOLI_MS_STORE_ID = "9NM6RX4PNBDK";
 const CORIOLI_MS_STORE_WEB = `https://apps.microsoft.com/detail/${CORIOLI_MS_STORE_ID}?hl=it-it&gl=IT`;
 const CORIOLI_MS_STORE_APP = `ms-windows-store://pdp/?ProductId=${CORIOLI_MS_STORE_ID}`;
 
@@ -2549,7 +2548,9 @@ const SettingsScreen = () => {
 
       {/* Gestione Modelli */}
       <Card id="impostazioni-modelli" className="shadow-lg scroll-mt-32">
-        <CardHeader className="pb-2">
+        {/* `data-guida`: la guida di primo avvio illumina testata e
+            categorie, poi fa premere "Nuovo modello". */}
+        <CardHeader className="pb-2" data-guida="modelli-categorie">
           <div className="flex items-center gap-3">
             <FileText className="w-5 h-5 text-primary shrink-0" />
             <h2 className="text-xl font-semibold text-gray-900">
@@ -2582,6 +2583,7 @@ const SettingsScreen = () => {
             </Button>
           </div>
           <Tabs
+            data-guida="modelli-categorie"
             aria-label="Categorie dei modelli"
             selectedKey={selectedCategory}
             onSelectionChange={(key) =>
@@ -2639,6 +2641,7 @@ const SettingsScreen = () => {
               className="corioli-cta w-full shrink-0 px-6 sm:w-auto sm:min-w-[168px]"
               startContent={<Plus size={18} />}
               onPress={handleNewTemplate}
+              data-guida="nuovo-modello"
             >
               Nuovo modello
             </Button>

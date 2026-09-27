@@ -21,9 +21,11 @@ import {
   Paperclip,
   FileText,
   RefreshCw,
+  Compass,
 } from "lucide-react";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { PageHeader } from "../../components/PageHeader";
+import { useGuidaPrimoAvvio } from "../../components/guida/GuidaPrimoAvvio";
 import { VoiceMessagePlayer } from "../../components/chat/VoiceMessagePlayer";
 import { DoctorService } from "../../services/OfflineServices";
 import axios from "axios";
@@ -154,6 +156,7 @@ function CreaModelloSteps() {
 
 export default function HelpAndFeedback() {
   const [searchParams] = useSearchParams();
+  const { apri: apriGuida } = useGuidaPrimoAvvio();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [chatLoading, setChatLoading] = useState(true);
@@ -659,8 +662,7 @@ export default function HelpAndFeedback() {
           // aggiorna.
           <Button
             variant="light"
-            size="sm"
-            startContent={<RefreshCw size={14} />}
+            startContent={<RefreshCw size={16} />}
             onPress={() => window.location.reload()}
             className="text-default-600"
           >
@@ -669,7 +671,31 @@ export default function HelpAndFeedback() {
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 lg:h-[calc(100vh_-_220px_-_var(--barra-finestra))] lg:max-h-[720px]">
+      {/* La guida di primo avvio si apre da sola una volta sola, ad archivio
+          vuoto: qui la si rifa' quando si vuole, anche per farla provare a un
+          collega. */}
+      <div className="guida-invito">
+        <span className="guida-elenco-icona guida-invito-icona">
+          <Compass size={24} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[16px] font-semibold text-foreground">Guida di primo avvio</p>
+          <p className="text-[14px] leading-snug text-default-600">
+            Provi l'app su un paziente di prova: lo registri, scrivi e stampi il referto,
+            prepari un modello. Alla fine lo cancelli con un clic.
+          </p>
+        </div>
+        <Button
+          color="primary"
+          className="guida-btn-primario shrink-0"
+          startContent={<Compass size={18} />}
+          onPress={apriGuida}
+        >
+          Avvia la guida
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 lg:h-[calc(100vh_-_320px_-_var(--barra-finestra))] lg:max-h-[720px]">
         {/* FAQ — scroll interno, non influenza l'altezza della chat */}
         <div className="flex flex-col min-h-0 h-[420px] lg:h-full">
           <Card className="shadow-md flex flex-col h-full min-h-0 overflow-hidden">

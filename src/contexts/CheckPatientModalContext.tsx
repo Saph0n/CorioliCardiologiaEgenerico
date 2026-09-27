@@ -228,7 +228,10 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
         }}
       >
         <ModalContent>
-          <ModalHeader className="flex flex-col gap-3 items-stretch">
+          <ModalHeader
+            className="flex flex-col gap-3 items-stretch"
+            data-guida="pannello-paziente"
+          >
             <span className="text-base font-semibold text-gray-900">{titolo}</span>
             <Input
               autoFocus

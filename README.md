@@ -680,10 +680,12 @@ visita.
 ## Da completare prima della distribuzione
 
 - **SCORE2:** validare i coefficienti come descritto sopra.
-- **Microsoft Store:** `identityName` (`CorioliCardiologia.CorioliCardiologia`)
-  va riservato in Partner Center e l'ID della scheda in
-  `src/Pages/Dashboard/Settings.tsx` (`CORIOLI_MS_STORE_ID`) va sostituito con
-  quello della nuova app.
+- **Microsoft Store:** la scheda "Corioli Cardiologia" e' riservata in Partner
+  Center (ID `9NM6RX4PNBDK`, gia' in `CORIOLI_MS_STORE_ID` di
+  `src/Pages/Dashboard/Settings.tsx`). `identityName`, `publisher` e
+  `publisherDisplayName` in `package.json` devono coincidere con la pagina
+  *Product identity* della scheda, altrimenti Partner Center rifiuta il
+  pacchetto.
 - **Font del referto:** jsPDF usa i caratteri standard, che sono in codifica
   WinAnsi. Il sanificatore in `PdfService.san` deve quindi degradare tutto
   quello che quella tabella non contiene: le vocali accentate diventano `e'`, il

@@ -44,6 +44,14 @@ const menuItems = [
 const SU_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
 /**
+ * La guida di primo avvio fa aprire Impostazioni da qui, per arrivare ai
+ * modelli (`components/guida/passiGuida.ts`).
+ */
+function bersaglioGuida(href: string): string | undefined {
+  return href === "/settings" ? "impostazioni" : undefined;
+}
+
+/**
  * "Gruppi" compare fra le voci solo con i gruppi di ricerca accesi in
  * Impostazioni: prima, accesi, si raggiungevano soltanto dalla card in
  * dashboard o dai chip nella scheda di un paziente.
@@ -259,7 +267,7 @@ export default function AppNavbar() {
             </Link>
           );
           return (
-            <NavbarItem key={item.href} className="hidden md:flex">
+            <NavbarItem key={item.href} className="hidden md:flex" data-guida={bersaglioGuida(item.href)}>
               {item.href === "/help" && supportUnread > 0 ? (
                 <Badge content={supportUnread > 99 ? "99+" : supportUnread} color="danger" size="sm">
                   {link}

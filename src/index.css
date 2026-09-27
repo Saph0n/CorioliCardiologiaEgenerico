@@ -227,6 +227,523 @@
     transform: none;
   }
 
+  /* ── Guida di primo avvio (`components/guida`) ──────────────────────
+     Parte sotto la riga del titolo come le schermate del PIN: i pulsanti
+     della finestra restano raggiungibili. Stesso linguaggio del setup
+     (card bianca, gufo, pulsanti pieni da 48px), misure mai sotto i 13px. */
+
+  @keyframes guida-appare {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Il gufo e la sua nuvoletta: la punta a sinistra dice che a parlare e'
+     lui. */
+  .guida-narratore {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .guida-narratore-gufo {
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+
+  .guida-nuvoletta {
+    position: relative;
+    padding: 12px 16px 14px;
+    border-radius: 16px;
+    background: #f2faf7;
+    border: 1px solid #cfeadf;
+  }
+
+  .guida-nuvoletta::before,
+  .guida-nuvoletta::after {
+    content: "";
+    position: absolute;
+    top: 26px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+  }
+
+  /* La punta: un triangolo del bordo e uno del fondo, sovrapposti. */
+  .guida-nuvoletta::before {
+    left: -11px;
+    border-width: 9px 11px 9px 0;
+    border-color: transparent #cfeadf transparent transparent;
+  }
+
+  .guida-nuvoletta::after {
+    left: -9px;
+    border-width: 8px 10px 8px 0;
+    border-color: transparent #f2faf7 transparent transparent;
+    margin-top: 1px;
+  }
+
+  /* La manina che mostra dove premere, e l'onda dove tocca. */
+  .guida-manina-punto {
+    position: absolute;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .guida-manina {
+    position: absolute;
+    filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.3));
+  }
+
+  .guida-manina-onda {
+    position: absolute;
+    left: -14px;
+    top: -14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 3px solid #f2b544;
+  }
+
+  /* Il grassetto in miniatura, nella nuvoletta. */
+  .guida-demo {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .guida-demo-riga {
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    color: #334155;
+  }
+
+  .guida-demo-parola {
+    position: relative;
+    display: inline-block;
+  }
+
+  .guida-demo-selezione {
+    position: absolute;
+    inset: -1px -2px;
+    border-radius: 3px;
+    background: #b9dcff;
+    transform-origin: left center;
+  }
+
+  .guida-demo-tasti {
+    flex-shrink: 0;
+  }
+
+  .guida-area {
+    animation: guida-appare 0.2s ease-out;
+    position: fixed;
+    inset: var(--barra-finestra) 0 0 0;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow-y: auto;
+    background: rgba(12, 32, 29, 0.45);
+    backdrop-filter: blur(3px);
+  }
+
+  .guida-card {
+    width: 100%;
+    margin: auto;
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 16px 60px rgba(0, 0, 0, 0.18);
+  }
+
+  .guida-titolo {
+    font-size: 24px;
+    line-height: 1.25;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .guida-sottotitolo {
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+  }
+
+  .guida-etichetta {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .guida-elenco-voce {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 14px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+
+  .guida-elenco-icona {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: #e1f5ee;
+    color: #0f6e56;
+  }
+
+  .guida-elenco-icona--attesa {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .guida-scelta {
+    height: 44px;
+    border-radius: 12px;
+    border: 1.5px solid #cbd5e1;
+    background: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    color: #334155;
+    transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+  }
+
+  .guida-scelta:hover {
+    border-color: #1d9e75;
+  }
+
+  .guida-scelta--attiva {
+    border-color: #1d9e75;
+    background: #e1f5ee;
+    color: #0f6e56;
+  }
+
+  .guida-voci-fisse {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #f1f7f5;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #475569;
+  }
+
+  .guida-voci-fisse svg {
+    color: #0f6e56;
+  }
+
+  .guida-modulo {
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1.5px solid #e2e8f0;
+    background: #ffffff;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+
+  .guida-modulo:hover {
+    border-color: #94a3b8;
+  }
+
+  .guida-btn-primario {
+    height: 44px !important;
+    padding: 0 20px !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    background: var(--brand-cta) !important;
+    color: #ffffff !important;
+  }
+
+  .guida-btn-primario:hover:not([disabled]) {
+    background: #1f3c38 !important;
+  }
+
+  .guida-btn-primario[data-disabled="true"] {
+    opacity: 0.5;
+  }
+
+  .guida-btn-secondario {
+    height: 44px !important;
+    border-radius: 12px !important;
+    font-weight: 500 !important;
+    font-size: 15px !important;
+    color: var(--color-text-secondary) !important;
+  }
+
+  .guida-link {
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .guida-link:hover {
+    color: #334155;
+  }
+
+  /* Il rilievo del tasto e' un'ombra e non un bordo: quando la guida lo
+     "preme" l'ombra sparisce e il tasto scende di 2px, come uno vero. */
+  .guida-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 7px;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 2px 0 #cbd5e1;
+    background: #f8fafc;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  /* Anteprima della testata del referto: Helvetica come il PDF, nessun
+     fondino tranne la fascia del titolo, come sul foglio. */
+  .guida-anteprima {
+    padding: 14px 18px 12px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 6px 20px rgba(15, 23, 42, 0.06);
+    font-family: Helvetica, Arial, sans-serif;
+    color: #000000;
+  }
+
+  .guida-anteprima-nome {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .guida-anteprima-riga {
+    font-size: 13px;
+    line-height: 1.45;
+    color: #333333;
+    overflow-wrap: anywhere;
+  }
+
+  .guida-anteprima-vuoto {
+    color: #b8c0cc;
+    font-style: italic;
+  }
+
+  .guida-anteprima-filetto {
+    margin-top: 12px;
+    border-top: 2.5px solid #000000;
+    padding-top: 3px;
+  }
+
+  .guida-anteprima-filetto::after {
+    content: "";
+    display: block;
+    border-top: 1px solid #000000;
+  }
+
+  .guida-anteprima-titolo {
+    margin-top: 10px;
+    padding: 7px 0;
+    background: #ebebeb;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  /* Riflettore del giro sulla dashboard. Il buco e' un riquadro con
+     un'ombra enorme: l'ombra oscura il resto della finestra, il riquadro
+     resta chiaro. */
+  .guida-riflettore-area {
+    animation: guida-appare 0.25s ease-out;
+    position: fixed;
+    inset: var(--barra-finestra) 0 0 0;
+    z-index: 70;
+    overflow: hidden;
+    /* Trasparente ai clic: li fermano i pannelli attorno al buco, cosi' nei
+       passi "prova" l'elemento illuminato si usa davvero. */
+    pointer-events: none;
+  }
+
+  .guida-riflettore-blocco {
+    position: absolute;
+    pointer-events: auto;
+  }
+
+  .guida-riflettore-buco {
+    position: absolute;
+    border-radius: 16px;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 0 0 9999px rgba(12, 32, 29, 0.55);
+    pointer-events: none;
+  }
+
+  .guida-riflettore-buco::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 3px solid #5dcaa5;
+    animation: guida-pulsa 1.8s ease-out infinite;
+  }
+
+  /* Nei passi da provare l'anello e' ambra: "qui tocca a te". */
+  .guida-riflettore-buco--prova::after {
+    border-color: #f2b544;
+  }
+
+  .guida-riflettore-velo {
+    position: absolute;
+    inset: 0;
+    background: rgba(12, 32, 29, 0.55);
+  }
+
+  .guida-fumetto {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: auto;
+    padding: 16px 18px 16px 14px;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  }
+
+  .guida-passo {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #0f6e56;
+  }
+
+  .guida-fumetto-titolo {
+    font-size: 20px;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .guida-fumetto-testo {
+    margin-top: 6px;
+    font-size: 15px;
+    line-height: 1.55;
+    color: #334155;
+  }
+
+  .guida-scrivi {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 6px 6px 14px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+  }
+
+  .guida-scrivi-valore {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #0f172a;
+  }
+
+  .guida-fatto,
+  .guida-tocca-a-te {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .guida-fatto {
+    background: #e1f5ee;
+    color: #0f6e56;
+  }
+
+  .guida-tocca-a-te {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  /* Invito alla guida nella pagina Aiuto. */
+  .guida-invito {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 16px;
+    border: 1px solid #b7e2d3;
+    background: linear-gradient(to right, #eef8f4, #ffffff);
+  }
+
+  .guida-invito-icona {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+
+  /* Promemoria in basso a sinistra: la guida si fa da parte mentre si lavora
+     in una finestra dell'app, senza oscurarla. */
+  .guida-promemoria {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: min(460px, calc(100vw - 32px));
+    padding: 12px 16px 12px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    background: #ffffff;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  }
+
+  .guida-barra {
+    margin-top: 12px;
+    height: 4px;
+    border-radius: 2px;
+    background: #e2e8f0;
+    overflow: hidden;
+  }
+
+  .guida-barra-piena {
+    height: 100%;
+    border-radius: 2px;
+    background: #1d9e75;
+    transition: width 0.3s ease;
+  }
+
   /** Feedback positivo / trend — teal brand, non NextUI success (#22C55E) */
   .corioli-feedback-success {
     border: 1px solid var(--cf-autofill-border);
@@ -808,6 +1325,30 @@
     background: #e6f1fb;
     color: #185fa5;
     border: 0.5px solid #85b7eb;
+  }
+}
+
+/* Anello che si allarga attorno all'elemento illuminato dalla guida. */
+@keyframes guida-pulsa {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.06);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guida-riflettore-buco::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  .guida-area,
+  .guida-riflettore-area {
+    animation: none;
   }
 }
 

@@ -51,6 +51,7 @@ import {
 import { RigaPazienteARischio } from "../../components/cardio/RigaPazienteARischio";
 import { formatPatientDisplayName, patientInitials } from "../../utils/patientDisplay";
 import { titoloMedico } from "../../utils/doctorProfile";
+import { EVENTO_PAZIENTI_CAMBIATI } from "../../utils/guidaPrimoAvvio";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -213,6 +214,9 @@ export default function Home() {
   const navigate = useNavigate();
   const { openCheckPatientModal } = useCheckPatientModal();
   const [doctorName, setDoctorName] = useState<string | null>(null);
+  // Cresce quando l'archivio cambia sotto la pagina (la guida di primo avvio
+  // che cancella il paziente di prova): i dati si rileggono.
+  const [versioneArchivio, setVersioneArchivio] = useState(0);
   const [titolo, setTitolo] = useState<string>("Dott.");
   const [stats, setStats] = useState<DashboardStats>({
     totalPatients: 0,
@@ -240,6 +244,29 @@ export default function Home() {
       setToast({ open: true, message: msg });
       sessionStorage.removeItem("appdottori_toast");
     }
+  }, []);
+
+  // Il titolo si sceglie anche dalla guida di primo avvio, che si apre sopra
+  // questa pagina: senza, dopo aver scelto "Dott.ssa" il saluto restava
+  // "Dott." fino al cambio di pagina.
+  useEffect(() => {
+    const aggiornaSaluto = () => {
+      DoctorService.getDoctor()
+        .then((doctor) => {
+          if (!doctor) return;
+          setDoctorName(doctor.cognome);
+          setTitolo(titoloMedico(doctor));
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("appdottori-doctor-updated", aggiornaSaluto);
+    return () => window.removeEventListener("appdottori-doctor-updated", aggiornaSaluto);
+  }, []);
+
+  useEffect(() => {
+    const ricarica = () => setVersioneArchivio((v) => v + 1);
+    window.addEventListener(EVENTO_PAZIENTI_CAMBIATI, ricarica);
+    return () => window.removeEventListener(EVENTO_PAZIENTI_CAMBIATI, ricarica);
   }, []);
 
   useEffect(() => {
@@ -368,7 +395,7 @@ export default function Home() {
       }
     };
     load();
-  }, []);
+  }, [versioneArchivio]);
 
   if (loading) {
     return <PageLoadingSkeleton variant="home" pathname="/" />;
@@ -391,6 +418,7 @@ export default function Home() {
         startContent={<Calendar size={18} />}
         onPress={openCheckPatientModal}
         className="corioli-cta font-medium flex-1 md:flex-none"
+        data-guida="nuova-visita"
       >
         Nuova visita
       </Button>
@@ -837,7 +865,8 @@ export default function Home() {
         open={toast.open}
         autoHideDuration={5000}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        // In basso a destra come gli altri messaggi (`ToastContext`).
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
           onClose={() => setToast((t) => ({ ...t, open: false }))}

@@ -7,6 +7,7 @@ import {
   RoutePageSkeleton,
 } from "./components/AppStartupSkeleton";
 import { storageService } from "./services/StorageServiceFallback";
+import { GuidaPrimoAvvioProvider } from "./components/guida/GuidaPrimoAvvio";
 
 // Lazy loaded routes per ottimizzare il bundle iniziale
 const Home = lazy(() => import("./Pages/Dashboard/Home"));
@@ -60,14 +61,20 @@ const App: React.FC = () => {
 
       const hasCmdOrCtrl = e.ctrlKey || e.metaKey;
       const noExtraModifiers = !e.altKey && !e.shiftKey;
-      if (hasCmdOrCtrl && noExtraModifiers && e.key.toLowerCase() === "p") {
+      // Nella visita Ctrl+P stampa il referto (`AddVisit`). Senza questa
+      // eccezione, col cursore fuori dai campi partivano insieme la stampa e
+      // il nuovo paziente, e la visita spariva mentre si apriva il PDF.
+      const nellaVisita =
+        location.pathname.startsWith("/add-visit") ||
+        location.pathname.startsWith("/edit-visit");
+      if (hasCmdOrCtrl && noExtraModifiers && e.key.toLowerCase() === "p" && !nellaVisita) {
         e.preventDefault();
         navigate("/add-patient");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   return (
     <AppStartupGate>
@@ -76,27 +83,29 @@ const App: React.FC = () => {
         <Route
           path="/*"
           element={
-            <DesktopShell>
-              <Suspense fallback={<RoutePageSkeleton />}>
-                <Routes>
-                  <Route element={<Home />} path="/" />
-                  <Route element={<PatientList />} path="/pazienti" />
-                  <Route element={<PazientiARischio />} path="/pazienti-a-rischio" />
-                  <Route element={<AboutUs />} path="/about-us" />
-                  <Route element={<AddPatient />} path="/add-patient" />
-                  <Route element={<CheckPatientOpener />} path="/check-patient" />
-                  <Route element={<AddVisit />} path="/add-visit" />
-                  <Route element={<AddVisit />} path="/edit-visit/:visitId" />
-                  <Route element={<Visite />} path="/visite" />
-                  <Route element={<GruppiRicerca />} path="/gruppi-ricerca" />
-                  <Route element={<Documents />} path="/documents" />
-                  <Route element={<Settings />} path="/settings" />
-                  <Route element={<PatientHistory />} path="/patient-history/:patientId" />
-                  <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
-                  <Route element={<Help />} path="/help" />
-                </Routes>
-              </Suspense>
-            </DesktopShell>
+            <GuidaPrimoAvvioProvider>
+              <DesktopShell>
+                <Suspense fallback={<RoutePageSkeleton />}>
+                  <Routes>
+                    <Route element={<Home />} path="/" />
+                    <Route element={<PatientList />} path="/pazienti" />
+                    <Route element={<PazientiARischio />} path="/pazienti-a-rischio" />
+                    <Route element={<AboutUs />} path="/about-us" />
+                    <Route element={<AddPatient />} path="/add-patient" />
+                    <Route element={<CheckPatientOpener />} path="/check-patient" />
+                    <Route element={<AddVisit />} path="/add-visit" />
+                    <Route element={<AddVisit />} path="/edit-visit/:visitId" />
+                    <Route element={<Visite />} path="/visite" />
+                    <Route element={<GruppiRicerca />} path="/gruppi-ricerca" />
+                    <Route element={<Documents />} path="/documents" />
+                    <Route element={<Settings />} path="/settings" />
+                    <Route element={<PatientHistory />} path="/patient-history/:patientId" />
+                    <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
+                    <Route element={<Help />} path="/help" />
+                  </Routes>
+                </Suspense>
+              </DesktopShell>
+            </GuidaPrimoAvvioProvider>
           }
         />
       </Routes>

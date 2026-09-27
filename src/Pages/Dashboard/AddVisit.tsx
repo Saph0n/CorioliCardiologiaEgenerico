@@ -88,6 +88,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
+import { EVENTO_REFERTO_APERTO } from "../../components/guida/passiGuida";
 import { formatPatientDisplayName } from "../../utils/patientDisplay";
 import {
   bozzaDaProporre,
@@ -1668,6 +1669,8 @@ export default function AddVisit() {
           electronAPI?: { openPdfForPrint: (b64: string) => Promise<unknown> };
         }
       ).electronAPI;
+      // La guida di primo avvio aspetta questo per il passo della stampa.
+      window.dispatchEvent(new CustomEvent(EVENTO_REFERTO_APERTO));
       if (electronAPI?.openPdfForPrint) {
         const base64 = await blobToBase64(blob);
         await electronAPI.openPdfForPrint(base64);
@@ -2730,7 +2733,10 @@ export default function AddVisit() {
           fasce, e i pulsanti riduci/ingrandisci/chiudi sembravano staccati
           dall'app (Pablo, 24 settembre 2026). */}
       <div className="sfondo-corioli sticky top-barra z-40 -mx-6 px-6 pt-2">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-default-200 bg-white px-4 py-3 shadow-sm">
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-default-200 bg-white px-4 py-3 shadow-sm"
+          data-guida="barra-visita"
+        >
           <Button
             isIconOnly
             variant="light"
@@ -2806,6 +2812,7 @@ export default function AddVisit() {
               variant="bordered"
               title="Stampa il referto (Ctrl+P)"
               onPress={() => handlePrintPdf()}
+              data-guida="stampa-visita"
               isLoading={pdfLoading}
               isDisabled={loading || pdfLoading}
               startContent={!pdfLoading ? <Printer size={18} /> : undefined}
@@ -2820,6 +2827,7 @@ export default function AddVisit() {
               isDisabled={loading}
               startContent={!loading ? <Save size={18} /> : undefined}
               title="Salva la visita (Ctrl+S)"
+              data-guida="salva-visita"
             >
               {loading ? "Salvataggio..." : "Salva visita"}
             </Button>
@@ -2984,8 +2992,9 @@ export default function AddVisit() {
                   />
                 </div>
 
-                {/* Sezione 4: Esame Obiettivo */}
-                <div className="space-y-2 relative group">
+                {/* Sezione 4: Esame Obiettivo. `data-guida`: la guida di
+                    primo avvio ci fa provare modello e grassetto. */}
+                <div className="space-y-2 relative group" data-guida="campo-esame-obiettivo">
                   <div className="flex justify-between items-end mb-1">
                     <label className="text-sm font-bold text-gray-700">
                       4. Esame obiettivo

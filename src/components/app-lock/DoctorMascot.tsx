@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 export type MascotField =
@@ -23,6 +23,24 @@ type Props = {
   nodSignal?: number;
   /** Diametro del cerchio di sfondo in px. */
   size?: number;
+  /** Festa senza PIN: la chiusura della guida di primo avvio. */
+  festeggia?: boolean;
+  /**
+   * Il gufo sta parlando: il becco si apre e si chiude. La guida di primo
+   * avvio lo accende mentre il testo del fumetto compare.
+   */
+  parla?: boolean;
+  /**
+   * Dove guarda, da -1 a 1 su ciascun asse (0,0 = davanti). La guida gli fa
+   * guardare l'elemento di cui sta parlando.
+   */
+  sguardo?: { x: number; y: number } | null;
+  /** Alza un'ala e indica da quella parte. */
+  indica?: "sinistra" | "destra" | null;
+  /** Saluta con l'ala destra. */
+  saluta?: boolean;
+  /** Contatore: a ogni incremento sbatte le ali (il gufo che "vola" al passo dopo). */
+  svolazza?: number;
 };
 
 const FEATHER = "#2C5F5A";
@@ -56,6 +74,26 @@ const WING_COVER = {
   l: "M 50 110 Q 34 70 64 56 Q 100 50 104 84 Q 100 112 78 116 Q 60 110 50 110 Z",
   r: "M 150 110 Q 166 70 136 56 Q 100 50 96 84 Q 100 112 122 116 Q 140 110 150 110 Z",
 };
+
+/** Becco: la parte di sopra resta, quella di sotto si abbassa quando parla. */
+const BECCO_SOPRA = "M 92 103 Q 100 100 108 103 L 100 113 Z";
+const BECCO_SOTTO = "M 95 109 L 100 117 L 105 109 Q 100 111 95 109 Z";
+
+/**
+ * Cuore sul petto, centrato su (0,0). Batte piano: e' il gufo della
+ * cardiologia.
+ */
+const CUORE =
+  "M 0 5 C -8 -1 -9 -7.5 -4.2 -8.4 C -2 -8.8 -0.5 -7.6 0 -5.8 C 0.5 -7.6 2 -8.8 4.2 -8.4 C 9 -7.5 8 -1 0 5 Z";
+
+/**
+ * Perno delle ali, la spalla, in frazione del loro riquadro (ali da 28 x 58,
+ * spalla a 150,114 e 50,114). framer-motion calcola il punto di rotazione di
+ * un gruppo SVG dal suo riquadro e ignora `transformOrigin` in pixel: con il
+ * perno al centro l'ala girava su se stessa, staccata dal corpo.
+ */
+const PERNO_ALA_DX = { x: 0.21, y: 0.07 };
+const PERNO_ALA_SX = { x: 0.79, y: 0.07 };
 
 const SPRING = { type: "spring" as const, stiffness: 300, damping: 22 };
 const WING_SPRING = { type: "spring" as const, stiffness: 220, damping: 18 };
@@ -95,12 +133,21 @@ export default function DoctorMascot({
   happy = false,
   nodSignal = 0,
   size = 96,
+  festeggia = false,
+  parla = false,
+  sguardo = null,
+  indica = null,
+  saluta = false,
+  svolazza = 0,
 }: Props) {
+  // Chi ha chiesto al sistema meno movimento vede il gufo fermo: niente
+  // becco che parla, cuore che batte, ali che salutano.
+  const fermo = useReducedMotion() ?? false;
   const isPin = activeField === "pin" || activeField === "pin-confirm";
   const af = activeField ?? "idle";
 
   // CELEBRAZIONE: entrambi i PIN coincidono → ali su a festa, occhi felici, rimbalzo
-  const celebrate = isPin && pinComplete;
+  const celebrate = (isPin && pinComplete) || festeggia;
   // DISPIACIUTO: i due PIN non coincidono → scopre gli occhi e fa il broncio
   const sad = isPin && pinMismatch && !pinComplete;
   // le ali coprono solo se PIN attivo, non completo e senza errore di mismatch
@@ -173,6 +220,15 @@ export default function DoctorMascot({
     return () => clearTimeout(t);
   }, [nodSignal]);
 
+  // SVOLAZZO: sbatte le ali una volta, quando la guida passa al punto dopo
+  const [flap, setFlap] = useState(false);
+  useEffect(() => {
+    if (!svolazza || fermo) return;
+    setFlap(true);
+    const t = setTimeout(() => setFlap(false), 620);
+    return () => clearTimeout(t);
+  }, [svolazza, fermo]);
+
   // occhietti sorridenti durante festa, stato "happy" o cenno
   const happyEyes = celebrate || happy || nod;
 
@@ -190,7 +246,12 @@ export default function DoctorMascot({
     ? { x: 0, y: 7 }
     : peek
       ? { x: 0, y: -7 }
-      : (LOOK[af] ?? LOOK.idle);
+      : sguardo
+        ? {
+            x: Math.max(-1, Math.min(1, sguardo.x)) * 8,
+            y: Math.max(-1, Math.min(1, sguardo.y)) * 7,
+          }
+        : (LOOK[af] ?? LOOK.idle);
   const brow = BROWS[browKey];
 
   // posizioni pupille (occhio sx centro 78,92 — dx 122,92)
@@ -241,7 +302,9 @@ export default function DoctorMascot({
                 : { scale: 1, y: 0, opacity: 1 }
               : nod
                 ? { scale: [1, 1.07, 1], y: [0, 7, 0], opacity: 1 }
-                : { scale: 1, y: [0, -3.5, 0], opacity: 1 }
+                : fermo
+                  ? { scale: 1, y: 0, opacity: 1 }
+                  : { scale: 1, y: [0, -3.5, 0], opacity: 1 }
       }
       transition={
         celebrate
@@ -306,6 +369,27 @@ export default function DoctorMascot({
         <path d="M 142 70 Q 148 44 136 40 Q 130 54 130 70 Z" fill={FEATHER} />
         {/* petto */}
         <ellipse cx="100" cy="126" rx="34" ry="44" fill="#F4EFE4" />
+        {/* il cuore che batte */}
+        <motion.g
+          style={{ transformOrigin: "100px 146px" }}
+          initial={false}
+          animate={fermo ? { scale: 1 } : { scale: [1, 1.2, 1, 1.12, 1] }}
+          transition={
+            fermo
+              ? { duration: 0 }
+              : { duration: 0.9, repeat: Infinity, repeatDelay: 0.9, ease: "easeInOut" }
+          }
+        >
+          <path d={CUORE} fill="#E5566F" transform="translate(100 146) scale(1.25)" />
+        </motion.g>
+        {/* guance, sempre un po' rosate: sul bordo chiaro del petto, perche'
+            sulle piume scure il rosa diventava grigio */}
+        {!celebrate ? (
+          <>
+            <ellipse cx="76" cy="117" rx="7" ry="4.5" fill="#FF8FA3" opacity="0.6" />
+            <ellipse cx="124" cy="117" rx="7" ry="4.5" fill="#FF8FA3" opacity="0.6" />
+          </>
+        ) : null}
 
         {/* occhi */}
         {happyEyes ? (
@@ -353,28 +437,34 @@ export default function DoctorMascot({
           </>
         ) : (
           <motion.g
+            initial={false}
             animate={{ scaleY: blink ? 0.1 : 1 }}
             style={{ transformOrigin: "100px 92px" }}
             transition={{ duration: 0.1 }}
           >
-            {/* occhio sinistro */}
+            {/* occhio sinistro. Iride e pupille con `initial={false}`, come
+                sopracciglia e ali: senza, il primo disegno usciva con
+                cx/cy "undefined" e un errore in console per cerchio. */}
             <circle cx="78" cy="92" r="25" fill="#9FE1CB" />
             <circle cx="78" cy="92" r="19" fill="#FFFFFF" />
             <motion.circle
               r={wide ? 13 : 11}
               fill="#163A33"
+              initial={false}
               animate={{ cx: lIr.cx, cy: lIr.cy }}
               transition={SPRING}
             />
             <motion.circle
               r={wide ? 6.5 : 5.5}
               fill="#000"
+              initial={false}
               animate={lP}
               transition={SPRING}
             />
             <motion.circle
               r="2.4"
               fill="#fff"
+              initial={false}
               animate={{ cx: lP.cx + 3, cy: lP.cy - 3 }}
               transition={SPRING}
             />
@@ -385,30 +475,36 @@ export default function DoctorMascot({
             <motion.circle
               r={wide ? 13 : 11}
               fill="#163A33"
+              initial={false}
               animate={{ cx: rIr.cx, cy: rIr.cy }}
               transition={SPRING}
             />
             <motion.circle
               r={wide ? 6.5 : 5.5}
               fill="#000"
+              initial={false}
               animate={rP}
               transition={SPRING}
             />
             <motion.circle
               r="2.4"
               fill="#fff"
+              initial={false}
               animate={{ cx: rP.cx + 3, cy: rP.cy - 3 }}
               transition={SPRING}
             />
           </motion.g>
         )}
 
-        {/* sopracciglia */}
+        {/* sopracciglia. `initial={false}` su questi path e sulle ali: senza,
+            il primo disegno usciva con d="undefined" e il browser segnalava
+            un errore per path a ogni comparsa del gufo. */}
         <motion.path
           stroke="#163A33"
           strokeWidth="3.2"
           fill="none"
           strokeLinecap="round"
+          initial={false}
           animate={{ d: brow[0] }}
           transition={SPRING}
         />
@@ -417,12 +513,37 @@ export default function DoctorMascot({
           strokeWidth="3.2"
           fill="none"
           strokeLinecap="round"
+          initial={false}
           animate={{ d: brow[1] }}
           transition={SPRING}
         />
 
-        {/* becco */}
-        <path d="M 93 104 L 100 116 L 107 104 Z" fill="#E8A020" />
+        {/* becco: sotto, la bocca che si vede quando parla */}
+        <motion.ellipse
+          cx="100"
+          cy="111"
+          rx="4.5"
+          fill="#7A2E1F"
+          initial={false}
+          animate={parla && !fermo ? { ry: [0.5, 3.8, 1.2, 3.2, 0.5] } : { ry: 0.5 }}
+          transition={
+            parla && !fermo
+              ? { duration: 0.46, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.12 }
+          }
+        />
+        <motion.path
+          d={BECCO_SOTTO}
+          fill="#D98E12"
+          initial={false}
+          animate={parla && !fermo ? { y: [0, 3.2, 0.8, 2.6, 0] } : { y: 0 }}
+          transition={
+            parla && !fermo
+              ? { duration: 0.46, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.12 }
+          }
+        />
+        <path d={BECCO_SOPRA} fill="#E8A020" />
 
         {/* zampette */}
         <path
@@ -440,42 +561,82 @@ export default function DoctorMascot({
           fill="none"
         />
 
+        {/* `initial={false}` su ogni gruppo che ruota o scala (ali, cuore,
+            palpebre): framer-motion 11 misura un elemento SVG, e quindi gli
+            applica rotate/scale, solo se al montaggio ha gia' un valore di
+            trasformazione, cioe' con `initial` esplicito o `false`. Senza, le
+            ali non battevano mai, nemmeno nella festa del PIN, e il gufo non
+            sbatteva le palpebre. */}
         {/* ALI — ULTIME, sempre sopra gli occhi. Cambiano FORMA, non ruotano.
             In celebrazione battono a festa; durante il PIN si abbassano per lo sbirciamento. */}
         <motion.g
-          style={{ transformOrigin: "50px 114px" }}
+          style={{ originX: PERNO_ALA_SX.x, originY: PERNO_ALA_SX.y }}
+          initial={false}
           animate={
             celebrate
               ? { rotate: [0, -24, -6, -16, 0], y: 0 }
-              : { rotate: 0, y: wingsCover && peek ? 18 : 0 }
+              : wingsCover
+                ? { rotate: 0, y: peek ? 18 : 0 }
+                : flap
+                  ? { rotate: [0, 48, 6, 42, 0], y: 0 }
+                  : indica === "sinistra"
+                    ? fermo
+                      ? { rotate: 100, y: 0 }
+                      : { rotate: [96, 112, 96], y: 0 }
+                    : { rotate: 0, y: 0 }
           }
           transition={
             celebrate
               ? { duration: 0.7, ease: "easeOut" }
-              : { type: "spring", stiffness: 240, damping: 17 }
+              : flap
+                ? { duration: 0.6, ease: "easeInOut" }
+                : indica === "sinistra" && !wingsCover && !fermo
+                  ? { duration: 1.1, repeat: Infinity, ease: "easeInOut" }
+                  : { type: "spring", stiffness: 240, damping: 17 }
           }
         >
           <motion.path
             fill={FEATHER}
+            initial={false}
             animate={{ d: wingsCover ? WING_COVER.l : WING_REST.l }}
             transition={wingsCover ? COVER_SPRING : WING_SPRING}
           />
         </motion.g>
         <motion.g
-          style={{ transformOrigin: "150px 114px" }}
+          style={{ originX: PERNO_ALA_DX.x, originY: PERNO_ALA_DX.y }}
+          initial={false}
           animate={
             celebrate
               ? { rotate: [0, 24, 6, 16, 0], y: 0 }
-              : { rotate: 0, y: wingsCover && peek ? 18 : 0 }
+              : wingsCover
+                ? { rotate: 0, y: peek ? 18 : 0 }
+                : flap
+                  ? { rotate: [0, -48, -6, -42, 0], y: 0 }
+                  : saluta
+                    ? fermo
+                      ? { rotate: -120, y: 0 }
+                      : { rotate: [-105, -135, -105, -135, -105], y: 0 }
+                    : indica === "destra"
+                      ? fermo
+                        ? { rotate: -100, y: 0 }
+                        : { rotate: [-96, -112, -96], y: 0 }
+                      : { rotate: 0, y: 0 }
           }
           transition={
             celebrate
               ? { duration: 0.7, ease: "easeOut" }
-              : { type: "spring", stiffness: 240, damping: 17 }
+              : flap
+                ? { duration: 0.6, ease: "easeInOut" }
+                : saluta && !wingsCover && !fermo
+                  ? { duration: 1.3, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }
+                  : indica === "destra" && !wingsCover && !fermo
+                    ? { duration: 1.1, repeat: Infinity, ease: "easeInOut" }
+                    : { type: "spring", stiffness: 240, damping: 17 }
           }
         >
           <motion.path
             fill={FEATHER}
+            initial={false}
             animate={{ d: wingsCover ? WING_COVER.r : WING_REST.r }}
             transition={wingsCover ? COVER_SPRING : WING_SPRING}
           />

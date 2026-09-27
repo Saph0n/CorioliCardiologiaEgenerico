@@ -100,7 +100,7 @@
     },
     "appx": {
       "applicationId": "CorioliCardiologia",
-      "identityName": "CorioliCardiologia.CorioliCardiologia",
+      "identityName": "Corioli.CorioliCardiologia",
       "publisher": "CN=60C71725-B223-4BD2-95C5-CC3C7EE03443",
       "publisherDisplayName": "Corioli",
       "displayName": "Corioli Cardiologia",

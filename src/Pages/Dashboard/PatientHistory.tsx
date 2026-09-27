@@ -1742,7 +1742,10 @@ export default function PatientHistory() {
         </div>
 
         {/* COLONNA DESTRA: documenti paziente (ricette, esami, certificati) */}
-        <div className="patient-history-panel patient-history-panel--docs corioli-card lg:col-span-1 lg:self-start flex flex-col overflow-hidden">
+        <div
+          className="patient-history-panel patient-history-panel--docs corioli-card lg:col-span-1 lg:self-start flex flex-col overflow-hidden"
+          data-guida="scheda-documenti"
+        >
           <div className="patient-doc-panel-header">
             <div className="patient-doc-tabs" role="tablist" aria-label="Documenti paziente">
               {(

@@ -40,7 +40,7 @@ function getBackupsDir() {
  *
  * NON deve stare in `userData`: nel pacchetto MSIX del Microsoft Store le
  * scritture in `%APPDATA%\CorioliCardiologia` vengono dirottate dentro il container
- * (`%LOCALAPPDATA%\Packages\CorioliCardiologia.CorioliCardiologia_*\LocalCache\Roaming\CorioliCardiologia`).
+ * (`%LOCALAPPDATA%\Packages\Corioli.CorioliCardiologia_*\LocalCache\Roaming\CorioliCardiologia`).
  * L'app vede il percorso virtuale, il visualizzatore PDF esterno aperto da
  * `shell.openPath` vede quello reale — che non esiste: ERR_FILE_NOT_FOUND.
  * In sviluppo il problema non si vede perché l'app non è pacchettizzata.

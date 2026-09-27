@@ -29,16 +29,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         open={open}
         autoHideDuration={5000}
         onClose={() => setOpen(false)}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
-        // Gli scarti di MUI (8px, 24px da sm) vanno contati da sotto la barra
-        // del titolo: dal bordo della finestra la notifica finisce sotto i
-        // pulsanti di sistema.
-        sx={{
-          top: {
-            xs: "calc(8px + var(--barra-finestra))",
-            sm: "calc(24px + var(--barra-finestra))",
-          },
-        }}
+        // In basso a destra. In alto copriva per cinque secondi proprio i
+        // pulsanti che si usano subito dopo: "Salva visita" dopo la stampa,
+        // la sede in uso nella barra in alto.
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
           onClose={() => setOpen(false)}

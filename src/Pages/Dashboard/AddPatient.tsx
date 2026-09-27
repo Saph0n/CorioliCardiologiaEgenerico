@@ -715,7 +715,9 @@ export default function AddPatient() {
               {/* Prima il cognome: e' cosi' che il paziente si cerca e si
                   stampa ("ROSSI Mario"). */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="w-full">
+                {/* `data-guida`: cognome e dati ricavati dal CF, i punti che la
+                    guida di primo avvio fa vedere e provare. */}
+                <div className="w-full" data-guida="campo-cognome">
                   <Input
                     ref={refLastName}
                     name="lastName"
@@ -752,7 +754,7 @@ export default function AddPatient() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-guida="dati-da-cf">
                 <I18nProvider locale="it-IT">
                   <div
                     ref={refBirthDateWrap}
@@ -1031,6 +1033,7 @@ export default function AddPatient() {
                 ref={refSubmit}
                 type="submit"
                 value={isEditMode ? "scheda" : "visita"}
+                data-guida="salva-e-visita"
                 color="primary"
                 className="corioli-cta w-full sm:w-auto sm:min-w-[200px]"
                 isLoading={isLoading}

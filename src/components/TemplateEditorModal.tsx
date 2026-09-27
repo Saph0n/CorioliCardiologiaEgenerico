@@ -669,7 +669,7 @@ export function TemplateEditorModal({
       }}
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-2 pb-4">
+        <ModalHeader className="flex flex-col gap-2 pb-4" data-guida="editor-modello">
           <div className="flex items-start gap-3">
             <div className="shrink-0 rounded-lg bg-primary-100 p-2">
               <FileText className="h-5 w-5 text-primary" />

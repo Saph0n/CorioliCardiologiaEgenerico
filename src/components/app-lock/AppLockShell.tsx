@@ -26,6 +26,17 @@ function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
   return <Lock className={className} style={style} />;
 }
 
+/**
+ * Classi scritte per intero: Tailwind tiene nel CSS solo le classi che trova
+ * nel sorgente, e `onboarding-step-pill--${state}` non ne nomina nessuna. Le
+ * pillole uscivano senza colore, cioe' invisibili.
+ */
+export const CLASSE_PILLOLA = {
+  done: "onboarding-step-pill--done",
+  active: "onboarding-step-pill--active",
+  future: "onboarding-step-pill--future",
+} as const;
+
 function StepPills({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex flex-col items-center gap-2">
@@ -43,7 +54,7 @@ function StepPills({ current, total }: { current: number; total: number }) {
           return (
             <div
               key={i}
-              className={`onboarding-step-pill onboarding-step-pill--${state}`}
+              className={`onboarding-step-pill ${CLASSE_PILLOLA[state]}`}
             />
           );
         })}

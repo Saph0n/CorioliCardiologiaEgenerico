@@ -529,7 +529,8 @@ export default function Dashboard() {
         open={toast.open}
         autoHideDuration={5000}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        // In basso a destra come gli altri messaggi (`ToastContext`).
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
           onClose={() => setToast((t) => ({ ...t, open: false }))}
