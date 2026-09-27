@@ -49,18 +49,20 @@ describe("passi della prova guidata", () => {
     expect(isValidCodiceFiscaleFormat(CF_PROVA)).toBe(true);
   });
 
-  it("apre la ricerca con Ctrl+N e lascia passare solo quella scorciatoia", () => {
-    const p = passo("apri-visita");
-    expect(p.consentiti).toEqual(["n"]);
-    expect(p.fatto?.(contesto({}))).toBe(false);
-    expect(p.fatto?.(contesto({ presenti: [g("pannello-paziente")] }))).toBe(true);
+  it("comincia dalla ricerca gia' aperta, e la riapre se si chiude", () => {
+    expect(passi[0].id).toBe("scrivi-cf");
+    const p = passo("scrivi-cf");
+    expect(p.apriRicerca?.(contesto({ percorso: "/" }))).toBe(true);
+    expect(p.apriRicerca?.(contesto({ percorso: "/", presenti: [g("pannello-paziente")] }))).toBe(false);
+    expect(p.apriRicerca?.(contesto({ percorso: "/add-patient" }))).toBe(false);
+    expect(p.fatto?.(contesto({ percorso: "/add-patient" }))).toBe(true);
   });
 
-  it("torna a Ctrl+N se la ricerca si chiude senza registrare il paziente", () => {
-    const p = passo("scrivi-cf");
-    expect(p.perso?.(contesto({ percorso: "/" }))).toBe("apri-visita");
-    expect(p.perso?.(contesto({ percorso: "/", presenti: [g("pannello-paziente")] }))).toBeNull();
-    expect(p.fatto?.(contesto({ percorso: "/add-patient" }))).toBe(true);
+  it("torna alla ricerca se si torna in dashboard prima di salvare il paziente", () => {
+    for (const id of ["dati-da-cf", "cognome", "salva-paziente"]) {
+      expect(passo(id).perso?.(contesto({ percorso: "/" })), id).toBe("scrivi-cf");
+      expect(passo(id).perso?.(contesto({ percorso: "/add-patient" })), id).toBeNull();
+    }
   });
 
   it("abilita Avanti sul cognome solo quando e' scritto", () => {
@@ -109,7 +111,7 @@ describe("passi della prova guidata", () => {
 
   it("dice il tasto giusto sul Mac", () => {
     const mac = passiGuida("Cmd");
-    expect(mac.find((p) => p.id === "apri-visita")?.tasti).toEqual(["Cmd", "N"]);
+    expect(mac.find((p) => p.id === "stampa")?.tasti).toEqual(["Cmd", "P"]);
     expect(mac.find((p) => p.id === "grassetto")?.testo).toContain("Cmd+B");
   });
 });

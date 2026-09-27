@@ -25,6 +25,7 @@ import { AppModal } from "../components/AppModal";
 import { useUnsavedChanges } from "./UnsavedChangesContext";
 import { calculateAge } from "../utils/dateUtils";
 import { formatPatientDisplayName, patientInitials } from "../utils/patientDisplay";
+import { EVENTO_APRI_NUOVA_VISITA } from "../components/guida/passiGuida";
 import {
   cercaPazienti,
   sembraCodiceFiscale,
@@ -132,6 +133,13 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [apri]);
+
+  // La guida di primo avvio comincia dalla ricerca gia' aperta.
+  useEffect(() => {
+    const apriPerLaGuida = () => apri("visita");
+    window.addEventListener(EVENTO_APRI_NUOVA_VISITA, apriPerLaGuida);
+    return () => window.removeEventListener(EVENTO_APRI_NUOVA_VISITA, apriPerLaGuida);
   }, [apri]);
 
   const cercando = query.trim().length > 0;

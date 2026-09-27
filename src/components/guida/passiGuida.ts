@@ -2,10 +2,10 @@
  * I passi della prova guidata: la guida non spiega che cosa fa un pulsante,
  * lo fa premere e aspetta di vedere il risultato.
  *
- * Il percorso e' quello di tutti i giorni con un paziente nuovo: Ctrl+N, il
- * codice fiscale nella ricerca, Invio, "Salva e inizia visita". Poi, nella
- * visita, un modello e il grassetto sull'esame obiettivo, la stampa del
- * referto; infine i modelli in Impostazioni.
+ * Il percorso e' quello di tutti i giorni con un paziente nuovo: il codice
+ * fiscale nella ricerca "Nuova visita" (la apre la guida), Invio, "Salva e
+ * inizia visita". Poi, nella visita, un modello e il grassetto sull'esame
+ * obiettivo, la stampa del referto; infine i modelli in Impostazioni.
  *
  * Ogni passo legge la pagina da un `ContestoPasso` e non dal DOM: cosi' le
  * condizioni si provano nei test senza un browser.
@@ -24,6 +24,13 @@ export const COGNOME_PROVA = "Prova";
 
 /** Evento che `AddVisit` lancia quando il referto e' stato aperto in PDF. */
 export const EVENTO_REFERTO_APERTO = "corioli-referto-aperto";
+
+/**
+ * Evento con cui la guida apre la ricerca "Nuova visita": la guida sta fuori
+ * dal provider della ricerca (lo avvolge), e ne ascolta gli eventi come fa con
+ * il resto della pagina.
+ */
+export const EVENTO_APRI_NUOVA_VISITA = "corioli-apri-nuova-visita";
 
 /** Il campo di testo modificabile dell'esame obiettivo. */
 const CAMPO_ESAME_OBIETTIVO = `${g("campo-esame-obiettivo")} [contenteditable="true"]`;
@@ -82,6 +89,11 @@ export interface PassoGuida {
   fatto?(c: ContestoPasso): boolean;
   /** Il contesto del passo e' sparito: id del passo da cui ripartire. */
   perso?(c: ContestoPasso): string | null;
+  /**
+   * Il passo si fa nella ricerca "Nuova visita" e la ricerca non c'e': la
+   * guida la apre da sola, all'inizio del passo e se la si chiude con Esc.
+   */
+  apriRicerca?(c: ContestoPasso): boolean;
 }
 
 /** L'id del paziente della visita aperta, dalla rotta `/add-visit?patientId=`. */
@@ -95,18 +107,6 @@ export function passiGuida(mod: string): PassoGuida[] {
   return [
     // ── Il primo paziente ──────────────────────────────────────────────
     {
-      id: "apri-visita",
-      capitolo: "Il primo paziente",
-      tipo: "prova",
-      bersagli: [g("nuova-visita")],
-      punta: [g("nuova-visita")],
-      titolo: "Arriva un paziente",
-      testo: `Si comincia sempre da qui. Premi ${mod}+N, oppure il pulsante «Nuova visita».`,
-      tasti: [mod, "N"],
-      consentiti: ["n"],
-      fatto: (c) => c.esiste(g("pannello-paziente")),
-    },
-    {
       id: "scrivi-cf",
       capitolo: "Il primo paziente",
       tipo: "prova",
@@ -118,7 +118,7 @@ export function passiGuida(mod: string): PassoGuida[] {
         "Qui trovi i pazienti per cognome o codice fiscale. Questo è nuovo: scrivi il suo codice fiscale e premi Invio. Per la prova usa quello di un paziente inventato.",
       scrivi: { selettore: `${g("pannello-paziente")} input`, testo: CF_PROVA },
       fatto: (c) => c.percorso === "/add-patient",
-      perso: (c) => (c.percorso === "/" && !c.esiste(g("pannello-paziente")) ? "apri-visita" : null),
+      apriRicerca: (c) => c.percorso === "/" && !c.esiste(g("pannello-paziente")),
     },
     // Due passi e non uno: codice fiscale e anagrafica insieme sono alti
     // quasi tutta la finestra a 1280x720, e il fumetto finiva sopra i campi
@@ -131,7 +131,7 @@ export function passiGuida(mod: string): PassoGuida[] {
       titolo: "Il codice fiscale fa metà del lavoro",
       testo:
         "Data e luogo di nascita e sesso li ha ricavati l'app dal codice fiscale: sono i campi in verde. Dai sempre un'occhiata, poi vai avanti.",
-      perso: (c) => (c.percorso === "/" ? "apri-visita" : null),
+      perso: (c) => (c.percorso === "/" ? "scrivi-cf" : null),
     },
     {
       id: "cognome",
@@ -142,7 +142,7 @@ export function passiGuida(mod: string): PassoGuida[] {
       testo: "È così che il paziente si cerca e si stampa. Per la prova, scrivi Prova.",
       scrivi: { selettore: 'input[name="lastName"]', testo: COGNOME_PROVA },
       pronto: (c) => c.valore('input[name="lastName"]').trim().length > 0,
-      perso: (c) => (c.percorso === "/" ? "apri-visita" : null),
+      perso: (c) => (c.percorso === "/" ? "scrivi-cf" : null),
     },
     {
       id: "salva-paziente",
@@ -154,7 +154,7 @@ export function passiGuida(mod: string): PassoGuida[] {
       testo:
         "Il resto dell'anagrafica lo completi quando vuoi. Premi «Salva e inizia visita»: il paziente è in archivio e si apre il referto.",
       fatto: (c) => pazienteDellaVisita(c) !== null,
-      perso: (c) => (c.percorso === "/" ? "apri-visita" : null),
+      perso: (c) => (c.percorso === "/" ? "scrivi-cf" : null),
     },
 
     // ── La visita ──────────────────────────────────────────────────────

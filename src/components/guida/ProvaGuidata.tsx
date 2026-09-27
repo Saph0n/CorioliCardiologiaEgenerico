@@ -8,6 +8,7 @@ import Riflettore, { PromemoriaGuida } from "./Riflettore";
 import { Battuta, DemoGrassetto, Nuvoletta, TastiAnimati } from "./Narratore";
 import { trovaNellaPagina } from "./livelloGuida";
 import {
+  EVENTO_APRI_NUOVA_VISITA,
   EVENTO_REFERTO_APERTO,
   pazienteDellaVisita,
   passiGuida,
@@ -23,11 +24,12 @@ const INTERVALLO_CONTROLLO_MS = 150;
  */
 const PAUSA_DOPO_FATTO_MS = 900;
 /**
- * Per quanto il contesto deve restare perso prima di tornare indietro. Premendo
- * Invio nella ricerca il pannello si chiude un attimo prima che la pagina
- * cambi (il router aggiorna la rotta in una transizione di React): per quel
- * mezzo giro la guida vedeva "ricerca chiusa, ancora in dashboard" e
- * ripartiva da Ctrl+N mentre si apriva la scheda del paziente.
+ * Per quanto il contesto deve restare perso prima di tornare indietro, o la
+ * ricerca chiusa prima di riaprirla. Premendo Invio nella ricerca il pannello
+ * si chiude un attimo prima che la pagina cambi (il router aggiorna la rotta
+ * in una transizione di React): per quel mezzo giro la guida vedeva "ricerca
+ * chiusa, ancora in dashboard" e la riapriva mentre si apriva la scheda del
+ * paziente.
  */
 const TOLLERANZA_PERSO_MS = 600;
 /**
@@ -102,8 +104,9 @@ type Props = {
  * La prova guidata: un passo alla volta, sull'app vera.
  *
  * Un ciclo rilegge la pagina (`ContestoPasso`) e decide: passo fatto → un
- * attimo di "Fatto" e si va avanti; contesto perso (la ricerca chiusa con Esc)
- * → si torna al passo che lo ricrea; finestra estranea aperta → pausa.
+ * attimo di "Fatto" e si va avanti; contesto perso (di nuovo in dashboard
+ * prima di salvare il paziente) → si torna al passo che lo ricrea; ricerca
+ * chiusa con Esc → si riapre; finestra estranea aperta → pausa.
  */
 export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProva }: Props) {
   const passi = useMemo(() => passiGuida(mod), [mod]);
@@ -126,6 +129,8 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
   const pazienteRegistratoRef = useRef(false);
   const timerPassoRef = useRef<number | undefined>(undefined);
   const persoDalRef = useRef<number | null>(null);
+  const ricercaApertaRef = useRef(false);
+  const ricercaChiusaDalRef = useRef<number | null>(null);
 
   // Uscendo dalla guida durante il "Fatto" il passo dopo non deve partire.
   useEffect(() => () => window.clearTimeout(timerPassoRef.current), []);
@@ -144,6 +149,8 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
       eventiRef.current = new Set();
       inChiusuraRef.current = false;
       persoDalRef.current = null;
+      ricercaApertaRef.current = false;
+      ricercaChiusaDalRef.current = null;
       setFatto(false);
       setPronto(false);
       setCenno((n) => n + 1);
@@ -207,6 +214,23 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
         }
       } else {
         persoDalRef.current = null;
+      }
+
+      // La ricerca del passo la apre la guida: subito all'inizio, dopo la
+      // tolleranza se si chiude (Esc, o Invio che cambia pagina).
+      if (passo.apriRicerca?.(c)) {
+        const adesso = Date.now();
+        ricercaChiusaDalRef.current ??= adesso;
+        if (
+          !ricercaApertaRef.current ||
+          adesso - ricercaChiusaDalRef.current >= TOLLERANZA_PERSO_MS
+        ) {
+          ricercaApertaRef.current = true;
+          ricercaChiusaDalRef.current = null;
+          window.dispatchEvent(new CustomEvent(EVENTO_APRI_NUOVA_VISITA));
+        }
+      } else {
+        ricercaChiusaDalRef.current = null;
       }
 
       setPausa(passo.tipo !== "attesa" && finestraEstranea(passo.bersagli));
