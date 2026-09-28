@@ -29,9 +29,12 @@ import {
   PatientService,
   PreferenceService,
 } from "../../services/OfflineServices";
-import type { Ambulatorio, Doctor, Patient, TitoloMedico } from "../../types/Storage";
-import { formatPatientDisplayName } from "../../utils/patientDisplay";
-import { cancellaBozzaVisita, chiaveBozzaVisita } from "../../utils/bozzaVisita";
+import {
+  aggiornaPreferenze,
+  cancellaPazientiProva,
+  creaPazientiProva,
+} from "../../services/pazientiProva";
+import type { Ambulatorio, Doctor, TitoloMedico } from "../../types/Storage";
 import { TITOLI_MEDICO, titoloMedico } from "../../utils/doctorProfile";
 import {
   GRUPPI_MODULI,
@@ -45,10 +48,8 @@ import {
 import {
   EVENTO_PAZIENTI_CAMBIATI,
   VOCI_FISSE_VISITA,
-  conPazienteProva,
   conStatoGuida,
   deveAprirsiDaSola,
-  leggiPazienteProva,
   leggiStatoGuida,
   type EsitoGuida,
 } from "../../utils/guidaPrimoAvvio";
@@ -64,14 +65,6 @@ type Fase = "benvenuto" | "studio" | "moduli" | "prova" | "fine";
 /** Le fasi con la barra di avanzamento: benvenuto e chiusura non contano. */
 const FASI_NUMERATE: Fase[] = ["studio", "moduli", "prova"];
 
-/**
- * Come si arriva alla chiusura: dalla fine della prova, oppure da una prova
- * interrotta (uscita a meta', o app chiusa a meta' e riaperta) che ha lasciato
- * in archivio il paziente di prova.
- */
-type VarianteFine = "completata" | "interrotta";
-
-
 type DatiStudio = Pick<Ambulatorio, "nome" | "indirizzo" | "cap" | "citta">;
 
 const STUDIO_VUOTO: DatiStudio = { nome: "", indirizzo: "", cap: "", citta: "" };
@@ -80,21 +73,9 @@ function studioPrimario(doctor: Doctor | null): Ambulatorio | null {
   return doctor?.ambulatori?.find((a) => a.isPrimario) ?? doctor?.ambulatori?.[0] ?? null;
 }
 
-/**
- * Le preferenze si salvano come un oggetto unico: due scritture ravvicinate
- * (un interruttore e subito dopo un altro) leggerebbero la stessa copia e la
- * seconda cancellerebbe la prima. In coda, ognuna parte dall'ultima salvata.
- */
-let codaPreferenze: Promise<unknown> = Promise.resolve();
-function aggiornaPreferenze(
-  modifica: (prefs: Record<string, unknown>) => Record<string, unknown>,
-): Promise<void> {
-  const lavoro = codaPreferenze.then(async () => {
-    const prefs = (await PreferenceService.getPreferences()) ?? {};
-    await PreferenceService.savePreferences(modifica(prefs));
-  });
-  codaPreferenze = lavoro.catch(() => {});
-  return lavoro;
+/** La dashboard e le liste dei pazienti si ricaricano: i pazienti di prova sono arrivati o spariti. */
+function avvisaArchivioCambiato() {
+  window.dispatchEvent(new CustomEvent(EVENTO_PAZIENTI_CAMBIATI));
 }
 
 // ─── Contesto: chi apre la guida ──────────────────────────────────────────
@@ -116,33 +97,30 @@ export function useGuidaPrimoAvvio(): GuidaContextValue {
  * vuoto non se la ritrova a ogni ritorno sulla dashboard.
  */
 export function GuidaPrimoAvvioProvider({ children }: { children: ReactNode }) {
-  const [aperta, setAperta] = useState<null | { interrotta: boolean }>(null);
+  const [aperta, setAperta] = useState(false);
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const controllata = useRef(false);
 
-  // Al primo passaggio dalla dashboard: guida da aprire, o paziente di prova
-  // rimasto da una prova interrotta (app chiusa a meta').
+  // Al primo passaggio dalla dashboard: guida da aprire? L'archivio si conta
+  // senza i pazienti di prova di una prova interrotta, che all'avvio toglie
+  // gia' `initializeAppData`: qui e' per sicurezza, e non costa niente.
   useEffect(() => {
     if (controllata.current || pathname !== "/") return;
     controllata.current = true;
-    void Promise.all([PreferenceService.getPreferences(), PatientService.getAllPatients()])
+    void cancellaPazientiProva()
+      .catch(() => {})
+      .then(() => Promise.all([PreferenceService.getPreferences(), PatientService.getAllPatients()]))
       .then(([prefs, pazienti]) => {
-        if (leggiPazienteProva(prefs)) setAperta({ interrotta: true });
-        else if (deveAprirsiDaSola(prefs, pazienti.length)) setAperta({ interrotta: false });
+        if (deveAprirsiDaSola(prefs, pazienti.length)) setAperta(true);
       })
       .catch(() => {});
   }, [pathname]);
 
-  // La guida parte sempre dalla dashboard: e' li' che comincia la prova. Se
-  // c'e' ancora il paziente di una prova interrotta si decide prima di lui:
-  // la prova nuova ne registrerebbe un altro, e il promemoria del primo
-  // andrebbe perso.
+  // La guida parte sempre dalla dashboard: e' li' che comincia la prova.
   const apri = useCallback(() => {
     navigate("/");
-    void PreferenceService.getPreferences()
-      .then((prefs) => setAperta({ interrotta: Boolean(leggiPazienteProva(prefs)) }))
-      .catch(() => setAperta({ interrotta: false }));
+    setAperta(true);
   }, [navigate]);
 
   const value = useMemo(() => ({ apri }), [apri]);
@@ -150,13 +128,7 @@ export function GuidaPrimoAvvioProvider({ children }: { children: ReactNode }) {
   return (
     <GuidaContext.Provider value={value}>
       {children}
-      {aperta && (
-        <GuidaPrimoAvvio
-          key={aperta.interrotta ? "interrotta" : "guida"}
-          interrotta={aperta.interrotta}
-          onChiudi={() => setAperta(null)}
-        />
-      )}
+      {aperta && <GuidaPrimoAvvio onChiudi={() => setAperta(false)} />}
     </GuidaContext.Provider>
   );
 }
@@ -246,25 +218,22 @@ function AnteprimaIntestazione({
 
 // ─── La guida ─────────────────────────────────────────────────────────────
 
-function GuidaPrimoAvvio({
-  interrotta,
-  onChiudi,
-}: {
-  /** Aperta per un paziente di prova rimasto da una prova interrotta. */
-  interrotta: boolean;
-  onChiudi: () => void;
-}) {
+function GuidaPrimoAvvio({ onChiudi }: { onChiudi: () => void }) {
   const navigate = useNavigate();
   const idTitolo = useId();
-  const [fase, setFase] = useState<Fase>(interrotta ? "fine" : "benvenuto");
-  const [varianteFine, setVarianteFine] = useState<VarianteFine>(
-    interrotta ? "interrotta" : "completata",
-  );
+  const [fase, setFase] = useState<Fase>("benvenuto");
   const [cenno, setCenno] = useState(0);
   const [parla, setParla] = useState(false);
   const fermo = useReducedMotion() ?? false;
-  const [pazienteProva, setPazienteProva] = useState<Patient | null>(null);
-  const [cancellaProva, setCancellaProva] = useState(true);
+  /** Il codice fiscale di Mario Rossi in archivio, quando i pazienti di prova ci sono. */
+  const [cfProva, setCfProva] = useState<string | null>(null);
+  const apertaRef = useRef(true);
+  useEffect(
+    () => () => {
+      apertaRef.current = false;
+    },
+    [],
+  );
   const [esitoPrecedente, setEsitoPrecedente] = useState<EsitoGuida | null>(null);
 
   const [doctor, setDoctor] = useState<Doctor | null>(null);
@@ -305,8 +274,6 @@ function GuidaPrimoAvvio({
         });
         setNumeroPazienti(pazienti.length);
         setEsitoPrecedente(leggiStatoGuida(prefs)?.esito ?? null);
-        const idProva = leggiPazienteProva(prefs);
-        if (idProva) setPazienteProva(pazienti.find((p) => p.id === idProva) ?? null);
       } catch {
         // La guida resta usabile anche senza dati: i campi partono vuoti.
       }
@@ -330,38 +297,61 @@ function GuidaPrimoAvvio({
   // Arrivare alla fine della prova vale come guida completata, anche se poi
   // si chiude la finestra invece di premere un pulsante.
   useEffect(() => {
-    if (fase === "fine" && varianteFine === "completata") {
+    if (fase === "fine") {
       void aggiornaPreferenze((prefs) => conStatoGuida(prefs, "completata")).catch(() => {});
     }
-  }, [fase, varianteFine]);
+  }, [fase]);
 
-  /** Esito da registrare chiudendo: una prova interrotta non cancella una completata. */
-  const esitoDiChiusura: EsitoGuida =
-    varianteFine === "completata" ? "completata" : (esitoPrecedente ?? "saltata");
+  /**
+   * La prova comincia: i pazienti di prova vanno in archivio, e la dashboard
+   * sotto li mostra subito (recenti, visite, pazienti a rischio).
+   */
+  const avviaProva = async () => {
+    setSalvando(true);
+    setErrore(null);
+    try {
+      const { codiceFiscale } = await creaPazientiProva();
+      // Chiusa con Esc mentre li scriveva: la prova non c'e', e nemmeno loro.
+      if (!apertaRef.current) {
+        await cancellaPazientiProva();
+        avvisaArchivioCambiato();
+        return;
+      }
+      setCfProva(codiceFiscale);
+      avvisaArchivioCambiato();
+      navigate("/");
+      vaiA("prova");
+    } catch {
+      // Niente di mezzo: quello che e' stato scritto si toglie.
+      await cancellaPazientiProva().catch(() => {});
+      avvisaArchivioCambiato();
+      setErrore("Non sono riuscito a preparare i pazienti di prova. Riprova.");
+    } finally {
+      setSalvando(false);
+    }
+  };
 
-  // Il paziente di prova e' nato: in memoria per la chiusura, e subito nelle
-  // preferenze perche' sopravviva a un'app chiusa a meta'.
-  const registraPazienteProva = useCallback((id: string) => {
-    void aggiornaPreferenze((prefs) => conPazienteProva(prefs, id)).catch(() => {});
-    void PatientService.getPatientById(id)
-      .then((p) => setPazienteProva(p))
-      .catch(() => {});
+  /** I pazienti di prova esistono solo durante la prova: finita o lasciata, spariscono. */
+  const togliPazientiProva = useCallback(() => {
+    void cancellaPazientiProva()
+      .catch(() => {})
+      .finally(avvisaArchivioCambiato);
   }, []);
 
+  // A meta' prova si puo' essere nella visita o nella scheda di Mario: prima
+  // si torna in dashboard, poi si cancella. La visita lasciata cancella da
+  // se' la sua bozza. Una prova lasciata non cancella una guida completata.
   const esciDallaProva = useCallback(() => {
-    if (pazienteProva) {
-      setVarianteFine("interrotta");
-      setFase("fine");
-    } else {
-      chiudi("saltata");
-    }
-  }, [pazienteProva, chiudi]);
+    navigate("/");
+    chiudi(esitoPrecedente ?? "saltata");
+    togliPazientiProva();
+  }, [navigate, chiudi, esitoPrecedente, togliPazientiProva]);
 
   const completaProva = useCallback(() => {
-    setVarianteFine("completata");
     setCenno((n) => n + 1);
     setFase("fine");
-  }, []);
+    togliPazientiProva();
+  }, [togliPazientiProva]);
 
   // Tastiera nelle fasi a finestra. Le scorciatoie dell'app (Ctrl+N, Ctrl+K,
   // Ctrl+P...) si fermano qui, in cattura: aprirebbero un modal sotto la
@@ -385,28 +375,18 @@ function GuidaPrimoAvvio({
   }, [fase, chiudi]);
 
   /**
-   * Chiude la guida dalla fase finale. Il paziente di prova si cancella con
-   * le sue visite e i suoi documenti (`deletePatient`) e con la bozza della
-   * visita, se ne e' rimasta una; oppure resta, e la guida smette di
-   * ricordarlo.
+   * Chiude la guida dalla fase finale. I pazienti di prova li ha gia'
+   * cancellati la fine della prova: qui si aspetta che abbia finito, cosi' la
+   * pagina dopo non li mostra piu'. Se la cancellazione non riesce restano
+   * nelle preferenze, e ci riprova il prossimo avvio.
    */
   const concludi = async (dopo: "dashboard" | "paziente") => {
     setSalvando(true);
-    try {
-      if (pazienteProva && cancellaProva) {
-        await PatientService.deletePatient(pazienteProva.id);
-        void cancellaBozzaVisita(chiaveBozzaVisita(undefined, pazienteProva.id));
-      }
-      await aggiornaPreferenze((prefs) => conPazienteProva(prefs, null));
-    } catch {
-      // Se la cancellazione non riesce il paziente resta, e si toglie da
-      // Pazienti come ogni altro: non vale la pena bloccare la chiusura.
-    } finally {
-      setSalvando(false);
-    }
-    chiudi(esitoDiChiusura);
+    await cancellaPazientiProva().catch(() => {});
+    setSalvando(false);
+    chiudi("completata");
     navigate(dopo === "paziente" ? "/add-patient" : "/");
-    window.dispatchEvent(new CustomEvent(EVENTO_PAZIENTI_CAMBIATI));
+    avvisaArchivioCambiato();
   };
 
   const scegliTitolo = (t: TitoloMedico) => {
@@ -479,9 +459,9 @@ function GuidaPrimoAvvio({
     return (
       <ProvaGuidata
         mod={TASTO_MOD}
+        cf={cfProva ?? undefined}
         onCompletata={completaProva}
         onEsci={esciDallaProva}
-        onPazienteProva={registraPazienteProva}
       />
     );
   }
@@ -506,7 +486,7 @@ function GuidaPrimoAvvio({
           <Nuvoletta className="min-w-0 flex-1">
             <p className="guida-sottotitolo">
               <Battuta
-                testo="Ciao! Ti accompagno io. Prima prepariamo il tuo studio, poi proviamo Corioli insieme su un paziente di prova. Ci vogliono cinque minuti."
+                testo="Ciao! Ti accompagno io. Prima prepariamo il tuo studio, poi proviamo Corioli insieme su qualche paziente di prova. Ci vogliono cinque minuti."
                 onParla={setParla}
               />
             </p>
@@ -520,7 +500,7 @@ function GuidaPrimoAvvio({
               icona: MousePointerClick,
               titolo: "Provala",
               testo:
-                "Registri un paziente di prova, scrivi e stampi il referto, prepari un modello. Alla fine lo cancelli con un clic.",
+                "Cerchi un paziente di prova, guardi l'andamento dei suoi esami, scrivi e stampi il referto, trovi chi è a rischio. Alla fine i pazienti di prova spariscono.",
             },
           ].map(({ icona: Icona, titolo: t, testo }, i) => (
             <motion.li
@@ -786,11 +766,9 @@ function GuidaPrimoAvvio({
             <Button
               color="primary"
               className="guida-btn-primario"
-              onPress={() => {
-                navigate("/");
-                vaiA("prova");
-              }}
-              endContent={<ArrowRight size={16} />}
+              isLoading={salvando}
+              onPress={() => void avviaProva()}
+              endContent={!salvando ? <ArrowRight size={16} /> : null}
             >
               Continua
             </Button>
@@ -823,81 +801,46 @@ function GuidaPrimoAvvio({
         fatto: true,
       },
     ];
-    // Dopo la cancellazione del paziente di prova, l'archivio vero e' vuoto?
-    const archivioVuoto =
-      numeroPazienti - (pazienteProva && cancellaProva ? 1 : 0) <= 0;
-    const completata = varianteFine === "completata";
-    const nomeProva = pazienteProva
-      ? (formatPatientDisplayName(pazienteProva) ?? "il paziente di prova")
-      : null;
+    // L'archivio contato all'apertura della guida, prima dei pazienti di prova.
+    const archivioVuoto = numeroPazienti <= 0;
 
     contenuto = (
       <div className="flex flex-col items-center text-center gap-5">
         <h1 id={idTitolo} className="guida-titolo">
-          {completata ? "Tutto pronto" : "Il paziente di prova"}
+          Tutto pronto
         </h1>
         <div className="guida-narratore w-full text-left">
           <div className="guida-narratore-gufo">
-            <DoctorMascot
-              size={completata ? 80 : 72}
-              festeggia={completata}
-              happy={!completata}
-              parla={parla}
-              saluta={completata && !parla}
-            />
+            <DoctorMascot size={80} festeggia parla={parla} saluta={!parla} />
           </div>
           <Nuvoletta className="min-w-0 flex-1">
             <p className="guida-sottotitolo">
               <Battuta
                 testo={
-                  !completata
-                    ? "La prova si è fermata a metà e il paziente di prova è ancora in archivio. Lo cancello?"
-                    : archivioVuoto
-                      ? "Ben fatto! Ora tocca ai pazienti veri: bastano il cognome oppure il codice fiscale."
-                      : "Ben fatto! Lo studio è configurato, puoi tornare al lavoro."
+                  archivioVuoto
+                    ? "Ben fatto! I pazienti di prova li ho già tolti dall'archivio. Ora tocca ai pazienti veri: bastano il cognome oppure il codice fiscale."
+                    : "Ben fatto! I pazienti di prova li ho già tolti dall'archivio, e lo studio è configurato: puoi tornare al lavoro."
                 }
                 onParla={setParla}
               />
             </p>
           </Nuvoletta>
         </div>
-        {completata && (
-          <ul className="w-full space-y-2.5 text-left">
-            {riepilogo.map(({ titolo: t, testo, fatto }) => (
-              <li key={t} className="guida-elenco-voce">
-                <span className={`guida-elenco-icona ${fatto ? "" : "guida-elenco-icona--attesa"}`}>
-                  {fatto ? <Check size={20} /> : <CircleDashed size={20} />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[15px] font-semibold text-foreground">{t}</span>
-                  <span className="block text-[14px] text-default-600">{testo}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {nomeProva && (
-          <Switch
-            isSelected={cancellaProva}
-            onValueChange={setCancellaProva}
-            classNames={{
-              base: "guida-modulo inline-flex flex-row-reverse w-full max-w-none items-center justify-between gap-3 cursor-pointer text-left data-[selected=true]:border-[#1D9E75] data-[selected=true]:bg-[#F2FAF7]",
-              wrapper: "shrink-0",
-            }}
-          >
-            <span className="flex flex-col">
-              <span className="text-[15px] font-medium text-foreground">
-                Cancella {nomeProva} dall'archivio
+        <ul className="w-full space-y-2.5 text-left">
+          {riepilogo.map(({ titolo: t, testo, fatto }) => (
+            <li key={t} className="guida-elenco-voce">
+              <span className={`guida-elenco-icona ${fatto ? "" : "guida-elenco-icona--attesa"}`}>
+                {fatto ? <Check size={20} /> : <CircleDashed size={20} />}
               </span>
-              <span className="text-[13px] leading-snug text-default-500">
-                È il paziente registrato durante la prova; si cancellano anche le sue visite.
-                Spento, resta in archivio.
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold text-foreground">{t}</span>
+                <span className="block text-[14px] text-default-600">{testo}</span>
               </span>
-            </span>
-          </Switch>
-        )}
+            </li>
+          ))}
+        </ul>
         <div className="w-full space-y-2">
-          {completata && archivioVuoto ? (
+          {archivioVuoto ? (
             <>
               <Button
                 color="primary"
@@ -926,7 +869,7 @@ function GuidaPrimoAvvio({
               onPress={() => void concludi("dashboard")}
               autoFocus
             >
-              {completata ? "Torna alla dashboard" : "Fatto"}
+              Torna alla dashboard
             </Button>
           )}
           <p className="pt-1 text-[13px] text-default-500">

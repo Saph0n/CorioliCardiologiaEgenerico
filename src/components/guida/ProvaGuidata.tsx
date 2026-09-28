@@ -10,7 +10,6 @@ import { trovaNellaPagina } from "./livelloGuida";
 import {
   EVENTO_APRI_NUOVA_VISITA,
   EVENTO_REFERTO_APERTO,
-  pazienteDellaVisita,
   passiGuida,
   type ContestoPasso,
 } from "./passiGuida";
@@ -96,20 +95,23 @@ type Props = {
   onCompletata: () => void;
   /** "Esci dalla guida". */
   onEsci: () => void;
-  /** Il paziente di prova e' stato registrato: da cancellare alla fine. */
-  onPazienteProva: (id: string) => void;
+  /**
+   * Codice fiscale con cui Mario Rossi, il paziente di prova da cercare, e' in
+   * archivio; senza, quello di sempre.
+   */
+  cf?: string;
 };
 
 /**
  * La prova guidata: un passo alla volta, sull'app vera.
  *
  * Un ciclo rilegge la pagina (`ContestoPasso`) e decide: passo fatto → un
- * attimo di "Fatto" e si va avanti; contesto perso (di nuovo in dashboard
- * prima di salvare il paziente) → si torna al passo che lo ricrea; ricerca
- * chiusa con Esc → si riapre; finestra estranea aperta → pausa.
+ * attimo di "Fatto" e si va avanti; contesto perso (la finestra degli esami
+ * chiusa prima di aprire il grafico) → si torna al passo che lo ricrea;
+ * ricerca chiusa con Esc → si riapre; finestra estranea aperta → pausa.
  */
-export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProva }: Props) {
-  const passi = useMemo(() => passiGuida(mod), [mod]);
+export default function ProvaGuidata({ mod, onCompletata, onEsci, cf }: Props) {
+  const passi = useMemo(() => passiGuida(mod, cf), [mod, cf]);
   const idTitolo = useId();
   const location = useLocation();
   const [indice, setIndice] = useState(0);
@@ -126,7 +128,6 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
   posizioneRef.current = { percorso: location.pathname, ricerca: location.search };
   const eventiRef = useRef<Set<string>>(new Set());
   const inChiusuraRef = useRef(false);
-  const pazienteRegistratoRef = useRef(false);
   const timerPassoRef = useRef<number | undefined>(undefined);
   const persoDalRef = useRef<number | null>(null);
   const ricercaApertaRef = useRef(false);
@@ -184,16 +185,6 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
       if (inChiusuraRef.current) return;
       const c = contesto();
 
-      // Il paziente di prova nasce quando si apre la sua visita: da qui la
-      // guida sa quale cancellare alla fine.
-      if (!pazienteRegistratoRef.current && passo.id === "salva-paziente") {
-        const id = pazienteDellaVisita(c);
-        if (id) {
-          pazienteRegistratoRef.current = true;
-          onPazienteProva(id);
-        }
-      }
-
       if (passo.fatto?.(c)) {
         inChiusuraRef.current = true;
         setPausa(false);
@@ -239,7 +230,7 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
 
     const timer = window.setInterval(controlla, INTERVALLO_CONTROLLO_MS);
     return () => window.clearInterval(timer);
-  }, [passo, indice, passi, vaiAlPasso, onPazienteProva]);
+  }, [passo, indice, passi, vaiAlPasso]);
 
   // Scorciatoie: passano solo quelle che il passo chiede di provare. Le altre
   // aprirebbero finestre fuori copione. In pausa e nelle attese passa tutto:

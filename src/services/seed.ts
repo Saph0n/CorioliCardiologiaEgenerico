@@ -1,6 +1,7 @@
 import { DoctorService, DocumentService, PatientService } from "./OfflineServices";
 import { storageService } from "./StorageServiceFallback";
 import { runDailyAutoBackup } from "./BackupFileService";
+import { cancellaPazientiProva } from "./pazientiProva";
 
 /**
  * Inizializzazione dati all'avvio.
@@ -77,7 +78,8 @@ async function runDemoCleanupOnce(): Promise<void> {
 let avvio: Promise<void> | null = null;
 
 /**
- * Inizializzazione all'avvio: profilo dottore di default + migrazione dati demo (una tantum).
+ * Inizializzazione all'avvio: profilo dottore di default, migrazione dati demo (una
+ * tantum) e pulizia dei pazienti di prova di una guida interrotta.
  * Non lancia mai: un errore qui non deve impedire l'apertura dell'app.
  *
  * La promessa si risolve quando c'e' quello che serve alla prima pagina; il
@@ -95,6 +97,14 @@ export function initializeAppData(): Promise<void> {
       await runDemoCleanupOnce();
     } catch (error) {
       console.error("Migrazione dati demo non riuscita:", error);
+    }
+
+    // I pazienti di prova di una guida interrotta dall'app chiusa: via prima
+    // del backup, che se no li copierebbe.
+    try {
+      await cancellaPazientiProva();
+    } catch (error) {
+      console.error("Pulizia dei pazienti di prova non riuscita:", error);
     }
   })();
   avvio = corrente;

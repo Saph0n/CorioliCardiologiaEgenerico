@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   CHIAVE_PREF_GUIDA,
-  CHIAVE_PREF_PAZIENTE_PROVA,
-  conPazienteProva,
+  CHIAVE_PREF_PAZIENTI_PROVA,
+  conPazientiProva,
   conStatoGuida,
   deveAprirsiDaSola,
-  leggiPazienteProva,
+  leggiPazientiProva,
   leggiStatoGuida,
 } from "../guidaPrimoAvvio";
 
@@ -50,18 +50,25 @@ describe("guida di primo avvio", () => {
     expect(leggiStatoGuida({ [CHIAVE_PREF_GUIDA]: { esito: "forse" } })).toBeNull();
   });
 
-  it("ricorda il paziente di prova e lo dimentica senza toccare il resto", () => {
-    const con = conPazienteProva({ moduliVisita: { holterEcg: true } }, "p-42");
-    expect(leggiPazienteProva(con)).toBe("p-42");
-    const senza = conPazienteProva(con, null);
-    expect(leggiPazienteProva(senza)).toBeNull();
-    expect(CHIAVE_PREF_PAZIENTE_PROVA in senza).toBe(false);
+  it("ricorda i pazienti di prova e li dimentica senza toccare il resto", () => {
+    const con = conPazientiProva({ moduliVisita: { holterEcg: true } }, ["p-1", "p-2"]);
+    expect(leggiPazientiProva(con)).toEqual(["p-1", "p-2"]);
+    const senza = conPazientiProva(con, []);
+    expect(leggiPazientiProva(senza)).toEqual([]);
+    expect(CHIAVE_PREF_PAZIENTI_PROVA in senza).toBe(false);
     expect(senza.moduliVisita).toEqual({ holterEcg: true });
   });
 
-  it("ignora un paziente di prova scritto male", () => {
-    expect(leggiPazienteProva({ [CHIAVE_PREF_PAZIENTE_PROVA]: "" })).toBeNull();
-    expect(leggiPazienteProva({ [CHIAVE_PREF_PAZIENTE_PROVA]: 12 })).toBeNull();
-    expect(leggiPazienteProva(null)).toBeNull();
+  // Le versioni precedenti registravano un paziente solo, come stringa: se
+  // l'app si era chiusa a meta' prova, va cancellato anche lui.
+  it("legge il paziente di prova delle versioni precedenti", () => {
+    expect(leggiPazientiProva({ [CHIAVE_PREF_PAZIENTI_PROVA]: "p-42" })).toEqual(["p-42"]);
+  });
+
+  it("ignora i pazienti di prova scritti male", () => {
+    expect(leggiPazientiProva({ [CHIAVE_PREF_PAZIENTI_PROVA]: "" })).toEqual([]);
+    expect(leggiPazientiProva({ [CHIAVE_PREF_PAZIENTI_PROVA]: 12 })).toEqual([]);
+    expect(leggiPazientiProva({ [CHIAVE_PREF_PAZIENTI_PROVA]: ["p-1", 3, " "] })).toEqual(["p-1"]);
+    expect(leggiPazientiProva(null)).toEqual([]);
   });
 });

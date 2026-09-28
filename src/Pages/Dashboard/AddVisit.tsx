@@ -5382,8 +5382,10 @@ export default function AddVisit() {
                 che si scrivono nella finestra degli esami (vedi
                 `TabellaEsami`). Ventuno campi con precedente e grafico non
                 stavano in 354px in nessuna disposizione. Ogni valore del
-                riepilogo apre la finestra su di se'. */}
-            <Card className="shadow-sm border border-default-200 bg-white">
+                riepilogo apre la finestra su di se'. `data-guida`: la guida
+                di primo avvio fa aprire da qui gli esami del paziente di
+                prova, con l'andamento dell'LDL. */}
+            <Card className="shadow-sm border border-default-200 bg-white" data-guida="card-laboratorio">
               <div className="flex items-center justify-between gap-2 px-4 pt-4">
                 <span className="font-semibold text-gray-700 uppercase text-xs tracking-wider">
                   Laboratorio
@@ -5394,6 +5396,7 @@ export default function AddVisit() {
                   color="primary"
                   startContent={<FlaskConical size={14} />}
                   onPress={() => apriEsami()}
+                  data-guida="apri-esami"
                 >
                   {esamiCompilati > 0 ? "Modifica esami" : "Inserisci esami"}
                 </Button>
@@ -5779,7 +5782,10 @@ export default function AddVisit() {
       </ConfirmDangerModal>
 
       {/* Controllo prima di stampare: compare solo se c'e' qualcosa da
-          vedere (vedi `anomaliePrimaDiStampare`). "Correggi" porta al campo. */}
+          vedere (vedi `anomaliePrimaDiStampare`). "Correggi" porta al campo.
+          `data-guida`: nella guida di primo avvio compare davvero, perche'
+          il paziente di prova ha terapia e fattori di rischio ripresi
+          dall'ultima visita; la guida lo illumina invece di fermarsi. */}
       <AppModal
         isOpen={controlloStampa !== null}
         onClose={() => setControlloStampa(null)}
@@ -5789,7 +5795,7 @@ export default function AddVisit() {
         <ModalContent>
           {(chiudi) => (
             <>
-              <ModalHeader>Prima di stampare</ModalHeader>
+              <ModalHeader data-guida="controllo-stampa">Prima di stampare</ModalHeader>
               <ModalBody>
                 <p className="text-sm text-default-600">
                   Queste cose finirebbero nel referto così come sono:
@@ -5823,6 +5829,7 @@ export default function AddVisit() {
                 <Button
                   color="primary"
                   className="corioli-cta font-semibold"
+                  data-guida="stampa-comunque"
                   onPress={() => {
                     setControlloStampa(null);
                     void handlePrintPdf(true);
@@ -5856,7 +5863,10 @@ export default function AddVisit() {
         <ModalContent>
           {(chiudi) => (
             <>
-              <ModalHeader className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pr-12">
+              <ModalHeader
+                className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pr-12"
+                data-guida="finestra-esami"
+              >
                 <div className="min-w-0">
                   <p className="text-lg font-semibold text-gray-900">Laboratorio</p>
                   <p className="text-sm font-normal text-default-600">
@@ -5974,6 +5984,7 @@ export default function AddVisit() {
                 </p>
                 <Button
                   data-fine-trascrizione
+                  data-guida="chiudi-esami"
                   color="primary"
                   className="corioli-cta font-semibold"
                   onPress={chiudi}

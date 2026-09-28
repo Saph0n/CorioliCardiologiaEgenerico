@@ -44,10 +44,12 @@ const menuItems = [
 const SU_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
 /**
- * La guida di primo avvio fa aprire Impostazioni da qui, per arrivare ai
- * modelli (`components/guida/passiGuida.ts`).
+ * La guida di primo avvio fa aprire da qui la Dashboard, per i pazienti a
+ * rischio, e Impostazioni, per arrivare ai modelli
+ * (`components/guida/passiGuida.ts`).
  */
 function bersaglioGuida(href: string): string | undefined {
+  if (href === "/") return "dashboard";
   return href === "/settings" ? "impostazioni" : undefined;
 }
 

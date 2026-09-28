@@ -3,9 +3,11 @@
  *
  * Arriva dopo profilo e PIN, al primo ingresso nella dashboard, e fa due cose:
  * prepara quello che serve al primo referto (titolo, studio in intestazione,
- * moduli della visita) e poi fa **provare** l'app su un paziente di prova:
- * registrarlo, scrivere e stampare il referto, preparare un modello. I passi
- * stanno in `components/guida/passiGuida.ts`.
+ * moduli della visita) e poi fa **provare** l'app su pazienti di prova, che
+ * esistono solo finche' dura la prova (`pazientiProva.ts`): cercarne uno per
+ * codice fiscale, vederne esami e andamento, scrivere e stampare il referto,
+ * trovare chi e' a rischio, preparare un modello. I passi stanno in
+ * `components/guida/passiGuida.ts`.
  *
  * Si apre da sola **una volta sola** e solo con l'archivio vuoto: chi aggiorna
  * da una versione precedente ha gia' i suoi pazienti e sa usare l'app, e il
@@ -14,7 +16,7 @@
  * si riapre da Aiuto.
  */
 
-/** Evento per chi mostra l'archivio: la guida ha cancellato un paziente. */
+/** Evento per chi mostra l'archivio: la guida ha scritto o cancellato i pazienti di prova. */
 export const EVENTO_PAZIENTI_CAMBIATI = "corioli-pazienti-cambiati";
 
 /** Chiave con cui l'esito della guida sta nelle preferenze. */
@@ -80,30 +82,35 @@ export const VOCI_FISSE_VISITA: readonly string[] = [
 ] as const;
 
 /**
- * Paziente registrato durante la prova, da cancellare alla fine.
+ * I pazienti di prova in archivio (vedi `pazientiProva.ts`), da cancellare
+ * alla fine della prova.
  *
- * Sta nelle preferenze appena la guida lo vede nascere, non solo in memoria:
- * se l'app si chiude a meta' prova, al riavvio la guida chiede che cosa
- * farne invece di lasciarlo in archivio in mezzo ai pazienti veri. Il
- * cardiologo aveva chiesto di togliere i pazienti simulati perche' "fanno
- * confusione" (call del 18 settembre 2026).
+ * Stanno nelle preferenze appena la guida li scrive, non solo in memoria: se
+ * l'app si chiude a meta' prova, al riavvio si cancellano prima di tutto, e
+ * non restano in archivio in mezzo ai pazienti veri. Il cardiologo aveva
+ * chiesto di togliere i pazienti simulati perche' "fanno confusione" (call
+ * del 18 settembre 2026).
+ *
+ * La chiave e' quella delle versioni che registravano un paziente solo, e
+ * ci scrivevano il suo id come stringa: si legge anche cosi'.
  */
-export const CHIAVE_PREF_PAZIENTE_PROVA = "guidaPazienteProva";
+export const CHIAVE_PREF_PAZIENTI_PROVA = "guidaPazienteProva";
 
-export function leggiPazienteProva(
+export function leggiPazientiProva(
   prefs: Record<string, unknown> | null | undefined,
-): string | null {
-  const id = prefs?.[CHIAVE_PREF_PAZIENTE_PROVA];
-  return typeof id === "string" && id.trim() ? id : null;
+): string[] {
+  const salvato = prefs?.[CHIAVE_PREF_PAZIENTI_PROVA];
+  const elenco = Array.isArray(salvato) ? salvato : [salvato];
+  return elenco.filter((id): id is string => typeof id === "string" && id.trim() !== "");
 }
 
-/** Le preferenze con il paziente di prova registrato, o tolto con `null`. */
-export function conPazienteProva(
+/** Le preferenze con i pazienti di prova registrati, o tolti con un elenco vuoto. */
+export function conPazientiProva(
   prefs: Record<string, unknown> | null | undefined,
-  id: string | null,
+  ids: string[],
 ): Record<string, unknown> {
   const prossime = { ...(prefs ?? {}) };
-  if (id) prossime[CHIAVE_PREF_PAZIENTE_PROVA] = id;
-  else delete prossime[CHIAVE_PREF_PAZIENTE_PROVA];
+  if (ids.length > 0) prossime[CHIAVE_PREF_PAZIENTI_PROVA] = [...ids];
+  else delete prossime[CHIAVE_PREF_PAZIENTI_PROVA];
   return prossime;
 }

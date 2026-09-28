@@ -384,6 +384,7 @@ function vaiAlCampoSuccessivo(da: HTMLElement) {
  * clic apre il grafico dell'andamento (fuori dal Tab, come altrove).
  */
 function PrecedenteCella({
+  guida,
   titolo,
   unita,
   precedente,
@@ -392,6 +393,8 @@ function PrecedenteCella({
   dataCorrente,
   riferimento,
 }: {
+  /** `data-guida` della riga: la guida di primo avvio fa aprire l'andamento dell'LDL. */
+  guida: string;
   titolo: string;
   unita?: string;
   precedente?: ValorePrecedente;
@@ -413,7 +416,9 @@ function PrecedenteCella({
   if (!conGrafico) {
     return (
       <Tooltip content={descriviPrecedente(precedente)} placement="left" delay={300}>
-        <span className="cursor-help text-right text-xs text-default-500">{numero}</span>
+        <span className="cursor-help text-right text-xs text-default-500" data-guida={guida}>
+          {numero}
+        </span>
       </Tooltip>
     );
   }
@@ -425,6 +430,7 @@ function PrecedenteCella({
           tabIndex={-1}
           title={descriviPrecedente(precedente)}
           aria-label={`Andamento di ${titolo} nel tempo`}
+          data-guida={guida}
           className="inline-flex items-center justify-end gap-1 justify-self-end rounded px-1 text-xs text-default-500 transition-colors hover:bg-default-100 hover:text-default-700"
         >
           {numero}
@@ -488,7 +494,11 @@ export function CampoEsame({
 
   return (
     <>
-      <label htmlFor={id} className="min-w-0 text-[13px] leading-tight text-default-700">
+      <label
+        htmlFor={id}
+        className="min-w-0 text-[13px] leading-tight text-default-700"
+        data-guida={`esame-${nome}`}
+      >
         {label}
       </label>
       <Input
@@ -532,6 +542,7 @@ export function CampoEsame({
         }}
       />
       <PrecedenteCella
+        guida={`esame-${nome}`}
         titolo={label}
         unita={unit}
         precedente={precedente}

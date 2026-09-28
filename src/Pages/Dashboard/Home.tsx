@@ -215,7 +215,7 @@ export default function Home() {
   const { openCheckPatientModal } = useCheckPatientModal();
   const [doctorName, setDoctorName] = useState<string | null>(null);
   // Cresce quando l'archivio cambia sotto la pagina (la guida di primo avvio
-  // che cancella il paziente di prova): i dati si rileggono.
+  // che scrive o cancella i pazienti di prova): i dati si rileggono.
   const [versioneArchivio, setVersioneArchivio] = useState(0);
   const [titolo, setTitolo] = useState<string>("Dott.");
   const [stats, setStats] = useState<DashboardStats>({
@@ -728,8 +728,10 @@ export default function Home() {
 
             La riga sta in `RigaPazienteARischio`; la pagina che si apre da
             "Vedi tutti" e' lo stesso elenco intero, in tabella, con lo stesso
-            indicatore e gli stessi colori (`IndicatoreLdl`, `COLORI_CLASSE`). */}
-        <Card className="corioli-card">
+            indicatore e gli stessi colori (`IndicatoreLdl`, `COLORI_CLASSE`).
+            `data-guida`: la guida di primo avvio la fa vedere piena, con i
+            pazienti di prova. */}
+        <Card className="corioli-card" data-guida="pazienti-a-rischio">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
               <HeartPulse className="text-brand-700 shrink-0" size={16} />

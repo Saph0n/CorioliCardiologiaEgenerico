@@ -2,25 +2,22 @@
  * I passi della prova guidata: la guida non spiega che cosa fa un pulsante,
  * lo fa premere e aspetta di vedere il risultato.
  *
- * Il percorso e' quello di tutti i giorni con un paziente nuovo: il codice
- * fiscale nella ricerca "Nuova visita" (la apre la guida), Invio, "Salva e
- * inizia visita". Poi, nella visita, un modello e il grassetto sull'esame
- * obiettivo, la stampa del referto; infine i modelli in Impostazioni.
+ * La prova si fa sui pazienti di prova (`utils/pazientiProva.ts`), che la
+ * guida mette in archivio all'inizio e toglie alla fine. Il percorso e' quello
+ * di un controllo: Mario Rossi cercato per codice fiscale nella ricerca
+ * "Nuova visita" (la apre la guida), Invio, e si apre la sua visita; i suoi
+ * esami con l'andamento dell'LDL, un modello e il grassetto sull'esame
+ * obiettivo, la stampa del referto, la sua scheda. Poi i pazienti a rischio in
+ * dashboard, infine i modelli in Impostazioni.
  *
  * Ogni passo legge la pagina da un `ContestoPasso` e non dal DOM: cosi' le
  * condizioni si provano nei test senza un browser.
  */
 
+import { CF_PAZIENTE_DA_CERCARE } from "../../utils/pazientiProva";
+
 /** Selettore di un elemento marcato per la guida. */
 export const g = (nome: string) => `[data-guida="${nome}"]`;
-
-/**
- * Codice fiscale di un paziente inventato (Mario Rossi, Roma, 1 gennaio
- * 1980): e' l'esempio di scuola, valido anche nel carattere di controllo, e
- * fa vedere l'app ricavare data e luogo di nascita e sesso.
- */
-export const CF_PROVA = "RSSMRA80A01H501U";
-export const COGNOME_PROVA = "Prova";
 
 /** Evento che `AddVisit` lancia quando il referto e' stato aperto in PDF. */
 export const EVENTO_REFERTO_APERTO = "corioli-referto-aperto";
@@ -34,6 +31,9 @@ export const EVENTO_APRI_NUOVA_VISITA = "corioli-apri-nuova-visita";
 
 /** Il campo di testo modificabile dell'esame obiettivo. */
 const CAMPO_ESAME_OBIETTIVO = `${g("campo-esame-obiettivo")} [contenteditable="true"]`;
+
+/** La riga dell'LDL nella finestra degli esami: etichetta e colonna "Prec.". */
+const RIGA_LDL = g("esame-lab.ldl");
 
 export interface ContestoPasso {
   /** `pathname` della rotta attuale. */
@@ -102,59 +102,64 @@ export function pazienteDellaVisita(c: Pick<ContestoPasso, "percorso" | "ricerca
   return new URLSearchParams(c.ricerca).get("patientId");
 }
 
-/** `mod` e' il tasto Ctrl, o Cmd sul Mac. */
-export function passiGuida(mod: string): PassoGuida[] {
+/**
+ * `mod` e' il tasto Ctrl, o Cmd sul Mac. `cf` e' il codice fiscale con cui
+ * Mario Rossi e' finito in archivio: un altro, se il suo era gia' di un
+ * paziente vero (vedi `services/pazientiProva`).
+ */
+export function passiGuida(mod: string, cf: string = CF_PAZIENTE_DA_CERCARE): PassoGuida[] {
   return [
-    // ── Il primo paziente ──────────────────────────────────────────────
+    // ── Il paziente ────────────────────────────────────────────────────
     {
       id: "scrivi-cf",
-      capitolo: "Il primo paziente",
+      capitolo: "Il paziente",
       tipo: "prova",
-      // La testata del pannello e quello che le sta sotto: il suggerimento
-      // "Premi Invio per registrare" non deve finire sotto il fumetto.
+      // La testata del pannello e quello che le sta sotto: il paziente
+      // trovato non deve finire sotto il fumetto.
       bersagli: [g("pannello-paziente"), `${g("pannello-paziente")} ~ *`],
       titolo: "Cercalo per codice fiscale",
       testo:
-        "Qui trovi i pazienti per cognome o codice fiscale. Questo è nuovo: scrivi il suo codice fiscale e premi Invio. Per la prova usa quello di un paziente inventato.",
-      scrivi: { selettore: `${g("pannello-paziente")} input`, testo: CF_PROVA },
-      fatto: (c) => c.percorso === "/add-patient",
-      apriRicerca: (c) => c.percorso === "/" && !c.esiste(g("pannello-paziente")),
-    },
-    // Due passi e non uno: codice fiscale e anagrafica insieme sono alti
-    // quasi tutta la finestra a 1280x720, e il fumetto finiva sopra i campi
-    // che doveva far vedere.
-    {
-      id: "dati-da-cf",
-      capitolo: "Il primo paziente",
-      tipo: "guarda",
-      bersagli: [g("dati-da-cf")],
-      titolo: "Il codice fiscale fa metà del lavoro",
-      testo:
-        "Data e luogo di nascita e sesso li ha ricavati l'app dal codice fiscale: sono i campi in verde. Dai sempre un'occhiata, poi vai avanti.",
-      perso: (c) => (c.percorso === "/" ? "scrivi-cf" : null),
-    },
-    {
-      id: "cognome",
-      capitolo: "Il primo paziente",
-      tipo: "prova",
-      bersagli: [g("campo-cognome")],
-      titolo: "Aggiungi il cognome",
-      testo: "È così che il paziente si cerca e si stampa. Per la prova, scrivi Prova.",
-      scrivi: { selettore: 'input[name="lastName"]', testo: COGNOME_PROVA },
-      pronto: (c) => c.valore('input[name="lastName"]').trim().length > 0,
-      perso: (c) => (c.percorso === "/" ? "scrivi-cf" : null),
-    },
-    {
-      id: "salva-paziente",
-      capitolo: "Il primo paziente",
-      tipo: "prova",
-      bersagli: [g("salva-e-visita")],
-      punta: [g("salva-e-visita")],
-      titolo: "Salva e comincia",
-      testo:
-        "Il resto dell'anagrafica lo completi quando vuoi. Premi «Salva e inizia visita»: il paziente è in archivio e si apre il referto.",
+        "Qui trovi i pazienti per cognome o codice fiscale. Mario Rossi è già in archivio, con tre controlli alle spalle: scrivi il suo codice fiscale e premi Invio. Si apre la sua visita di oggi.",
+      scrivi: { selettore: `${g("pannello-paziente")} input`, testo: cf },
       fatto: (c) => pazienteDellaVisita(c) !== null,
-      perso: (c) => (c.percorso === "/" ? "scrivi-cf" : null),
+      // Anche fuori dalla dashboard: con «Nuovo paziente» si finisce nella
+      // scheda di registrazione, e la ricerca deve tornare.
+      apriRicerca: (c) => pazienteDellaVisita(c) === null && !c.esiste(g("pannello-paziente")),
+    },
+    {
+      id: "esami",
+      capitolo: "Il paziente",
+      tipo: "prova",
+      bersagli: [g("card-laboratorio")],
+      punta: [g("apri-esami")],
+      titolo: "I suoi esami",
+      testo:
+        "Mario ha già tre prelievi in archivio. Premi «Inserisci esami»: è la finestra in cui scrivi quelli di oggi, accanto a quelli di prima.",
+      fatto: (c) => c.esiste(g("finestra-esami")),
+    },
+    {
+      id: "andamento",
+      capitolo: "Il paziente",
+      tipo: "prova",
+      // La riga dell'LDL e, appena si apre, il grafico accanto.
+      bersagli: [RIGA_LDL, g("pannello-andamento")],
+      punta: [`button${RIGA_LDL}`],
+      titolo: "Com'è andato il colesterolo",
+      testo:
+        "In «Prec.» c'è il valore dell'ultimo prelievo, in «Oggi» scrivi quello nuovo. Tocca il valore precedente dell'LDL: si apre l'andamento di tutti i prelievi.",
+      fatto: (c) => c.esiste(g("pannello-andamento")),
+      perso: (c) => (c.esiste(g("finestra-esami")) ? null : "esami"),
+    },
+    {
+      id: "chiudi-esami",
+      capitolo: "Il paziente",
+      tipo: "prova",
+      bersagli: [g("pannello-andamento"), g("chiudi-esami")],
+      punta: [g("chiudi-esami")],
+      titolo: "Ogni punto è un prelievo",
+      testo:
+        "Con la statina l'LDL di Mario è sceso, ma è ancora sopra l'obiettivo della sua classe di rischio. Lo stesso grafico c'è accanto a ogni esame ripetuto. Ora chiudi con «Fatto».",
+      fatto: (c) => !c.esiste(g("finestra-esami")),
     },
 
     // ── La visita ──────────────────────────────────────────────────────
@@ -165,7 +170,7 @@ export function passiGuida(mod: string): PassoGuida[] {
       bersagli: [g("barra-visita")],
       titolo: "Il referto",
       testo:
-        "In alto chi stai visitando, la data e le azioni. Sotto, il referto a sezioni: si scrive dall'alto in basso, e Tab passa al campo dopo.",
+        "In alto chi stai visitando, la data e le azioni. Sotto, il referto a sezioni: la terapia in atto arriva già dall'ultima visita, si scrive dall'alto in basso e Tab passa al campo dopo.",
     },
     {
       id: "modello",
@@ -194,10 +199,14 @@ export function passiGuida(mod: string): PassoGuida[] {
       id: "stampa",
       capitolo: "La visita",
       tipo: "prova",
-      bersagli: [g("stampa-visita")],
-      punta: [g("stampa-visita")],
+      // Con il controllo prima di stampare aperto, anche lui: la terapia e i
+      // fattori di rischio ripresi dall'ultima visita di Mario lo fanno
+      // comparire, e senza la guida si fermava come davanti a una finestra
+      // estranea.
+      bersagli: [g("stampa-visita"), g("controllo-stampa"), `${g("controllo-stampa")} ~ *`],
+      punta: [g("stampa-comunque"), g("stampa-visita")],
       titolo: "Stampa il referto",
-      testo: `Premi «Stampa» o ${mod}+P: la visita si salva e il referto si apre in PDF, con il tuo studio in testa e il grassetto dove l'hai messo.`,
+      testo: `Premi «Stampa» o ${mod}+P: la visita si salva e il referto si apre in PDF, con il tuo studio in testa e il grassetto dove l'hai messo. Se hai ripreso qualcosa dall'ultima visita senza rileggerlo, prima te lo ricorda: per la prova, «Stampa comunque».`,
       tasti: [mod, "P"],
       consentiti: ["p"],
       fatto: (c) => c.eventi.has(EVENTO_REFERTO_APERTO),
@@ -220,7 +229,29 @@ export function passiGuida(mod: string): PassoGuida[] {
       bersagli: [g("scheda-documenti")],
       titolo: "La scheda del paziente",
       testo:
-        "A sinistra la visita di oggi: la riapri, la ristampi, la ricopi nella prossima. Qui accanto ricette, richieste di esame e certificati, ognuno con i suoi modelli.",
+        "A sinistra le visite di Mario, con quella di oggi: le riapri, le ristampi, le ricopi nella prossima. Qui accanto ricette, richieste di esame e certificati, ognuno con i suoi modelli.",
+    },
+
+    // ── I pazienti a rischio ───────────────────────────────────────────
+    {
+      id: "vai-dashboard",
+      capitolo: "I pazienti a rischio",
+      tipo: "prova",
+      bersagli: [g("dashboard")],
+      punta: [g("dashboard")],
+      titolo: "Chi tenere d'occhio",
+      testo:
+        "Mario è di classe di rischio alta e ha l'LDL sopra l'obiettivo: la dashboard lo tiene in evidenza, insieme agli altri come lui. Apri la Dashboard.",
+      fatto: (c) => c.percorso === "/",
+    },
+    {
+      id: "rischio",
+      capitolo: "I pazienti a rischio",
+      tipo: "guarda",
+      bersagli: [g("pazienti-a-rischio")],
+      titolo: "I pazienti a rischio",
+      testo:
+        "Qui ci sono i pazienti di classe alta o molto alta, e chi ha l'LDL sopra l'obiettivo della sua classe: prima i più gravi. Il numero è di quanto l'LDL supera l'obiettivo. La classe la scegli tu nella visita.",
     },
 
     // ── I modelli ──────────────────────────────────────────────────────

@@ -681,8 +681,9 @@ export default function HelpAndFeedback() {
         <div className="min-w-0 flex-1">
           <p className="text-[16px] font-semibold text-foreground">Guida di primo avvio</p>
           <p className="text-[14px] leading-snug text-default-600">
-            Provi l'app su un paziente di prova: lo registri, scrivi e stampi il referto,
-            prepari un modello. Alla fine lo cancelli con un clic.
+            Provi l'app su alcuni pazienti di prova: ne cerchi uno, guardi l'andamento dei
+            suoi esami, scrivi e stampi il referto, trovi chi è a rischio, prepari un modello.
+            Alla fine i pazienti di prova spariscono.
           </p>
         </div>
         <Button
