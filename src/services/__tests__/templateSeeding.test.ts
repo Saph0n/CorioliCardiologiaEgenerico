@@ -237,3 +237,85 @@ describe("certificato non agonistico: riferimento normativo", () => {
     expect(etichette).toContain("Idoneità all'attività ludico-motoria");
   });
 });
+
+const { MODELLI_RISCRITTI } = await import("../../data/modelliRiscritti");
+
+describe("predefiniti riscritti o ritirati (28 settembre 2026)", () => {
+  const vecchio = (label: string) =>
+    MODELLI_RISCRITTI.find((m) => m.label === label)!;
+  const predefinito = (id: string, label: string, text: string) => ({
+    id,
+    category: "visita",
+    section: vecchio(label).section,
+    label,
+    text,
+    isDefault: true,
+  });
+
+  it("aggiorna le conclusioni che il medico non ha toccato, e lascia le sue", async () => {
+    const norma = vecchio("Quadro nella norma — controllo periodico");
+    const stabile = vecchio("Prosecuzione della terapia in atto");
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([
+        predefinito("1", norma.label, norma.vecchio),
+        predefinito("2", stabile.label, "Conclusioni: scritto a modo mio."),
+      ]),
+    );
+    const t = await storageService.getTemplates();
+    // Il referto stampa gia' il titolo "Conclusioni e terapia".
+    expect(t.find((x) => x.id === "1")?.text.startsWith("Conclusioni:")).toBe(false);
+    expect(t.find((x) => x.id === "1")?.text).toContain("nei limiti di norma");
+    expect(t.find((x) => x.id === "2")?.text).toBe("Conclusioni: scritto a modo mio.");
+  });
+
+  it("toglie la terapia dall'anamnesi predefinita: ha la sua sezione", async () => {
+    const ischemica = vecchio("Cardiopatia ischemica nota");
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([predefinito("1", ischemica.label, ischemica.vecchio)]),
+    );
+    const t = await storageService.getTemplates();
+    expect(t.find((x) => x.id === "1")?.text).not.toContain("Terapia in atto");
+  });
+
+  it("riscrive i modelli della TC mai toccati e tiene quelli modificati", async () => {
+    const negativa = vecchio("TC coronarica negativa");
+    const placche = vecchio("TC coronarica con placche");
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([
+        predefinito("1", negativa.label, negativa.vecchio),
+        predefinito("2", placche.label, "La mia TC."),
+      ]),
+    );
+    const t = await storageService.getTemplates();
+    expect(t.find((x) => x.id === "1")?.text).not.toContain("Calcium score");
+    expect(t.find((x) => x.id === "2")?.text).toBe("La mia TC.");
+  });
+
+  it("nessuna conclusione ripete il titolo, e la TC non ripete i suoi campi", () => {
+    const visita = MedicalTemplates.visita as Record<string, { text: string }[]>;
+    for (const t of visita.conclusioni) expect(t.text.startsWith("Conclusioni")).toBe(false);
+    // Calcium score e CAD-RADS il referto li stampa dai campi; data e
+    // struttura dell'esame il cardiologo le ha tolte dal referto.
+    expect(visita.tcCoronarica.length).toBeGreaterThan(0);
+    for (const t of visita.tcCoronarica) {
+      expect(t.text).not.toMatch(/Calcium score|CAD-RADS|in data ___|presso ___/);
+    }
+  });
+});
+
+describe("ricette predefinite modificate dal medico", () => {
+  // Fino al 28 settembre 2026 venivano riportate al testo del file a ogni
+  // avvio: la modifica del medico spariva.
+  it("restano come le ha scritte lui", async () => {
+    await storageService.getTemplates();
+    const ricetta = (await storageService.getTemplates()).find(
+      (x) => x.category === "ricette" && x.label === "Terapia antiaggregante",
+    )!;
+    await storageService.updateTemplate(ricetta.id, { text: "Cardioaspirina 100 mg a pranzo." });
+    const dopo = (await storageService.getTemplates()).find((x) => x.id === ricetta.id);
+    expect(dopo?.text).toBe("Cardioaspirina 100 mg a pranzo.");
+  });
+});

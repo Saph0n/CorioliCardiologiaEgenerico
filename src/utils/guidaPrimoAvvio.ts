@@ -3,9 +3,11 @@
  *
  * Arriva dopo profilo e PIN, al primo ingresso nella dashboard, e fa due cose:
  * prepara quello che serve al primo referto (titolo, studio in intestazione,
- * moduli della visita) e poi fa **provare** l'app su un paziente di prova:
- * registrarlo, scrivere e stampare il referto, preparare un modello. I passi
- * stanno in `components/guida/passiGuida.ts`.
+ * moduli della visita) e poi fa **provare** l'app su un archivio di prova,
+ * pazienti inventati che vivono in memoria finche' la guida e' aperta:
+ * cercare un paziente, vedere l'andamento degli esami, scrivere e stampare il
+ * referto, preparare un modello. I passi stanno in
+ * `components/guida/passiGuida.ts`, i pazienti in `archivioDiProva.ts`.
  *
  * Si apre da sola **una volta sola** e solo con l'archivio vuoto: chi aggiorna
  * da una versione precedente ha gia' i suoi pazienti e sa usare l'app, e il
@@ -80,13 +82,15 @@ export const VOCI_FISSE_VISITA: readonly string[] = [
 ] as const;
 
 /**
- * Paziente registrato durante la prova, da cancellare alla fine.
+ * Paziente registrato durante la prova dalle versioni fino al 28 settembre
+ * 2026, che lo creavano nell'archivio vero e se lo segnavano qui per
+ * cancellarlo alla fine.
  *
- * Sta nelle preferenze appena la guida lo vede nascere, non solo in memoria:
- * se l'app si chiude a meta' prova, al riavvio la guida chiede che cosa
- * farne invece di lasciarlo in archivio in mezzo ai pazienti veri. Il
- * cardiologo aveva chiesto di togliere i pazienti simulati perche' "fanno
- * confusione" (call del 18 settembre 2026).
+ * Ora la prova gira su un archivio in memoria e non lascia niente: resta la
+ * lettura, perche' chi ha interrotto una prova con la versione di prima puo'
+ * avere ancora quel paziente in mezzo ai suoi, e il cardiologo aveva chiesto
+ * di togliere i pazienti simulati perche' "fanno confusione" (call del 18
+ * settembre 2026).
  */
 export const CHIAVE_PREF_PAZIENTE_PROVA = "guidaPazienteProva";
 

@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  CF_PROVA,
+  BOTTONE_ANDAMENTO,
   EVENTO_REFERTO_APERTO,
+  FINESTRA_ESAMI,
+  RISULTATO_PAZIENTE_DELLA_PROVA,
   g,
   passiGuida,
   pazienteDellaVisita,
   type ContestoPasso,
 } from "../passiGuida";
-import { isValidCodiceFiscaleFormat } from "../../../utils/codiceFiscale";
+import { PAZIENTE_DELLA_PROVA } from "../archivioDiProva";
 
 /** Una pagina finta: percorso, elementi presenti, testi e valori dei campi. */
 function contesto(parziale: {
@@ -43,10 +45,9 @@ describe("passi della prova guidata", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  // Il codice fiscale di prova deve passare il controllo dell'app, se no la
-  // scheda non ricava data, luogo e sesso e il passo non mostra niente.
-  it("usa un codice fiscale di prova che l'app accetta", () => {
-    expect(isValidCodiceFiscaleFormat(CF_PROVA)).toBe(true);
+  it("comincia dalla colonna dei pazienti a rischio", () => {
+    expect(passi[0].id).toBe("rischio");
+    expect(passi[0].bersagli).toEqual([g("colonna-rischio")]);
   });
 
   it("apre la ricerca con Ctrl+N e lascia passare solo quella scorciatoia", () => {
@@ -56,25 +57,55 @@ describe("passi della prova guidata", () => {
     expect(p.fatto?.(contesto({ presenti: [g("pannello-paziente")] }))).toBe(true);
   });
 
-  it("torna a Ctrl+N se la ricerca si chiude senza registrare il paziente", () => {
-    const p = passo("scrivi-cf");
+  // Si cerca per cognome, come si fa davvero: nessuno cerca per codice fiscale.
+  // E lo si sceglie col mouse, dove punta la manina: non con Invio.
+  it("fa cercare il paziente della prova per cognome e sceglierlo col clic", () => {
+    const p = passo("cerca");
+    expect(p.scrivi?.testo).toBe(PAZIENTE_DELLA_PROVA.cognome);
+    expect(p.titolo).toContain("cognome");
+    expect(p.punta).toEqual([RISULTATO_PAZIENTE_DELLA_PROVA]);
+    expect(p.testo).toContain("clic");
+    expect(p.testo).not.toContain("Invio");
+  });
+
+  it("torna a Ctrl+N se la ricerca si chiude senza aprire la visita", () => {
+    const p = passo("cerca");
     expect(p.perso?.(contesto({ percorso: "/" }))).toBe("apri-visita");
     expect(p.perso?.(contesto({ percorso: "/", presenti: [g("pannello-paziente")] }))).toBeNull();
-    expect(p.fatto?.(contesto({ percorso: "/add-patient" }))).toBe(true);
+    expect(p.fatto?.(contesto({ percorso: "/" }))).toBe(false);
+    expect(p.fatto?.(contesto({ percorso: "/add-visit", ricerca: "?patientId=prova-martelli" }))).toBe(true);
   });
 
-  it("abilita Avanti sul cognome solo quando e' scritto", () => {
-    const p = passo("cognome");
-    expect(p.pronto?.(contesto({ percorso: "/add-patient" }))).toBe(false);
-    expect(
-      p.pronto?.(contesto({ percorso: "/add-patient", valori: { 'input[name="lastName"]': "Prova" } })),
-    ).toBe(true);
-  });
-
-  it("riconosce il paziente nuovo dalla visita che si apre", () => {
+  it("riconosce il paziente dalla visita che si apre", () => {
     expect(pazienteDellaVisita({ percorso: "/add-visit", ricerca: "?patientId=abc" })).toBe("abc");
     expect(pazienteDellaVisita({ percorso: "/add-patient", ricerca: "?patientId=abc" })).toBeNull();
-    expect(passo("salva-paziente").fatto?.(contesto({ percorso: "/add-visit", ricerca: "?patientId=abc" }))).toBe(true);
+  });
+
+  it("apre gli esami, poi il grafico, poi fa chiudere la finestra", () => {
+    const visita = { percorso: "/add-visit", ricerca: "?patientId=prova-martelli" };
+    expect(passo("esami").fatto?.(contesto(visita))).toBe(false);
+    expect(passo("esami").fatto?.(contesto({ ...visita, presenti: [FINESTRA_ESAMI] }))).toBe(true);
+
+    const andamento = passo("andamento");
+    const conGrafici = { ...visita, presenti: [FINESTRA_ESAMI, BOTTONE_ANDAMENTO] };
+    expect(andamento.fatto?.(contesto(conGrafici))).toBe(false);
+    expect(andamento.pronto?.(contesto(conGrafici))).toBe(false);
+    expect(
+      andamento.fatto?.(contesto({ ...visita, presenti: [...conGrafici.presenti, g("grafico-andamento")] })),
+    ).toBe(true);
+    // Finestra chiusa prima del grafico: si torna a riaprirla.
+    expect(andamento.perso?.(contesto(visita))).toBe("esami");
+
+    const chiudi = passo("chiudi-esami");
+    expect(chiudi.fatto?.(contesto({ ...visita, presenti: [FINESTRA_ESAMI] }))).toBe(false);
+    expect(chiudi.fatto?.(contesto(visita))).toBe(true);
+  });
+
+  // Un paziente con un solo prelievo non ha il grafico: la guida non deve
+  // restare ferma ad aspettare un clic impossibile.
+  it("lascia andare avanti se il paziente scelto non ha grafici", () => {
+    const p = passo("andamento");
+    expect(p.pronto?.(contesto({ percorso: "/add-visit", presenti: [FINESTRA_ESAMI] }))).toBe(true);
   });
 
   it("vede il modello inserito e poi il grassetto nell'esame obiettivo", () => {

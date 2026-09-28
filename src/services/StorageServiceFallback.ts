@@ -1,5 +1,6 @@
 import { StorageService, Patient, Visit, VisitRevision, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 import { MedicalTemplates } from '../data/medicalTemplates';
+import { MODELLI_RISCRITTI, type ModelloPrecedente } from '../data/modelliRiscritti';
 import { computeVisitChanges } from '../utils/visitHistory';
 import { BACKUP_SCHEMA_VERSION } from '../utils/backupValidation';
 import { correggiAccenti } from '../utils/accenti';
@@ -19,6 +20,91 @@ function isSqliteAvailable(): boolean {
   return typeof window !== 'undefined' && !!window.electronAPI?.kvGet;
 }
 
+/**
+ * Dove stanno fisicamente le chiavi: il database locale (tabella chiave/valore)
+ * in Electron, localStorage nel browser e nei test.
+ */
+interface ArchivioChiavi {
+  leggi(chiave: string): Promise<string | null>;
+  scrivi(chiave: string, valore: string): Promise<void>;
+  togli(chiave: string): Promise<void>;
+  /** Toglie tutte le chiavi dell'app; in localStorage solo quelle elencate. */
+  svuota(chiaviLocalStorage: string[]): Promise<void>;
+}
+
+const chiaviReali: ArchivioChiavi = {
+  async leggi(chiave) {
+    return isSqliteAvailable()
+      ? await window.electronAPI!.kvGet(chiave)
+      : localStorage.getItem(chiave);
+  },
+  async scrivi(chiave, valore) {
+    if (isSqliteAvailable()) await window.electronAPI!.kvSet(chiave, valore);
+    else localStorage.setItem(chiave, valore);
+  },
+  async togli(chiave) {
+    if (isSqliteAvailable()) await window.electronAPI!.kvRemove(chiave);
+    else localStorage.removeItem(chiave);
+  },
+  async svuota(chiaviLocalStorage) {
+    if (isSqliteAvailable()) await window.electronAPI!.kvClearAppDottori();
+    else for (const chiave of chiaviLocalStorage) localStorage.removeItem(chiave);
+  },
+};
+
+/**
+ * Le chiavi dell'archivio clinico: pazienti, visite e tutto quello che ne
+ * dipende. Sono quelle che l'archivio di prova della guida tiene in memoria.
+ */
+const CHIAVI_CLINICHE = new Set(
+  [
+    'patients',
+    'visits',
+    'visit_revisions',
+    'richieste_esami',
+    'certificati_paziente',
+    'ricette_paziente',
+    'documents',
+    'recent_patient_searches',
+  ].map((k) => `AppDottori_${k}`),
+);
+/** Bozze delle visite: una per visita o per paziente, quindi a prefisso. */
+const PREFISSI_CLINICI = ['AppDottori_bozza_visita_'];
+
+function chiaveClinica(chiave: string): boolean {
+  return CHIAVI_CLINICHE.has(chiave) || PREFISSI_CLINICI.some((p) => chiave.startsWith(p));
+}
+
+const NON_NELLA_PROVA =
+  'Non disponibile durante la guida: esci dalla guida e riprova.';
+
+/**
+ * L'archivio della guida: le chiavi cliniche in memoria, tutto il resto
+ * (profilo, preferenze, modelli) nell'archivio vero. Quello che il medico
+ * sistema durante la guida — lo studio, i moduli, un modello nuovo — resta;
+ * i pazienti inventati e le visite scritte su di loro spariscono con la
+ * memoria, senza niente da cancellare dopo e senza passare dal database, dal
+ * backup automatico o dalla copia su file.
+ */
+function chiaviDiProva(memoria: Map<string, string>): ArchivioChiavi {
+  return {
+    async leggi(chiave) {
+      return chiaveClinica(chiave) ? (memoria.get(chiave) ?? null) : chiaviReali.leggi(chiave);
+    },
+    async scrivi(chiave, valore) {
+      if (chiaveClinica(chiave)) memoria.set(chiave, valore);
+      else await chiaviReali.scrivi(chiave, valore);
+    },
+    async togli(chiave) {
+      if (chiaveClinica(chiave)) memoria.delete(chiave);
+      else await chiaviReali.togli(chiave);
+    },
+    async svuota() {
+      throw new Error(NON_NELLA_PROVA);
+    },
+  };
+}
+
 function generateUuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -29,6 +115,8 @@ function generateUuid(): string {
 }
 
 class LocalStorageFallbackService implements StorageService {
+  constructor(private readonly chiavi: ArchivioChiavi) {}
+
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
@@ -43,13 +131,7 @@ class LocalStorageFallbackService implements StorageService {
 
   private async getFromStorage<T>(key: string): Promise<T[]> {
     try {
-      const fullKey = this.getStorageKey(key);
-      let data: string | null;
-      if (isSqliteAvailable()) {
-        data = await window.electronAPI!.kvGet(fullKey);
-      } else {
-        data = localStorage.getItem(fullKey);
-      }
+      const data = await this.chiavi.leggi(this.getStorageKey(key));
       return data ? JSON.parse(data) : [];
     } catch (error) {
       console.error(`Errore nel recupero dei dati per ${key}:`, error);
@@ -59,13 +141,7 @@ class LocalStorageFallbackService implements StorageService {
 
   private async saveToStorage<T>(key: string, data: T[]): Promise<void> {
     try {
-      const fullKey = this.getStorageKey(key);
-      const value = JSON.stringify(data);
-      if (isSqliteAvailable()) {
-        await window.electronAPI!.kvSet(fullKey, value);
-      } else {
-        localStorage.setItem(fullKey, value);
-      }
+      await this.chiavi.scrivi(this.getStorageKey(key), JSON.stringify(data));
     } catch (error) {
       console.error(`Errore nel salvataggio dei dati per ${key}:`, error);
       throw error;
@@ -74,20 +150,11 @@ class LocalStorageFallbackService implements StorageService {
 
   /** Chiave/valore per preferenze e altri dati (in Electron usa il db). */
   async getPreference(key: string): Promise<string | null> {
-    const fullKey = this.getStorageKey(key);
-    if (isSqliteAvailable()) {
-      return await window.electronAPI!.kvGet(fullKey);
-    }
-    return localStorage.getItem(fullKey);
+    return await this.chiavi.leggi(this.getStorageKey(key));
   }
 
   async setPreference(key: string, value: string): Promise<void> {
-    const fullKey = this.getStorageKey(key);
-    if (isSqliteAvailable()) {
-      await window.electronAPI!.kvSet(fullKey, value);
-    } else {
-      localStorage.setItem(fullKey, value);
-    }
+    await this.chiavi.scrivi(this.getStorageKey(key), value);
   }
 
   // Pazienti
@@ -465,13 +532,7 @@ class LocalStorageFallbackService implements StorageService {
   // Dottore
   async getDoctor(): Promise<Doctor | null> {
     try {
-      const fullKey = this.getStorageKey('doctor');
-      let data: string | null;
-      if (isSqliteAvailable()) {
-        data = await window.electronAPI!.kvGet(fullKey);
-      } else {
-        data = localStorage.getItem(fullKey);
-      }
+      const data = await this.chiavi.leggi(this.getStorageKey('doctor'));
       return data ? JSON.parse(data) : null;
     } catch (error) {
       console.error('Errore nel recupero dei dati del dottore:', error);
@@ -497,13 +558,7 @@ class LocalStorageFallbackService implements StorageService {
     };
 
     try {
-      const fullKey = this.getStorageKey('doctor');
-      const value = JSON.stringify(doctor);
-      if (isSqliteAvailable()) {
-        await window.electronAPI!.kvSet(fullKey, value);
-      } else {
-        localStorage.setItem(fullKey, value);
-      }
+      await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(doctor));
     } catch (error) {
       console.error('Errore nel salvataggio dei dati del dottore:', error);
       throw error;
@@ -687,6 +742,36 @@ class LocalStorageFallbackService implements StorageService {
       await this.setPreference('templates_certificato_dm2014_v1', '1');
     }
 
+    // Predefiniti riscritti il 28 settembre 2026 (vedi
+    // `data/modelliRiscritti.ts`): arrivano solo dove il medico non ha
+    // toccato il modello, cioe' dove il testo e' ancora quello di prima, anche
+    // con gli accenti gia' corretti dalla migrazione qui sopra. Una volta sola.
+    if (!(await this.getPreference('templates_revisione_20260928'))) {
+      const stesso = (
+        t: Pick<MedicalTemplate, 'category' | 'section' | 'label'>,
+        m: ModelloPrecedente,
+      ) => t.category === 'visita' && t.section === m.section && t.label === m.label;
+      const intatto = (t: MedicalTemplate, m: ModelloPrecedente) =>
+        Boolean(t.isDefault) && (t.text === m.vecchio || t.text === correggiAccenti(m.vecchio));
+      const attuali = this.modelliPredefiniti();
+      let toccati = 0;
+      const rivisti = templates.map((t) => {
+        const riscritto = MODELLI_RISCRITTI.find((m) => stesso(t, m) && intatto(t, m));
+        const nuovo = riscritto && attuali.find((a) => stesso(a, riscritto));
+        if (nuovo && nuovo.text !== t.text) {
+          toccati++;
+          return { ...t, text: nuovo.text };
+        }
+        return t;
+      });
+      if (toccati > 0) {
+        templates.length = 0;
+        templates.push(...rivisti);
+        await this.saveToStorage('templates', templates);
+      }
+      await this.setPreference('templates_revisione_20260928', '1');
+    }
+
     // For existing users: seed certificato if not yet present
     if (MedicalTemplates.certificati && !templates.some(t => t.category === 'certificato')) {
       const certDefaults: MedicalTemplate[] = MedicalTemplates.certificati.map(t => ({
@@ -733,7 +818,15 @@ class LocalStorageFallbackService implements StorageService {
       return updated;
     }
 
-    // Fix: aggiorna template predefiniti (note esami, formato ricette testo libero)
+    // Fix: note mancanti degli esami predefiniti.
+    //
+    // Qui c'era anche il riallineamento delle ricette predefinite al testo
+    // del file, a ogni avvio: era servito a portare tutti al formato a testo
+    // libero, ma riscriveva anche le ricette predefinite che il medico aveva
+    // modificato, e la sua versione spariva alla prima apertura. Tolto il 28
+    // settembre 2026, quando aveva gia' girato per tutti; un testo nuovo di un
+    // predefinito arriva ora con `data/modelliRiscritti.ts`, e solo a chi non
+    // l'ha toccato.
     let needsUpdate = false;
     const fixedTemplates = templates.map(t => {
       if (t.category === 'esame_complementare' && t.isDefault && (!t.note || t.note === "")) {
@@ -741,16 +834,6 @@ class LocalStorageFallbackService implements StorageService {
         if (original?.note) {
           needsUpdate = true;
           return { ...t, note: original.note };
-        }
-      }
-      if (t.category === 'ricette' && t.isDefault) {
-        const original = MedicalTemplates.ricette.find(m => m.label === t.label);
-        if (
-          original &&
-          (original.text !== t.text || (original.note ?? "") !== (t.note ?? ""))
-        ) {
-          needsUpdate = true;
-          return { ...t, text: original.text, note: original.note };
         }
       }
       return t;
@@ -860,10 +943,7 @@ class LocalStorageFallbackService implements StorageService {
     const snapshot = new Map<string, string | null>();
     for (const key of LocalStorageFallbackService.MANAGED_KEYS) {
       const fullKey = this.getStorageKey(key);
-      const value = isSqliteAvailable()
-        ? await window.electronAPI!.kvGet(fullKey)
-        : localStorage.getItem(fullKey);
-      snapshot.set(fullKey, value);
+      snapshot.set(fullKey, await this.chiavi.leggi(fullKey));
     }
     return snapshot;
   }
@@ -871,14 +951,8 @@ class LocalStorageFallbackService implements StorageService {
   /** Riscrive i dati grezzi salvati da `readRawSnapshot`. */
   private async restoreRawSnapshot(snapshot: Map<string, string | null>): Promise<void> {
     for (const [fullKey, value] of snapshot) {
-      if (value === null) {
-        if (isSqliteAvailable()) await window.electronAPI!.kvRemove(fullKey);
-        else localStorage.removeItem(fullKey);
-      } else if (isSqliteAvailable()) {
-        await window.electronAPI!.kvSet(fullKey, value);
-      } else {
-        localStorage.setItem(fullKey, value);
-      }
+      if (value === null) await this.chiavi.togli(fullKey);
+      else await this.chiavi.scrivi(fullKey, value);
     }
   }
 
@@ -1058,13 +1132,7 @@ class LocalStorageFallbackService implements StorageService {
       const incomingDoctor = data.doctor;
 
       if (!currentDoctor) {
-        const fullKey = this.getStorageKey('doctor');
-        const value = JSON.stringify(incomingDoctor);
-        if (isSqliteAvailable()) {
-          await window.electronAPI!.kvSet(fullKey, value);
-        } else {
-          localStorage.setItem(fullKey, value);
-        }
+        await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(incomingDoctor));
       } else {
         const currentAmbulatori = currentDoctor.ambulatori || [];
         const incomingAmbulatori = incomingDoctor.ambulatori || [];
@@ -1107,13 +1175,7 @@ class LocalStorageFallbackService implements StorageService {
           updatedAt: this.getCurrentTimestamp(),
         };
 
-        const fullKey = this.getStorageKey('doctor');
-        const value = JSON.stringify(mergedDoctor);
-        if (isSqliteAvailable()) {
-          await window.electronAPI!.kvSet(fullKey, value);
-        } else {
-          localStorage.setItem(fullKey, value);
-        }
+        await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(mergedDoctor));
       }
     }
   }
@@ -1145,13 +1207,7 @@ class LocalStorageFallbackService implements StorageService {
     }
 
     if (data.doctor) {
-      const fullKey = this.getStorageKey('doctor');
-      const value = JSON.stringify(data.doctor);
-      if (isSqliteAvailable()) {
-        await window.electronAPI!.kvSet(fullKey, value);
-      } else {
-        localStorage.setItem(fullKey, value);
-      }
+      await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(data.doctor));
     }
 
     if (data.documents && data.documents.length > 0) {
@@ -1168,20 +1224,20 @@ class LocalStorageFallbackService implements StorageService {
     // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale.
     const preservedRevisions = await this.getFromStorage<VisitRevision>('visit_revisions');
 
-    if (isSqliteAvailable()) {
-      await window.electronAPI!.kvClearAppDottori();
-    } else {
-      localStorage.removeItem(this.getStorageKey('patients'));
-      localStorage.removeItem(this.getStorageKey('visits'));
-      localStorage.removeItem(this.getStorageKey('richieste_esami'));
-      localStorage.removeItem(this.getStorageKey('certificati_paziente'));
-      localStorage.removeItem(this.getStorageKey('ricette_paziente'));
-      localStorage.removeItem(this.getStorageKey('doctor'));
-      localStorage.removeItem(this.getStorageKey('documents'));
-      localStorage.removeItem(this.getStorageKey('templates'));
-      localStorage.removeItem(this.getStorageKey('preferences'));
-      localStorage.removeItem(this.getStorageKey('recent_patient_searches'));
-    }
+    await this.chiavi.svuota(
+      [
+        'patients',
+        'visits',
+        'richieste_esami',
+        'certificati_paziente',
+        'ricette_paziente',
+        'doctor',
+        'documents',
+        'templates',
+        'preferences',
+        'recent_patient_searches',
+      ].map((k) => this.getStorageKey(k)),
+    );
 
     // Ripristina la cronologia preservata (kvClearAppDottori cancella anche questa chiave).
     if (preservedRevisions.length > 0) {
@@ -1190,5 +1246,70 @@ class LocalStorageFallbackService implements StorageService {
   }
 }
 
-// Usa sempre localStorage per semplicità in Electron
-export const storageService = new LocalStorageFallbackService();
+const archivioReale = new LocalStorageFallbackService(chiaviReali);
+let archivioProva: LocalStorageFallbackService | null = null;
+
+/** Quello che l'archivio di prova contiene appena aperto. */
+export type ContenutoArchivioDiProva = Pick<AppData, 'patients' | 'visits'> &
+  Partial<Pick<AppData, 'ricettePaziente' | 'richiesteEsami' | 'certificatiPaziente'>>;
+
+/**
+ * Apre l'archivio di prova della guida: da qui ogni lettura e scrittura di
+ * pazienti, visite, ricette, richieste, certificati, documenti e bozze passa
+ * dalla memoria, a partire da `contenuto`. Chi apre deve anche chiudere.
+ */
+export function apriArchivioDiProva(contenuto: ContenutoArchivioDiProva): void {
+  const memoria = new Map<string, string>();
+  const metti = (chiave: string, elenco: unknown[] | undefined) =>
+    memoria.set(`AppDottori_${chiave}`, JSON.stringify(elenco ?? []));
+  metti('patients', contenuto.patients);
+  metti('visits', contenuto.visits);
+  metti('ricette_paziente', contenuto.ricettePaziente);
+  metti('richieste_esami', contenuto.richiesteEsami);
+  metti('certificati_paziente', contenuto.certificatiPaziente);
+  archivioProva = new LocalStorageFallbackService(chiaviDiProva(memoria));
+}
+
+/** Chiude l'archivio di prova: si torna a quello vero, e la memoria si butta. */
+export function chiudiArchivioDiProva(): void {
+  archivioProva = null;
+}
+
+export function archivioDiProvaAperto(): boolean {
+  return archivioProva !== null;
+}
+
+/**
+ * Quanti pazienti e visite ha l'archivio vero, anche a guida aperta: la
+ * telemetria di licenza non deve contare i pazienti inventati.
+ */
+export async function conteggiArchivioReale(): Promise<{ pazienti: number; visite: number }> {
+  const [pazienti, visite] = await Promise.all([
+    archivioReale.getPatients(),
+    archivioReale.getVisits(),
+  ]);
+  return { pazienti: pazienti.length, visite: visite.length };
+}
+
+/**
+ * Operazioni che nella prova non hanno senso: un backup esportato conterrebbe
+ * i pazienti inventati, uno importato finirebbe nella memoria e sparirebbe.
+ */
+const VIETATE_NELLA_PROVA = new Set<PropertyKey>(['exportData', 'importData', 'clearAllData']);
+
+/**
+ * L'archivio in uso: quello vero, o quello di prova finche' la guida e'
+ * aperta. Ogni operazione si lega all'archivio del momento in cui parte e ci
+ * resta fino alla fine: una scrittura cominciata nella prova non puo' finire
+ * nell'archivio vero perche' nel frattempo la guida si e' chiusa.
+ */
+export const storageService: LocalStorageFallbackService = new Proxy(archivioReale, {
+  get(reale, nome) {
+    const attivo = archivioProva ?? reale;
+    if (archivioProva && VIETATE_NELLA_PROVA.has(nome)) {
+      return () => Promise.reject(new Error(NON_NELLA_PROVA));
+    }
+    const valore = Reflect.get(attivo, nome);
+    return typeof valore === 'function' ? valore.bind(attivo) : valore;
+  },
+});

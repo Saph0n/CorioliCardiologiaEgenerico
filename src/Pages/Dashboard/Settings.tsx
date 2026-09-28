@@ -80,6 +80,7 @@ import {
   type ChiaveModuloOpzionale,
   type ModuliVisitaAttivi,
 } from "../../utils/moduliVisita";
+import { doveCompareModello } from "../../utils/sezioniModelli";
 import {
   getMissingDoctorProfileFields,
   titoloMedico,
@@ -159,10 +160,6 @@ function SettingsSectionNotice({
       {notice.message}
     </div>
   );
-}
-
-function maiuscolaIniziale(testo: string): string {
-  return testo ? testo.charAt(0).toUpperCase() + testo.slice(1) : testo;
 }
 
 /** Le voci dell'indice a sinistra, nell'ordine della pagina. */
@@ -2615,9 +2612,9 @@ const SettingsScreen = () => {
               <Pill className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p className="text-xs leading-relaxed text-default-600">
                 I modelli <strong>Ricette</strong> compaiono nel menu{" "}
-                <strong>Modelli</strong> quando emetti una ricetta. Scrivi un
-                farmaco per riga (<em>Nome: posologia</em>) per compilare la ricetta
-                con un clic.
+                <strong>Modelli</strong> quando emetti una ricetta. Si scrivono
+                in testo libero, farmaci, posologie e indicazioni insieme: la
+                ricetta arriva già compilata.
               </p>
             </div>
           )}
@@ -2658,29 +2655,33 @@ const SettingsScreen = () => {
             >
               {templates
                 .filter((t) => t.category === selectedCategory)
-                .map((template) => (
+                .map((template) => {
+                  // Il nome della sezione come nella visita (prima usciva la
+                  // chiave tecnica, "HolterEcg"), e perche' il modello non
+                  // compare quando il medico non ha quella sezione.
+                  const dove = doveCompareModello(template, {
+                    moduli: preferences.moduliVisita,
+                    anamnesi: preferences.anamnesiConfig,
+                  });
+                  return (
                   <TableRow key={template.id}>
                     <TableCell className="font-medium">
                       {template.label}
                     </TableCell>
                     <TableCell>
-                      {/* Maiuscola solo all'inizio: la classe `capitalize` la
-                          metteva su ogni parola ("Esame Obiettivo"). */}
-                      <Chip size="sm" variant="flat">
-                        {maiuscolaIniziale(template.section === "esameObiettivo"
-                          ? "Esame obiettivo"
-                          : template.section === "prestazione"
-                            ? "Anamnesi"
-                            : template.section === "conclusioni"
-                              ? "Conclusioni"
-                              : template.category === "ricette"
-                                ? "Farmaci"
-                                : template.category === "terapie"
-                                  ? "Terapia"
-                                  : template.section === "generale" && template.category === "certificato"
-                                    ? "Testo"
-                                    : template.section)}
-                      </Chip>
+                      <div className="flex flex-col items-start gap-1">
+                        <Chip size="sm" variant="flat">
+                          {dove.etichetta}
+                        </Chip>
+                        {dove.nascosto && (
+                          <span
+                            className="whitespace-nowrap text-xs font-medium text-warning-700"
+                            title="Nella visita questo modello non compare"
+                          >
+                            {dove.nascosto}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="max-w-xs truncate text-default-500">
@@ -2721,7 +2722,8 @@ const SettingsScreen = () => {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
             </TableBody>
           </Table>
         </CardBody>
@@ -2842,6 +2844,7 @@ const SettingsScreen = () => {
         onSave={handleSaveTemplate}
         isSaving={isSavingTemplate}
         anamnesiConfig={preferences.anamnesiConfig}
+        moduliVisita={preferences.moduliVisita}
       />
 
       <AppModal

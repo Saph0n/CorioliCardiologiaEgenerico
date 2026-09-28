@@ -401,13 +401,13 @@ export default function HelpAndFeedback() {
           id: "modelli-referti-uso",
           title: "Come si usano?",
           content:
-            "Clicca il pulsante Modello accanto al campo e scegli il testo.\n\n• Visite → pulsante Modello (in ogni campo)\n• Ricette → Modelli Ricetta (modal Nuova ricetta)\n• Esami → Modelli Esame (scheda paziente)\n• Certificati → Modelli Certificato\n\nDopo l'inserimento puoi sempre modificare il testo.",
+            "Clicca il pulsante Modello accanto al campo e scegli il testo.\n\n• Visite → pulsante Modello accanto ad anamnesi, esame obiettivo, elettrocardiogramma, esami strumentali accesi e conclusioni\n• Ricette → Modelli Ricetta (modal Nuova ricetta)\n• Esami → Modelli Esame (scheda paziente)\n• Certificati → Modelli Certificato\n\nDopo l'inserimento puoi sempre modificare il testo.",
         },
         {
           id: "modelli-referti-terapie-ricette",
           title: "Che differenza c'è tra Terapie e Ricette?",
           content:
-            "Terapie = testo discorsivo che finisce nella sezione Conclusioni e Terapie della visita. Ricette = testo libero che compila la ricetta (farmaci, posologie e indicazioni insieme). Sono due categorie separate.",
+            "Terapie = testo discorsivo che finisce nella sezione Conclusioni e terapia della visita. Ricette = testo libero che compila la ricetta (farmaci, posologie e indicazioni insieme). Sono due categorie separate.",
           node: <TerapieVsRicetteSchema />,
         },
         {
@@ -681,8 +681,9 @@ export default function HelpAndFeedback() {
         <div className="min-w-0 flex-1">
           <p className="text-[16px] font-semibold text-foreground">Guida di primo avvio</p>
           <p className="text-[14px] leading-snug text-default-600">
-            Provi l'app su un paziente di prova: lo registri, scrivi e stampi il referto,
-            prepari un modello. Alla fine lo cancelli con un clic.
+            Provi l'app su pazienti inventati, con anni di visite: cerchi, guardi
+            l'andamento degli esami, scrivi e stampi il referto. Uscendo ritrovi il tuo
+            archivio com'era.
           </p>
         </div>
         <Button

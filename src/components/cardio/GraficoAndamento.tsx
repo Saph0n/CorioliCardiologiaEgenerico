@@ -139,7 +139,7 @@ export function PannelloAndamento({
   const bandaBassa = riferimento?.min != null ? yDi(riferimento.min) : null;
 
   return (
-    <div className="w-[300px] p-3">
+    <div className="w-[300px] p-3" data-guida="grafico-andamento">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <p className="text-xs font-semibold text-gray-800">{titolo}</p>
         <p className="text-[11px] text-default-500">

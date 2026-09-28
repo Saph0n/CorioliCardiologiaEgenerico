@@ -215,7 +215,7 @@ export default function Home() {
   const { openCheckPatientModal } = useCheckPatientModal();
   const [doctorName, setDoctorName] = useState<string | null>(null);
   // Cresce quando l'archivio cambia sotto la pagina (la guida di primo avvio
-  // che cancella il paziente di prova): i dati si rileggono.
+  // che apre e chiude il suo archivio di prova): i dati si rileggono.
   const [versioneArchivio, setVersioneArchivio] = useState(0);
   const [titolo, setTitolo] = useState<string>("Dott.");
   const [stats, setStats] = useState<DashboardStats>({
@@ -270,6 +270,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Un caricamento superato da uno piu' nuovo non scrive: aprendo la guida
+    // l'archivio cambia mentre la dashboard sta ancora leggendo quello vero.
+    let superato = false;
     const load = async () => {
       setLoading(true);
       try {
@@ -279,6 +282,7 @@ export default function Home() {
           patientsPromise,
           VisitService.getAllVisits(),
         ]);
+        if (superato) return;
 
         setDoctorName(doctor.cognome);
         setTitolo(titoloMedico(doctor));
@@ -352,6 +356,7 @@ export default function Home() {
         // Gruppi di ricerca: il pannello compare solo se la funzione e' attiva.
         try {
           const prefs = await PreferenceService.getPreferences();
+          if (superato) return;
           const attivi = Boolean(prefs?.gruppiRicercaEnabled);
           setGruppiAbilitati(attivi);
           setStatiGruppi(
@@ -391,10 +396,13 @@ export default function Home() {
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        if (!superato) setLoading(false);
       }
     };
     load();
+    return () => {
+      superato = true;
+    };
   }, [versioneArchivio]);
 
   if (loading) {
@@ -728,8 +736,9 @@ export default function Home() {
 
             La riga sta in `RigaPazienteARischio`; la pagina che si apre da
             "Vedi tutti" e' lo stesso elenco intero, in tabella, con lo stesso
-            indicatore e gli stessi colori (`IndicatoreLdl`, `COLORI_CLASSE`). */}
-        <Card className="corioli-card">
+            indicatore e gli stessi colori (`IndicatoreLdl`, `COLORI_CLASSE`).
+            `data-guida`: la guida di primo avvio comincia da qui. */}
+        <Card className="corioli-card" data-guida="colonna-rischio">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
               <HeartPulse className="text-brand-700 shrink-0" size={16} />

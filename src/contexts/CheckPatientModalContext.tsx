@@ -30,6 +30,7 @@ import {
   sembraCodiceFiscale,
   ultimaVisitaPerPaziente,
 } from "../utils/ricercaPazienti";
+import { EVENTO_PAZIENTI_CAMBIATI } from "../utils/guidaPrimoAvvio";
 
 /**
  * Il pannello di ricerca del paziente, in due modi.
@@ -98,6 +99,13 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
     setModo(null);
     setQuery("");
   }, []);
+
+  // L'archivio e' cambiato sotto il pannello (la guida di primo avvio che
+  // chiude il suo archivio di prova): i risultati non valgono piu'.
+  useEffect(() => {
+    window.addEventListener(EVENTO_PAZIENTI_CAMBIATI, closeCheckPatientModal);
+    return () => window.removeEventListener(EVENTO_PAZIENTI_CAMBIATI, closeCheckPatientModal);
+  }, [closeCheckPatientModal]);
 
   useEffect(() => {
     if (!modo) return;
@@ -269,9 +277,12 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
                           attivo ? "bg-default-100" : ""
                         }`}
                       >
+                        {/* `data-paziente`: la guida di primo avvio ci porta la
+                            manina, sul paziente da scegliere. */}
                         <button
                           type="button"
                           tabIndex={-1}
+                          data-paziente={p.id}
                           onClick={() => principale(p)}
                           className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
                         >

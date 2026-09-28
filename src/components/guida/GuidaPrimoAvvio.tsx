@@ -65,9 +65,11 @@ type Fase = "benvenuto" | "studio" | "moduli" | "prova" | "fine";
 const FASI_NUMERATE: Fase[] = ["studio", "moduli", "prova"];
 
 /**
- * Come si arriva alla chiusura: dalla fine della prova, oppure da una prova
- * interrotta (uscita a meta', o app chiusa a meta' e riaperta) che ha lasciato
- * in archivio il paziente di prova.
+ * Come si arriva alla chiusura: dalla fine della prova, oppure per il paziente
+ * di prova che le versioni fino al 28 settembre 2026 registravano
+ * nell'archivio vero, rimasto li' da una prova interrotta. Ora la prova gira
+ * su un archivio in memoria e non lascia niente, ma chi aveva quella versione
+ * puo' avere ancora il paziente da cancellare.
  */
 type VarianteFine = "completata" | "interrotta";
 
@@ -122,7 +124,7 @@ export function GuidaPrimoAvvioProvider({ children }: { children: ReactNode }) {
   const controllata = useRef(false);
 
   // Al primo passaggio dalla dashboard: guida da aprire, o paziente di prova
-  // rimasto da una prova interrotta (app chiusa a meta').
+  // rimasto da una prova interrotta della versione precedente.
   useEffect(() => {
     if (controllata.current || pathname !== "/") return;
     controllata.current = true;
@@ -135,9 +137,7 @@ export function GuidaPrimoAvvioProvider({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   // La guida parte sempre dalla dashboard: e' li' che comincia la prova. Se
-  // c'e' ancora il paziente di una prova interrotta si decide prima di lui:
-  // la prova nuova ne registrerebbe un altro, e il promemoria del primo
-  // andrebbe perso.
+  // c'e' ancora il paziente di una prova interrotta si decide prima di lui.
   const apri = useCallback(() => {
     navigate("/");
     void PreferenceService.getPreferences()
@@ -250,7 +250,7 @@ function GuidaPrimoAvvio({
   interrotta,
   onChiudi,
 }: {
-  /** Aperta per un paziente di prova rimasto da una prova interrotta. */
+  /** Aperta per il paziente di prova rimasto da una versione precedente. */
   interrotta: boolean;
   onChiudi: () => void;
 }) {
@@ -266,6 +266,9 @@ function GuidaPrimoAvvio({
   const [pazienteProva, setPazienteProva] = useState<Patient | null>(null);
   const [cancellaProva, setCancellaProva] = useState(true);
   const [esitoPrecedente, setEsitoPrecedente] = useState<EsitoGuida | null>(null);
+  /** La prova e' finita e si sta tornando in dashboard (vedi `lasciaLaProva`). */
+  const [uscita, setUscita] = useState<null | "completata" | "saltata">(null);
+  const { pathname } = useLocation();
 
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [numeroPazienti, setNumeroPazienti] = useState(0);
@@ -339,29 +342,32 @@ function GuidaPrimoAvvio({
   const esitoDiChiusura: EsitoGuida =
     varianteFine === "completata" ? "completata" : (esitoPrecedente ?? "saltata");
 
-  // Il paziente di prova e' nato: in memoria per la chiusura, e subito nelle
-  // preferenze perche' sopravviva a un'app chiusa a meta'.
-  const registraPazienteProva = useCallback((id: string) => {
-    void aggiornaPreferenze((prefs) => conPazienteProva(prefs, id)).catch(() => {});
-    void PatientService.getPatientById(id)
-      .then((p) => setPazienteProva(p))
-      .catch(() => {});
-  }, []);
+  /**
+   * Finita la prova, o usciti a meta', si torna in dashboard e solo li' la
+   * prova si chiude, con il suo archivio. In quest'ordine la pagina della
+   * prova (la visita di un paziente inventato) si smonta mentre l'archivio di
+   * prova e' ancora aperto, e quello che scrive uscendo, come la bozza della
+   * visita, finisce nella memoria che si butta e non nell'archivio vero.
+   */
+  const lasciaLaProva = useCallback(
+    (come: "completata" | "saltata") => {
+      navigate("/");
+      setUscita(come);
+    },
+    [navigate],
+  );
 
-  const esciDallaProva = useCallback(() => {
-    if (pazienteProva) {
-      setVarianteFine("interrotta");
-      setFase("fine");
-    } else {
+  useEffect(() => {
+    if (!uscita || pathname !== "/") return;
+    setUscita(null);
+    if (uscita === "saltata") {
       chiudi("saltata");
+      return;
     }
-  }, [pazienteProva, chiudi]);
-
-  const completaProva = useCallback(() => {
     setVarianteFine("completata");
     setCenno((n) => n + 1);
     setFase("fine");
-  }, []);
+  }, [uscita, pathname, chiudi]);
 
   // Tastiera nelle fasi a finestra. Le scorciatoie dell'app (Ctrl+N, Ctrl+K,
   // Ctrl+P...) si fermano qui, in cattura: aprirebbero un modal sotto la
@@ -385,10 +391,10 @@ function GuidaPrimoAvvio({
   }, [fase, chiudi]);
 
   /**
-   * Chiude la guida dalla fase finale. Il paziente di prova si cancella con
-   * le sue visite e i suoi documenti (`deletePatient`) e con la bozza della
-   * visita, se ne e' rimasta una; oppure resta, e la guida smette di
-   * ricordarlo.
+   * Chiude la guida dalla fase finale. Il paziente di prova di una versione
+   * precedente, se c'e', si cancella con le sue visite e i suoi documenti
+   * (`deletePatient`) e con la bozza della visita; oppure resta, e la guida
+   * smette di ricordarlo.
    */
   const concludi = async (dopo: "dashboard" | "paziente") => {
     setSalvando(true);
@@ -479,9 +485,8 @@ function GuidaPrimoAvvio({
     return (
       <ProvaGuidata
         mod={TASTO_MOD}
-        onCompletata={completaProva}
-        onEsci={esciDallaProva}
-        onPazienteProva={registraPazienteProva}
+        onCompletata={() => lasciaLaProva("completata")}
+        onEsci={() => lasciaLaProva("saltata")}
       />
     );
   }
@@ -506,7 +511,7 @@ function GuidaPrimoAvvio({
           <Nuvoletta className="min-w-0 flex-1">
             <p className="guida-sottotitolo">
               <Battuta
-                testo="Ciao! Ti accompagno io. Prima prepariamo il tuo studio, poi proviamo Corioli insieme su un paziente di prova. Ci vogliono cinque minuti."
+                testo="Ciao! Ti accompagno io. Prima prepariamo il tuo studio, poi proviamo Corioli insieme su qualche paziente di prova. Ci vogliono cinque minuti."
                 onParla={setParla}
               />
             </p>
@@ -520,7 +525,7 @@ function GuidaPrimoAvvio({
               icona: MousePointerClick,
               titolo: "Provala",
               testo:
-                "Registri un paziente di prova, scrivi e stampi il referto, prepari un modello. Alla fine lo cancelli con un clic.",
+                "Su pazienti inventati con anni di visite: cerchi, guardi l'andamento degli esami, scrivi e stampi il referto. Uscendo ritrovi il tuo archivio com'era.",
             },
           ].map(({ icona: Icona, titolo: t, testo }, i) => (
             <motion.li
@@ -823,7 +828,7 @@ function GuidaPrimoAvvio({
         fatto: true,
       },
     ];
-    // Dopo la cancellazione del paziente di prova, l'archivio vero e' vuoto?
+    // L'archivio vero e' vuoto, tolto l'eventuale paziente di prova rimasto?
     const archivioVuoto =
       numeroPazienti - (pazienteProva && cancellaProva ? 1 : 0) <= 0;
     const completata = varianteFine === "completata";
@@ -853,8 +858,8 @@ function GuidaPrimoAvvio({
                   !completata
                     ? "La prova si è fermata a metà e il paziente di prova è ancora in archivio. Lo cancello?"
                     : archivioVuoto
-                      ? "Ben fatto! Ora tocca ai pazienti veri: bastano il cognome oppure il codice fiscale."
-                      : "Ben fatto! Lo studio è configurato, puoi tornare al lavoro."
+                      ? "Ben fatto! I pazienti di prova se ne sono andati: ora tocca a quelli veri."
+                      : "Ben fatto! I pazienti di prova se ne sono andati e l'archivio è di nuovo il tuo."
                 }
                 onParla={setParla}
               />

@@ -7,12 +7,13 @@ import DoctorMascot from "../app-lock/DoctorMascot";
 import Riflettore, { PromemoriaGuida } from "./Riflettore";
 import { Battuta, DemoGrassetto, Nuvoletta, TastiAnimati } from "./Narratore";
 import { trovaNellaPagina } from "./livelloGuida";
+import { EVENTO_REFERTO_APERTO, passiGuida, type ContestoPasso } from "./passiGuida";
+import { creaArchivioDiProva } from "./archivioDiProva";
 import {
-  EVENTO_REFERTO_APERTO,
-  pazienteDellaVisita,
-  passiGuida,
-  type ContestoPasso,
-} from "./passiGuida";
+  apriArchivioDiProva,
+  chiudiArchivioDiProva,
+} from "../../services/StorageServiceFallback";
+import { EVENTO_PAZIENTI_CAMBIATI } from "../../utils/guidaPrimoAvvio";
 
 /** Ogni quanto si rilegge la pagina per capire se il passo e' fatto. */
 const INTERVALLO_CONTROLLO_MS = 150;
@@ -94,8 +95,6 @@ type Props = {
   onCompletata: () => void;
   /** "Esci dalla guida". */
   onEsci: () => void;
-  /** Il paziente di prova e' stato registrato: da cancellare alla fine. */
-  onPazienteProva: (id: string) => void;
 };
 
 /**
@@ -104,8 +103,12 @@ type Props = {
  * Un ciclo rilegge la pagina (`ContestoPasso`) e decide: passo fatto → un
  * attimo di "Fatto" e si va avanti; contesto perso (la ricerca chiusa con Esc)
  * → si torna al passo che lo ricrea; finestra estranea aperta → pausa.
+ *
+ * Finche' la prova e' aperta l'app lavora sull'archivio di prova: pazienti
+ * inventati, in memoria. Si apre qui e si chiude qui, comunque la prova
+ * finisca, cosi' non puo' restare aperto a guida chiusa.
  */
-export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProva }: Props) {
+export default function ProvaGuidata({ mod, onCompletata, onEsci }: Props) {
   const passi = useMemo(() => passiGuida(mod), [mod]);
   const idTitolo = useId();
   const location = useLocation();
@@ -123,12 +126,22 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
   posizioneRef.current = { percorso: location.pathname, ricerca: location.search };
   const eventiRef = useRef<Set<string>>(new Set());
   const inChiusuraRef = useRef(false);
-  const pazienteRegistratoRef = useRef(false);
   const timerPassoRef = useRef<number | undefined>(undefined);
   const persoDalRef = useRef<number | null>(null);
 
   // Uscendo dalla guida durante il "Fatto" il passo dopo non deve partire.
   useEffect(() => () => window.clearTimeout(timerPassoRef.current), []);
+
+  // L'archivio di prova: aperto per tutta la prova, e le pagine gia' aperte
+  // (la dashboard) rileggono i dati sia all'apertura sia alla chiusura.
+  useEffect(() => {
+    apriArchivioDiProva(creaArchivioDiProva());
+    window.dispatchEvent(new CustomEvent(EVENTO_PAZIENTI_CAMBIATI));
+    return () => {
+      chiudiArchivioDiProva();
+      window.dispatchEvent(new CustomEvent(EVENTO_PAZIENTI_CAMBIATI));
+    };
+  }, []);
 
   const passo = passi[indice];
 
@@ -142,13 +155,19 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
   const vaiAlPasso = useCallback(
     (prossimo: number) => {
       eventiRef.current = new Set();
-      inChiusuraRef.current = false;
       persoDalRef.current = null;
       setFatto(false);
       setPronto(false);
       setCenno((n) => n + 1);
-      if (prossimo >= passi.length) onCompletata();
-      else setIndice(prossimo);
+      if (prossimo >= passi.length) {
+        // Il ciclo resta fermo: la prova si smonta solo quando si e' tornati
+        // in dashboard, e fino ad allora non deve ricompletarsi a ogni giro.
+        inChiusuraRef.current = true;
+        onCompletata();
+      } else {
+        inChiusuraRef.current = false;
+        setIndice(prossimo);
+      }
     },
     [passi.length, onCompletata],
   );
@@ -176,16 +195,6 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
     const controlla = () => {
       if (inChiusuraRef.current) return;
       const c = contesto();
-
-      // Il paziente di prova nasce quando si apre la sua visita: da qui la
-      // guida sa quale cancellare alla fine.
-      if (!pazienteRegistratoRef.current && passo.id === "salva-paziente") {
-        const id = pazienteDellaVisita(c);
-        if (id) {
-          pazienteRegistratoRef.current = true;
-          onPazienteProva(id);
-        }
-      }
 
       if (passo.fatto?.(c)) {
         inChiusuraRef.current = true;
@@ -215,7 +224,7 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
 
     const timer = window.setInterval(controlla, INTERVALLO_CONTROLLO_MS);
     return () => window.clearInterval(timer);
-  }, [passo, indice, passi, vaiAlPasso, onPazienteProva]);
+  }, [passo, indice, passi, vaiAlPasso]);
 
   // Scorciatoie: passano solo quelle che il passo chiede di provare. Le altre
   // aprirebbero finestre fuori copione. In pausa e nelle attese passa tutto:
@@ -306,7 +315,9 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
                 transition={{ duration: 0.25, ease: "easeOut" }}
               >
                 <p className="guida-passo">
-                  {passo.capitolo} · {posizioneNelCapitolo} di {numeroNelCapitolo.length}
+                  {passo.capitolo}
+                  {numeroNelCapitolo.length > 1 &&
+                    ` · ${posizioneNelCapitolo} di ${numeroNelCapitolo.length}`}
                 </p>
                 <h2 id={idTitolo} className="guida-fumetto-titolo">
                   {passo.titolo}
@@ -360,7 +371,7 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
               >
                 <Check size={18} /> Fatto
               </motion.span>
-            ) : prova && !passo.pronto ? (
+            ) : prova && !pronto ? (
               <span className="guida-tocca-a-te">
                 <MousePointerClick size={18} /> Tocca a te
               </span>
@@ -369,7 +380,6 @@ export default function ProvaGuidata({ mod, onCompletata, onEsci, onPazienteProv
                 color="primary"
                 className="guida-btn-primario"
                 onPress={() => vaiAlPasso(indice + 1)}
-                isDisabled={prova && !pronto}
                 endContent={<ArrowRight size={16} />}
                 autoFocus={!prova}
               >

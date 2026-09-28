@@ -3,7 +3,7 @@ export const MedicalTemplates = {
     prestazione: [
       {
         label: "Anamnesi cardiologica standard",
-        text: "Nega precedenti eventi cardiovascolari maggiori.\nNega angina da sforzo, dispnea, cardiopalmo, sincopi o lipotimie.\nNega ipertensione arteriosa nota, diabete mellito, dislipidemia.\nNega familiarità per cardiopatia ischemica precoce.\nNega fumo e abuso alcolico. Attività fisica regolare.\nNon terapie in corso."
+        text: "Nega precedenti eventi cardiovascolari maggiori.\nNega angina da sforzo, dispnea, cardiopalmo, sincopi o lipotimie.\nNega ipertensione arteriosa nota, diabete mellito, dislipidemia.\nNega familiarità per cardiopatia ischemica precoce.\nNega fumo e abuso alcolico. Attività fisica regolare."
       },
       {
         label: "Paziente iperteso in terapia",
@@ -11,7 +11,7 @@ export const MedicalTemplates = {
       },
       {
         label: "Cardiopatia ischemica nota",
-        text: "Cardiopatia ischemica nota: ___ (IMA / angina stabile) in data ___.\nSottoposto a ___ (coronarografia, PTCA con stent su ___, bypass) in data ___.\nTerapia in atto: antiaggregante ___, statina ___, betabloccante ___, ACE-inibitore/sartano ___.\nAttualmente asintomatico per angor, classe CCS ___.\nUltimo controllo strumentale: ___."
+        text: "Cardiopatia ischemica nota: ___ (IMA / angina stabile) in data ___.\nSottoposto a ___ (coronarografia, PTCA con stent su ___, bypass) in data ___.\nAttualmente asintomatico per angor, classe CCS ___.\nUltimo controllo strumentale: ___."
       },
       {
         label: "Fibrillazione atriale",
@@ -84,14 +84,18 @@ export const MedicalTemplates = {
         text: "Valvola aortica ___ (tricuspide / bicuspide) con ___ (sclerosi / calcificazioni) dei lembi.\nGradiente medio transvalvolare ___ mmHg, gradiente massimo ___ mmHg, area valvolare stimata ___ cm².\nInsufficienza aortica di grado ___.\nVentricolo sinistro con spessori ___ e frazione di eiezione ___%.\nRadice aortica ___ mm, aorta ascendente ___ mm."
       }
     ],
+    // Solo la lettura del quadro. Calcium score, CAD-RADS e burden di placca il
+    // referto li stampa gia' dai campi del modulo; data, struttura e metodica
+    // restano nella maschera e fuori dal referto (cardiologo, 10 settembre
+    // 2026): scritti qui ci rientrerebbero dalla porta di servizio.
     tcCoronarica: [
       {
         label: "TC coronarica negativa",
-        text: "Esame eseguito presso ___ in data ___.\nCalcium score (Agatston) pari a ___.\nAlbero coronarico ad origine e decorso regolari, senza placche emodinamicamente significative.\nCAD-RADS ___.\nConclusioni del radiologo: ___."
+        text: "Albero coronarico a origine e decorso regolari.\nNon placche aterosclerotiche né stenosi sui vasi esplorati.\nConclusioni: assenza di malattia coronarica aterosclerotica documentabile."
       },
       {
         label: "TC coronarica con placche",
-        text: "Esame eseguito presso ___ in data ___.\nCalcium score (Agatston) pari a ___.\nPlacca ___ (calcifica / mista / non calcifica) a carico di ___, con stenosi stimata del ___%.\nCAD-RADS ___.\nConclusioni del radiologo: ___.\nSi programma ___ (ottimizzazione terapia / test funzionale / coronarografia)."
+        text: "Placca ___ (calcifica / mista / non calcifica) a carico di ___, con stenosi stimata del ___%.\nAltri vasi: ___.\nConclusioni del radiologo: ___.\nSi programma ___ (ottimizzazione della terapia / test funzionale / coronarografia)."
       }
     ],
     testErgometrico: [
@@ -149,23 +153,23 @@ export const MedicalTemplates = {
     conclusioni: [
       {
         label: "Quadro nella norma — controllo periodico",
-        text: "Conclusioni: quadro cardiologico clinico e strumentale nei limiti di norma.\nSi consiglia controllo cardiologico a distanza di 12 mesi o prima in caso di comparsa di sintomi.\nSi raccomanda il mantenimento di uno stile di vita corretto: attività fisica aerobica regolare, dieta iposodica e mediterranea, astensione dal fumo, controllo del peso corporeo."
+        text: "Quadro cardiologico clinico e strumentale nei limiti di norma.\nSi consiglia controllo cardiologico a distanza di 12 mesi o prima in caso di comparsa di sintomi.\nSi raccomanda il mantenimento di uno stile di vita corretto: attività fisica aerobica regolare, dieta iposodica e mediterranea, astensione dal fumo, controllo del peso corporeo."
       },
       {
         label: "Prosecuzione della terapia in atto",
-        text: "Conclusioni: quadro clinico stabile, in buon compenso con la terapia in atto.\nSi consiglia di proseguire la terapia domiciliare senza modifiche.\nControllo clinico ed ecocardiografico tra ___ mesi, con esami ematochimici (assetto lipidico, funzione renale ed elettroliti) da eseguire prima del controllo."
+        text: "Quadro clinico stabile, in buon compenso con la terapia in atto.\nSi consiglia di proseguire la terapia domiciliare senza modifiche.\nControllo clinico ed ecocardiografico tra ___ mesi, con esami ematochimici (assetto lipidico, funzione renale ed elettroliti) da eseguire prima del controllo."
       },
       {
         label: "Ottimizzazione della terapia",
-        text: "Conclusioni: ___.\nSi modifica la terapia come da prescrizione allegata.\nSi raccomanda automisurazione domiciliare di pressione arteriosa e frequenza cardiaca due volte al giorno, con annotazione dei valori su diario da portare al controllo.\nControllo di funzione renale ed elettroliti a 15 giorni dall'inizio della nuova terapia.\nRivalutazione clinica tra ___."
+        text: "___.\nSi modifica la terapia come da prescrizione allegata.\nSi raccomanda automisurazione domiciliare di pressione arteriosa e frequenza cardiaca due volte al giorno, con annotazione dei valori su diario da portare al controllo.\nControllo di funzione renale ed elettroliti a 15 giorni dall'inizio della nuova terapia.\nRivalutazione clinica tra ___."
       },
       {
         label: "Approfondimento di secondo livello",
-        text: "Conclusioni: il quadro clinico rende opportuno un approfondimento diagnostico.\nSi richiede ___ (test ergometrico / ECG dinamico secondo Holter / monitoraggio pressorio delle 24 ore / TC coronarica).\nSi rivaluterà il paziente alla luce dei referti; si raccomanda di riportare tutta la documentazione al controllo."
+        text: "Il quadro clinico rende opportuno un approfondimento diagnostico.\nSi richiede ___ (test ergometrico / ECG dinamico secondo Holter / monitoraggio pressorio delle 24 ore / TC coronarica).\nSi rivaluterà il paziente alla luce dei referti; si raccomanda di riportare tutta la documentazione al controllo."
       },
       {
         label: "Stratificazione del rischio cardiovascolare",
-        text: "Conclusioni: fattori di rischio cardiovascolare rilevati: ___.\nGli indici calcolati in cartella sono riportati a titolo di supporto e vanno letti nel contesto clinico complessivo.\nSi consiglia ___ (correzione dello stile di vita / terapia ipolipemizzante / rivalutazione a ___ mesi) secondo le raccomandazioni ESC vigenti."
+        text: "Fattori di rischio cardiovascolare rilevati: ___.\nGli indici calcolati in cartella sono riportati a titolo di supporto e vanno letti nel contesto clinico complessivo.\nSi consiglia ___ (correzione dello stile di vita / terapia ipolipemizzante / rivalutazione a ___ mesi) secondo le raccomandazioni ESC vigenti."
       }
     ]
   },
@@ -198,15 +202,15 @@ export const MedicalTemplates = {
     },
     {
       label: "Dieta chetogenica - informazioni e cautele",
-      text: "SCHEMA CHETOGENICO - INFORMAZIONI E CAUTELE\n\nNon e' una prescrizione: e' la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- Riduzione forte dei carboidrati (indicativamente sotto i 50 g al giorno), quota proteica moderata, grassi come fonte energetica principale.\n- L'organismo passa a usare i corpi chetonici: da qui il nome.\n- Nelle prime settimane il calo di peso e' in buona parte acqua, e la pressione arteriosa può abbassarsi.\n\nCOSA SI RIDUCE\n- Pane, pasta, riso, patate, cereali, prodotti da forno, dolci, zucchero, bevande zuccherate.\n- Frutta più ricca di zuccheri; legumi in quantità limitata.\n\nCOSA RESTA\n- Verdura non amidacea in abbondanza, pesce, uova, carne, formaggi secondo indicazione, olio extravergine di oliva, frutta secca.\n\nQUANDO NON VA INIZIATA SENZA VALUTAZIONE\n- Insufficienza renale o epatica, diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare.\n- In terapia con SGLT2-inibitori: rischio di chetoacidosi euglicemica.\n- In terapia antipertensiva o diuretica le dosi possono dover essere riviste: va concordato prima di iniziare.\n\nDA SEGNALARE AL MEDICO\nStanchezza marcata, capogiri, crampi, stitichezza ostinata, cardiopalmo.\n\nNOTA\nE' uno schema pensato per un periodo definito e con un obiettivo preciso, non per un uso indefinito. L'effetto sul colesterolo LDL non e' prevedibile a priori e va ricontrollato.",
+      text: "SCHEMA CHETOGENICO - INFORMAZIONI E CAUTELE\n\nNon è una prescrizione: è la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- Riduzione forte dei carboidrati (indicativamente sotto i 50 g al giorno), quota proteica moderata, grassi come fonte energetica principale.\n- L'organismo passa a usare i corpi chetonici: da qui il nome.\n- Nelle prime settimane il calo di peso è in buona parte acqua, e la pressione arteriosa può abbassarsi.\n\nCOSA SI RIDUCE\n- Pane, pasta, riso, patate, cereali, prodotti da forno, dolci, zucchero, bevande zuccherate.\n- Frutta più ricca di zuccheri; legumi in quantità limitata.\n\nCOSA RESTA\n- Verdura non amidacea in abbondanza, pesce, uova, carne, formaggi secondo indicazione, olio extravergine di oliva, frutta secca.\n\nQUANDO NON VA INIZIATA SENZA VALUTAZIONE\n- Insufficienza renale o epatica, diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare.\n- In terapia con SGLT2-inibitori: rischio di chetoacidosi euglicemica.\n- In terapia antipertensiva o diuretica le dosi possono dover essere riviste: va concordato prima di iniziare.\n\nDA SEGNALARE AL MEDICO\nStanchezza marcata, capogiri, crampi, stitichezza ostinata, cardiopalmo.\n\nNOTA\nÈ uno schema pensato per un periodo definito e con un obiettivo preciso, non per un uso indefinito. L'effetto sul colesterolo LDL non è prevedibile a priori e va ricontrollato.",
     },
     {
       label: "Digiuno intermittente - informazioni e cautele",
-      text: "DIGIUNO INTERMITTENTE - INFORMAZIONI E CAUTELE\n\nNon e' una prescrizione: e' la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- L'alimentazione si concentra in una finestra oraria: le formule più usate sono 16 ore di digiuno e 8 di alimentazione, oppure 14 e 10.\n- Non riguarda che cosa si mangia ma quando: la qualità del cibo resta quella dell'impostazione mediterranea.\n- Acqua, tè e caffè non zuccherati sono ammessi nelle ore di digiuno.\n\nCOME SI IMPOSTA\n- Meglio partire da una finestra ampia e restringerla gradualmente.\n- Spostare o saltare la cena e' in genere più sostenibile che saltare la colazione, ma conta soprattutto la regolarità.\n- Nella finestra di alimentazione non si recupera: le porzioni restano quelle abituali.\n\nQUANDO NON VA INIZIATO SENZA VALUTAZIONE\n- Diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare, età avanzata con calo ponderale in atto.\n- Con terapie da assumere a orari fissi o a stomaco pieno gli orari vanno rivisti insieme al medico.\n\nDA SEGNALARE AL MEDICO\nCapogiri, sudorazione fredda, tremori o confusione sono i sintomi dell'ipoglicemia: impongono di interrompere il digiuno e di avvisare il medico.",
+      text: "DIGIUNO INTERMITTENTE - INFORMAZIONI E CAUTELE\n\nNon è una prescrizione: è la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- L'alimentazione si concentra in una finestra oraria: le formule più usate sono 16 ore di digiuno e 8 di alimentazione, oppure 14 e 10.\n- Non riguarda che cosa si mangia ma quando: la qualità del cibo resta quella dell'impostazione mediterranea.\n- Acqua, tè e caffè non zuccherati sono ammessi nelle ore di digiuno.\n\nCOME SI IMPOSTA\n- Meglio partire da una finestra ampia e restringerla gradualmente.\n- Spostare o saltare la cena è in genere più sostenibile che saltare la colazione, ma conta soprattutto la regolarità.\n- Nella finestra di alimentazione non si recupera: le porzioni restano quelle abituali.\n\nQUANDO NON VA INIZIATO SENZA VALUTAZIONE\n- Diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare, età avanzata con calo ponderale in atto.\n- Con terapie da assumere a orari fissi o a stomaco pieno gli orari vanno rivisti insieme al medico.\n\nDA SEGNALARE AL MEDICO\nCapogiri, sudorazione fredda, tremori o confusione sono i sintomi dell'ipoglicemia: impongono di interrompere il digiuno e di avvisare il medico.",
     },
     {
       label: "Grassi saturi per porzione - tabella di riferimento",
-      text: "GRASSI SATURI: QUANTO CE N'E' IN UNA PORZIONE\n\nValori indicativi per porzione abituale, arrotondati. Servono a dare la misura, non a fare un calcolo.\n\nMOLTO ALTO - oltre 8 g per porzione\n- Burro, 20 g (una noce): circa 10 g\n- Panna da cucina, 100 ml: circa 13 g\n- Formaggio stagionato (grana, pecorino), 50 g: circa 10 g\n\nALTO - da 4 a 8 g per porzione\n- Mozzarella, 100 g: circa 7 g\n- Salame, 50 g: circa 6 g\n- Croissant o brioche industriale, 1 pezzo: circa 6 g\n- Carne rossa grassa, 100 g: circa 5 g\n\nMEDIO - da 1 a 4 g per porzione\n- Latte intero, 200 ml: circa 4 g\n- Prosciutto crudo sgrassato, 50 g: circa 2 g\n- Yogurt intero, 125 g: circa 2 g\n- Uovo, 1 medio: circa 2 g\n- Olio extravergine di oliva, 10 g (un cucchiaio): circa 1,5 g\n\nBASSO - sotto 1 g per porzione\n- Pesce azzurro, 100 g: circa 1 g\n- Petto di pollo o tacchino, 100 g: circa 0,5 g\n- Legumi cotti, 150 g: meno di 0,5 g\n- Verdura, frutta, pane e pasta: quantità trascurabili\n\nCOME SI LEGGE\nL'indicazione corrente e' di tenere i grassi saturi sotto il 10% delle calorie della giornata, e sotto il 7% quando il colesterolo LDL e' alto: per 2000 kcal sono rispettivamente 22 g e 15 g al giorno. La tabella serve a vedere dove finisce il grosso della quota, non a eliminare qualcosa.",
+      text: "GRASSI SATURI: QUANTO CE N'È IN UNA PORZIONE\n\nValori indicativi per porzione abituale, arrotondati. Servono a dare la misura, non a fare un calcolo.\n\nMOLTO ALTO - oltre 8 g per porzione\n- Burro, 20 g (una noce): circa 10 g\n- Panna da cucina, 100 ml: circa 13 g\n- Formaggio stagionato (grana, pecorino), 50 g: circa 10 g\n\nALTO - da 4 a 8 g per porzione\n- Mozzarella, 100 g: circa 7 g\n- Salame, 50 g: circa 6 g\n- Croissant o brioche industriale, 1 pezzo: circa 6 g\n- Carne rossa grassa, 100 g: circa 5 g\n\nMEDIO - da 1 a 4 g per porzione\n- Latte intero, 200 ml: circa 4 g\n- Prosciutto crudo sgrassato, 50 g: circa 2 g\n- Yogurt intero, 125 g: circa 2 g\n- Uovo, 1 medio: circa 2 g\n- Olio extravergine di oliva, 10 g (un cucchiaio): circa 1,5 g\n\nBASSO - sotto 1 g per porzione\n- Pesce azzurro, 100 g: circa 1 g\n- Petto di pollo o tacchino, 100 g: circa 0,5 g\n- Legumi cotti, 150 g: meno di 0,5 g\n- Verdura, frutta, pane e pasta: quantità trascurabili\n\nCOME SI LEGGE\nL'indicazione corrente è di tenere i grassi saturi sotto il 10% delle calorie della giornata, e sotto il 7% quando il colesterolo LDL è alto: per 2000 kcal sono rispettivamente 22 g e 15 g al giorno. La tabella serve a vedere dove finisce il grosso della quota, non a eliminare qualcosa.",
     },
     {
       label: "Controllo periodico",
@@ -302,7 +306,7 @@ export const MedicalTemplates = {
     {
       label: "Idoneità all'attività ludico-motoria",
       note: "Attività non agonistica e non tesserata: è la formula che tiene il certificato fuori dal campo di applicazione del D.M. 8 agosto 2014.",
-      text: "Il/La sottoscritto/a Dott. ___ attesta che il/la paziente ___ (nato/a il ___, CF ___), sottoposto/a in data odierna a visita medica ed esame obiettivo cardiovascolare, non presenta controindicazioni in atto alla pratica di attività ludico-motoria.\n\nPer attività ludico-motoria si intende, ai sensi del D.M. 24 aprile 2013 e del D.M. 8 agosto 2014, quella praticata da soggetti non tesserati a federazioni sportive nazionali, discipline associate o enti di promozione sportiva, in forma individuale o collettiva, a scopo ricreativo o di mantenimento delle condizioni di salute.\n\nIl presente certificato non e' obbligatorio per legge per l'attività ludico-motoria e viene rilasciato su richiesta dell'interessato.",
+      text: "Il/La sottoscritto/a Dott. ___ attesta che il/la paziente ___ (nato/a il ___, CF ___), sottoposto/a in data odierna a visita medica ed esame obiettivo cardiovascolare, non presenta controindicazioni in atto alla pratica di attività ludico-motoria.\n\nPer attività ludico-motoria si intende, ai sensi del D.M. 24 aprile 2013 e del D.M. 8 agosto 2014, quella praticata da soggetti non tesserati a federazioni sportive nazionali, discipline associate o enti di promozione sportiva, in forma individuale o collettiva, a scopo ricreativo o di mantenimento delle condizioni di salute.\n\nIl presente certificato non è obbligatorio per legge per l'attività ludico-motoria e viene rilasciato su richiesta dell'interessato.",
     },
     {
       label: "Idoneità all'attività sportiva non agonistica",

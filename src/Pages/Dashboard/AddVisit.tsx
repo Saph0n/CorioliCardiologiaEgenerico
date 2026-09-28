@@ -3352,10 +3352,12 @@ export default function AddVisit() {
                     Collassabile come i moduli 7-11: i campi sono molti, ma una
                     visita su cento porta una TC coronarica, e tenerli aperti a
                     vuoto è il tipo di ingombro che rende lenta la maschera. */}
-                {/* Nessun modello di refertazione qui: il referto della TC lo
-                    scrive il cardiologo leggendo quello del radiologo, e un
-                    testo precompilato su un esame che si chiede ogni cinque
-                    anni non fa risparmiare tempo, lo rende solo meno suo. */}
+                {/* Modelli di refertazione: tolti l'8 settembre 2026 su
+                    richiesta del cardiologo ("resta poco professionale"),
+                    rimessi il 28 settembre su richiesta di Pablo. Riempiono
+                    solo la lettura del quadro: calcium score, CAD-RADS e burden
+                    il referto li stampa gia' dai campi, e un modello che li
+                    ripetesse li farebbe uscire due volte. */}
                 <ModuloCollassabile
                   id="modulo-tcCoronarica"
                   numero={numeroSezione.tcCoronarica}
@@ -3366,20 +3368,29 @@ export default function AddVisit() {
                   sottotitolo="non eseguita"
                   compilato={bloccoCompilato("tcCoronarica")}
                   azione={
-                    prontuarioAttivo ? (
-                      <Button
-                        type="button"
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        radius="full"
-                        aria-label="Prontuario imaging: calcium score e CAD-RADS"
-                        className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
-                        onPress={() => setIsProntuarioImagingOpen(true)}
-                      >
-                        <Info size={15} />
-                      </Button>
-                    ) : undefined
+                    <div className="flex items-center gap-1">
+                      {prontuarioAttivo && (
+                        <Button
+                          type="button"
+                          isIconOnly
+                          size="sm"
+                          variant="light"
+                          radius="full"
+                          aria-label="Prontuario imaging: calcium score e CAD-RADS"
+                          className="h-6 w-6 min-w-0 text-default-500 data-[hover=true]:text-primary-600"
+                          onPress={() => setIsProntuarioImagingOpen(true)}
+                        >
+                          <Info size={15} />
+                        </Button>
+                      )}
+                      <TemplateSelector
+                        templates={allTemplates.filter(
+                          (t) =>
+                            t.category === "visita" && t.section === "tcCoronarica",
+                        )}
+                        onSelect={(t) => applyBloccoTemplate("tcCoronarica", t)}
+                      />
+                    </div>
                   }
                 >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -5382,8 +5393,12 @@ export default function AddVisit() {
                 che si scrivono nella finestra degli esami (vedi
                 `TabellaEsami`). Ventuno campi con precedente e grafico non
                 stavano in 354px in nessuna disposizione. Ogni valore del
-                riepilogo apre la finestra su di se'. */}
-            <Card className="shadow-sm border border-default-200 bg-white">
+                riepilogo apre la finestra su di se'. `data-guida`: la guida
+                di primo avvio fa aprire la finestra e il grafico. */}
+            <Card
+              className="shadow-sm border border-default-200 bg-white"
+              data-guida="card-laboratorio"
+            >
               <div className="flex items-center justify-between gap-2 px-4 pt-4">
                 <span className="font-semibold text-gray-700 uppercase text-xs tracking-wider">
                   Laboratorio
@@ -5394,6 +5409,7 @@ export default function AddVisit() {
                   color="primary"
                   startContent={<FlaskConical size={14} />}
                   onPress={() => apriEsami()}
+                  data-guida="apri-esami"
                 >
                   {esamiCompilati > 0 ? "Modifica esami" : "Inserisci esami"}
                 </Button>
@@ -5898,7 +5914,7 @@ export default function AddVisit() {
                   data-trascrizione-finestra
                   className="grid gap-x-8 gap-y-5 pb-1 md:grid-cols-3"
                 >
-                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-4" data-guida="esami-burden">
                     {gruppoEsami("burden", "Burden aterogeno")}
                     {(ldlCalc.ok || nonHdlCalc.ok || ctHdlCalc.ok || tgHdlCalc.ok) && (
                       <StrisciaCalcolati>
@@ -5974,6 +5990,7 @@ export default function AddVisit() {
                 </p>
                 <Button
                   data-fine-trascrizione
+                  data-guida="fine-esami"
                   color="primary"
                   className="corioli-cta font-semibold"
                   onPress={chiudi}

@@ -2,31 +2,40 @@
  * I passi della prova guidata: la guida non spiega che cosa fa un pulsante,
  * lo fa premere e aspetta di vedere il risultato.
  *
- * Il percorso e' quello di tutti i giorni con un paziente nuovo: Ctrl+N, il
- * codice fiscale nella ricerca, Invio, "Salva e inizia visita". Poi, nella
- * visita, un modello e il grassetto sull'esame obiettivo, la stampa del
- * referto; infine i modelli in Impostazioni.
+ * La prova si fa su un archivio di prova (`archivioDiProva.ts`), perche' le
+ * cose che contano di piu' si vedono solo con qualche mese di visite alle
+ * spalle: i pazienti a rischio, il valore della visita precedente accanto ai
+ * campi, l'andamento degli esami. Il percorso e' quello di un controllo: il
+ * paziente arriva, Ctrl+N, il cognome nella ricerca, la visita con gli esami
+ * nuovi; un modello e il grassetto sull'esame obiettivo, la stampa; infine i
+ * modelli in Impostazioni.
  *
  * Ogni passo legge la pagina da un `ContestoPasso` e non dal DOM: cosi' le
  * condizioni si provano nei test senza un browser.
  */
 
+import { PAZIENTE_DELLA_PROVA } from "./archivioDiProva";
+
 /** Selettore di un elemento marcato per la guida. */
 export const g = (nome: string) => `[data-guida="${nome}"]`;
-
-/**
- * Codice fiscale di un paziente inventato (Mario Rossi, Roma, 1 gennaio
- * 1980): e' l'esempio di scuola, valido anche nel carattere di controllo, e
- * fa vedere l'app ricavare data e luogo di nascita e sesso.
- */
-export const CF_PROVA = "RSSMRA80A01H501U";
-export const COGNOME_PROVA = "Prova";
 
 /** Evento che `AddVisit` lancia quando il referto e' stato aperto in PDF. */
 export const EVENTO_REFERTO_APERTO = "corioli-referto-aperto";
 
 /** Il campo di testo modificabile dell'esame obiettivo. */
 const CAMPO_ESAME_OBIETTIVO = `${g("campo-esame-obiettivo")} [contenteditable="true"]`;
+
+/** La finestra degli esami del sangue, aperta. */
+export const FINESTRA_ESAMI = "[data-trascrizione-finestra]";
+
+/**
+ * I valori precedenti che aprono il grafico: ci sono solo dove il paziente ha
+ * almeno due prelievi. Il primo e' il colesterolo totale.
+ */
+export const BOTTONE_ANDAMENTO = `${FINESTRA_ESAMI} button[aria-label^="Andamento di"]`;
+
+/** La riga del paziente della prova fra i risultati della ricerca. */
+export const RISULTATO_PAZIENTE_DELLA_PROVA = `button[data-paziente="${PAZIENTE_DELLA_PROVA.id}"]`;
 
 export interface ContestoPasso {
   /** `pathname` della rotta attuale. */
@@ -92,84 +101,106 @@ export function pazienteDellaVisita(c: Pick<ContestoPasso, "percorso" | "ricerca
 
 /** `mod` e' il tasto Ctrl, o Cmd sul Mac. */
 export function passiGuida(mod: string): PassoGuida[] {
+  const { cognome } = PAZIENTE_DELLA_PROVA;
   return [
-    // ── Il primo paziente ──────────────────────────────────────────────
+    // ── L'archivio di prova ────────────────────────────────────────────
+    {
+      id: "rischio",
+      capitolo: "L'archivio di prova",
+      tipo: "guarda",
+      bersagli: [g("colonna-rischio")],
+      titolo: "Pazienti a rischio",
+      testo:
+        "Per la prova l'archivio si è riempito di pazienti inventati, che spariscono quando esci dalla guida. Qui trovi quelli di classe alta o molto alta e chi è sopra l'obiettivo di LDL: il numero dice di quanto.",
+    },
+
+    // ── Il paziente ────────────────────────────────────────────────────
     {
       id: "apri-visita",
-      capitolo: "Il primo paziente",
+      capitolo: "Il paziente",
       tipo: "prova",
       bersagli: [g("nuova-visita")],
       punta: [g("nuova-visita")],
       titolo: "Arriva un paziente",
-      testo: `Si comincia sempre da qui. Premi ${mod}+N, oppure il pulsante «Nuova visita».`,
+      testo: `È il signor ${cognome}, per il controllo. Si comincia sempre da qui: premi ${mod}+N, oppure il pulsante «Nuova visita».`,
       tasti: [mod, "N"],
       consentiti: ["n"],
       fatto: (c) => c.esiste(g("pannello-paziente")),
     },
     {
-      id: "scrivi-cf",
-      capitolo: "Il primo paziente",
+      id: "cerca",
+      capitolo: "Il paziente",
       tipo: "prova",
-      // La testata del pannello e quello che le sta sotto: il suggerimento
-      // "Premi Invio per registrare" non deve finire sotto il fumetto.
+      // La testata del pannello e quello che le sta sotto: i risultati non
+      // devono finire sotto il fumetto.
       bersagli: [g("pannello-paziente"), `${g("pannello-paziente")} ~ *`],
-      titolo: "Cercalo per codice fiscale",
-      testo:
-        "Qui trovi i pazienti per cognome o codice fiscale. Questo è nuovo: scrivi il suo codice fiscale e premi Invio. Per la prova usa quello di un paziente inventato.",
-      scrivi: { selettore: `${g("pannello-paziente")} input`, testo: CF_PROVA },
-      fatto: (c) => c.percorso === "/add-patient",
+      titolo: "Cercalo per cognome",
+      testo: `Scrivi ${cognome}, o anche solo le prime lettere, poi fai clic sul suo nome: si apre la sua visita.`,
+      scrivi: { selettore: `${g("pannello-paziente")} input`, testo: cognome },
+      // La manina compare sul paziente appena la ricerca lo trova.
+      punta: [RISULTATO_PAZIENTE_DELLA_PROVA],
+      fatto: (c) => pazienteDellaVisita(c) !== null,
       perso: (c) => (c.percorso === "/" && !c.esiste(g("pannello-paziente")) ? "apri-visita" : null),
     },
-    // Due passi e non uno: codice fiscale e anagrafica insieme sono alti
-    // quasi tutta la finestra a 1280x720, e il fumetto finiva sopra i campi
-    // che doveva far vedere.
-    {
-      id: "dati-da-cf",
-      capitolo: "Il primo paziente",
-      tipo: "guarda",
-      bersagli: [g("dati-da-cf")],
-      titolo: "Il codice fiscale fa metà del lavoro",
-      testo:
-        "Data e luogo di nascita e sesso li ha ricavati l'app dal codice fiscale: sono i campi in verde. Dai sempre un'occhiata, poi vai avanti.",
-      perso: (c) => (c.percorso === "/" ? "apri-visita" : null),
-    },
-    {
-      id: "cognome",
-      capitolo: "Il primo paziente",
-      tipo: "prova",
-      bersagli: [g("campo-cognome")],
-      titolo: "Aggiungi il cognome",
-      testo: "È così che il paziente si cerca e si stampa. Per la prova, scrivi Prova.",
-      scrivi: { selettore: 'input[name="lastName"]', testo: COGNOME_PROVA },
-      pronto: (c) => c.valore('input[name="lastName"]').trim().length > 0,
-      perso: (c) => (c.percorso === "/" ? "apri-visita" : null),
-    },
-    {
-      id: "salva-paziente",
-      capitolo: "Il primo paziente",
-      tipo: "prova",
-      bersagli: [g("salva-e-visita")],
-      punta: [g("salva-e-visita")],
-      titolo: "Salva e comincia",
-      testo:
-        "Il resto dell'anagrafica lo completi quando vuoi. Premi «Salva e inizia visita»: il paziente è in archivio e si apre il referto.",
-      fatto: (c) => pazienteDellaVisita(c) !== null,
-      perso: (c) => (c.percorso === "/" ? "apri-visita" : null),
-    },
-
-    // ── La visita ──────────────────────────────────────────────────────
     {
       id: "visita",
-      capitolo: "La visita",
+      capitolo: "Il paziente",
       tipo: "guarda",
       bersagli: [g("barra-visita")],
-      titolo: "Il referto",
+      titolo: "La visita di controllo",
       testo:
-        "In alto chi stai visitando, la data e le azioni. Sotto, il referto a sezioni: si scrive dall'alto in basso, e Tab passa al campo dopo.",
+        "In alto chi stai visitando, la data e le azioni. Terapia in atto e fattori di rischio arrivano già dall'ultima visita: li rileggi e correggi quello che è cambiato.",
+    },
+
+    // ── Gli esami ──────────────────────────────────────────────────────
+    {
+      id: "esami",
+      capitolo: "Gli esami",
+      tipo: "prova",
+      bersagli: [g("card-laboratorio")],
+      punta: [g("apri-esami")],
+      titolo: "Gli esami del sangue",
+      testo: "Il paziente ha portato gli esami nuovi. Premi «Inserisci esami».",
+      fatto: (c) => c.esiste(FINESTRA_ESAMI),
     },
     {
+      id: "andamento",
+      capitolo: "Gli esami",
+      tipo: "prova",
+      bersagli: [g("esami-burden"), g("grafico-andamento")],
+      punta: [BOTTONE_ANDAMENTO],
+      titolo: "Com'era, com'è andato",
+      testo:
+        "In «Prec.» c'è il valore dell'ultimo prelievo. Premi quello del colesterolo totale: vedi tutti i prelievi in archivio.",
+      fatto: (c) => c.esiste(g("grafico-andamento")),
+      // Un paziente con un prelievo solo non ha grafici: si va avanti lo stesso.
+      pronto: (c) => !c.esiste(BOTTONE_ANDAMENTO),
+      perso: (c) => (pazienteDellaVisita(c) && !c.esiste(FINESTRA_ESAMI) ? "esami" : null),
+    },
+    {
+      id: "leggi-andamento",
+      capitolo: "Gli esami",
+      tipo: "guarda",
+      bersagli: [g("grafico-andamento")],
+      titolo: "L'andamento",
+      testo:
+        "Un punto per prelievo, dal primo all'ultimo: scritto il valore di oggi, si aggiunge alla linea. C'è per ogni esame che il paziente ha fatto almeno due volte.",
+    },
+    {
+      id: "chiudi-esami",
+      capitolo: "Gli esami",
+      tipo: "prova",
+      bersagli: [g("fine-esami")],
+      punta: [g("fine-esami")],
+      titolo: "Chiudi la finestra",
+      testo: "Per la prova non serve scrivere i valori: premi «Fatto».",
+      fatto: (c) => !c.esiste(FINESTRA_ESAMI),
+    },
+
+    // ── Il referto ─────────────────────────────────────────────────────
+    {
       id: "modello",
-      capitolo: "La visita",
+      capitolo: "Il referto",
       tipo: "prova",
       bersagli: [g("campo-esame-obiettivo"), '[role="menu"]'],
       punta: ['[role="menu"] [role="menuitem"]', `${g("campo-esame-obiettivo")} button`],
@@ -180,7 +211,7 @@ export function passiGuida(mod: string): PassoGuida[] {
     },
     {
       id: "grassetto",
-      capitolo: "La visita",
+      capitolo: "Il referto",
       tipo: "prova",
       bersagli: [g("campo-esame-obiettivo")],
       demo: "grassetto",
@@ -192,7 +223,7 @@ export function passiGuida(mod: string): PassoGuida[] {
     },
     {
       id: "stampa",
-      capitolo: "La visita",
+      capitolo: "Il referto",
       tipo: "prova",
       bersagli: [g("stampa-visita")],
       punta: [g("stampa-visita")],
@@ -204,7 +235,7 @@ export function passiGuida(mod: string): PassoGuida[] {
     },
     {
       id: "salva-visita",
-      capitolo: "La visita",
+      capitolo: "Il referto",
       tipo: "prova",
       bersagli: [g("salva-visita")],
       punta: [g("salva-visita")],
@@ -215,12 +246,12 @@ export function passiGuida(mod: string): PassoGuida[] {
     },
     {
       id: "scheda",
-      capitolo: "La visita",
+      capitolo: "Il referto",
       tipo: "guarda",
       bersagli: [g("scheda-documenti")],
       titolo: "La scheda del paziente",
       testo:
-        "A sinistra la visita di oggi: la riapri, la ristampi, la ricopi nella prossima. Qui accanto ricette, richieste di esame e certificati, ognuno con i suoi modelli.",
+        "A sinistra le sue visite, quella di oggi in cima: le riapri, le ristampi, le ricopi nella prossima. Qui accanto ricette, richieste di esame e certificati, ognuno con i suoi modelli.",
     },
 
     // ── I modelli ──────────────────────────────────────────────────────

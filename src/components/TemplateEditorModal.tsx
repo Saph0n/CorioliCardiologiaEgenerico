@@ -22,6 +22,13 @@ import type {
   AnamnesiConfig,
   AnamnesiVisitType,
 } from "../utils/anamnesiStrutturata";
+import { createDefaultAnamnesiConfig } from "../utils/anamnesiStrutturata";
+import { MODULI_VISITA_SPENTI, type ModuliVisitaAttivi } from "../utils/moduliVisita";
+import {
+  SEZIONI_VISITA_CON_MODELLI,
+  doveCompareModello,
+  sezioneNellaVisita,
+} from "../utils/sezioniModelli";
 import { AppModal } from "./AppModal";
 
 type TemplateCategory = MedicalTemplate["category"];
@@ -61,46 +68,13 @@ const SECTION_TO_CAMPO = Object.fromEntries(
  * uno dalle impostazioni, la numerazione della visita cambia da un medico
  * all'altro, e un "10. Doppler TSA" scritto qui sarebbe vero solo per chi li
  * ha accesi tutti. L'ordine dell'elenco e' quello della visita e basta a
- * collocarli. (I numeri erano peraltro gia' discordi: "14. Conclusioni" qui e
- * "8. Conclusioni" nell'anteprima qui sotto.)
+ * collocarli. Nomi e sezioni vengono da `sezioniModelli.ts`, gli stessi della
+ * visita e dell'elenco in Impostazioni.
  */
-const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
-  prestazione: "Anamnesi (campo unico)",
-  esameObiettivo: "Esame obiettivo",
-  ecg: "ECG",
-  ecocardiogramma: "Ecocardiogramma",
-  tcCoronarica: "TC coronarica",
-  testErgometrico: "Test ergometrico",
-  holterEcg: "Holter ECG",
-  holterPressorio: "Holter pressorio",
-  dopplerTsa: "Doppler TSA",
-  scompenso: "Scompenso cardiaco",
-  fibrillazioneAtriale: "Fibrillazione atriale",
-  conclusioni: "Conclusioni e terapia",
-  anamnesiFamiliare: "Anamnesi · Familiare",
-  anamnesiFisiologica: "Anamnesi · Fisiologica",
-  anamnesiPatologica: "Anamnesi · Patologica",
-  anamnesiChirurgica: "Anamnesi · Chirurgica",
-  anamnesiFarmacologica: "Anamnesi · Farmacologica",
-  anamnesiAllergica: "Anamnesi · Allergica",
-  anamnesiAbitudini: "Anamnesi · Abitudini di vita",
-};
-
 const SECTIONS_BY_CATEGORY: Record<TemplateCategory, TemplateSection[]> = {
   visita: [
-    "prestazione",
+    ...SEZIONI_VISITA_CON_MODELLI.map((s) => s.sezione),
     ...ANAMNESI_SUBSECTIONS,
-    "esameObiettivo",
-    "ecg",
-    "ecocardiogramma",
-    "tcCoronarica",
-    "testErgometrico",
-    "holterEcg",
-    "holterPressorio",
-    "dopplerTsa",
-    "scompenso",
-    "fibrillazioneAtriale",
-    "conclusioni",
   ],
   terapie: ["generale"],
   ricette: ["generale"],
@@ -128,15 +102,26 @@ type VisitFieldMock = {
   hasModello: boolean;
 };
 
-const VISITA_FIELDS: VisitFieldMock[] = [
-  { section: "prestazione", label: "Anamnesi", hasModello: true },
-  { label: "Motivo della visita", hasModello: false },
-  { section: "esameObiettivo", label: "Esame obiettivo", hasModello: true },
-  { section: "ecg", label: "ECG", hasModello: true },
-  { section: "ecocardiogramma", label: "Ecocardiogramma", hasModello: true },
-  { section: "tcCoronarica", label: "TC coronarica", hasModello: true },
-  { section: "conclusioni", label: "Conclusioni e terapia", hasModello: true },
-];
+/**
+ * I campi della visita nell'anteprima, nell'ordine della maschera: quelli col
+ * pulsante «Modello» si possono scegliere, gli altri stanno li' in grigio per
+ * orientarsi. Degli esami strumentali solo quelli che il medico ha acceso.
+ */
+function campiAnteprimaVisita(
+  sezioniVisibili: readonly { sezione: TemplateSection; etichetta: string }[],
+): VisitFieldMock[] {
+  const strumentali = sezioniVisibili
+    .filter((s) => s.sezione !== "prestazione" && s.sezione !== "conclusioni")
+    .map((s) => ({ section: s.sezione, label: s.etichetta, hasModello: true }));
+  return [
+    { section: "prestazione", label: "Anamnesi", hasModello: true },
+    { label: "Motivo della visita", hasModello: false },
+    { label: "Terapia in atto", hasModello: false },
+    ...strumentali,
+    { label: "Accertamenti", hasModello: false },
+    { section: "conclusioni", label: "Conclusioni e terapia", hasModello: true },
+  ];
+}
 
 type LivePreviewContent = {
   menuLabel: string;
@@ -257,6 +242,7 @@ function MockLiveField({
 
 function VisitFormMock({
   visitLabel,
+  campi,
   activeSection,
   onSectionChange,
   preview,
@@ -264,6 +250,7 @@ function VisitFormMock({
   anamnesiCampoLabel,
 }: {
   visitLabel: string;
+  campi: VisitFieldMock[];
   activeSection: TemplateSection;
   onSectionChange: (section: TemplateSection) => void;
   preview: LivePreviewContent;
@@ -289,7 +276,7 @@ function VisitFormMock({
         </p>
       </div>
       <div className="space-y-1.5 overflow-visible p-3">
-        {VISITA_FIELDS.map((field) => {
+        {campi.map((field) => {
           const isActive = field.section === activeSection;
           const isSelectable = field.hasModello && field.section;
 
@@ -475,6 +462,7 @@ function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
 function TemplatePlacementMap({
   category,
   section,
+  campiVisita,
   onSectionChange,
   preview,
   resolveSubLabel,
@@ -482,6 +470,7 @@ function TemplatePlacementMap({
 }: {
   category: TemplateCategory;
   section: TemplateSection;
+  campiVisita: VisitFieldMock[];
   onSectionChange: (section: TemplateSection) => void;
   preview: LivePreviewContent;
   resolveSubLabel: (section: TemplateSection) => string | null;
@@ -497,6 +486,7 @@ function TemplatePlacementMap({
     return (
       <VisitFormMock
         visitLabel="Visita"
+        campi={campiVisita}
         activeSection={activeSection}
         onSectionChange={onSectionChange}
         preview={preview}
@@ -525,6 +515,11 @@ export type TemplateEditorModalProps = {
   isSaving?: boolean;
   /** Config anamnesi per risolvere i nomi personalizzati delle sezioni. */
   anamnesiConfig?: AnamnesiConfig;
+  /**
+   * Moduli della visita accesi: si propongono solo le sezioni che il medico
+   * ha davvero nella sua visita.
+   */
+  moduliVisita?: ModuliVisitaAttivi;
 };
 
 export function TemplateEditorModal({
@@ -534,6 +529,7 @@ export function TemplateEditorModal({
   onSave,
   isSaving = false,
   anamnesiConfig,
+  moduliVisita = MODULI_VISITA_SPENTI,
 }: TemplateEditorModalProps) {
   const [draft, setDraft] = useState<Partial<MedicalTemplate>>(initialTemplate);
   const [errors, setErrors] = useState<{ label?: string; text?: string }>({});
@@ -581,10 +577,27 @@ export function TemplateEditorModal({
     if (dyn) return `1.${dyn.num} Anamnesi · ${dyn.subLabel}`;
     const sub = resolveSubLabel(sec);
     if (sub) return `1. Anamnesi · ${sub}`;
-    return SECTION_LABELS[sec] ?? sec;
+    if (sec === "prestazione") return "Anamnesi (campo unico)";
+    // Da `sezioniModelli`: il nome della sezione e, se nella visita non si
+    // vede (un modello vecchio in modifica), il perche'.
+    const dove = doveCompareModello(
+      { category: "visita", section: sec },
+      { moduli: moduliVisita, anamnesi: anamnesiConfig ?? createDefaultAnamnesiConfig() },
+    );
+    return dove.nascosto
+      ? `${dove.etichetta} (${dove.nascosto.toLowerCase()})`
+      : dove.etichetta;
   };
 
   const section = (draft.section ?? DEFAULT_SECTION[category]) as TemplateSection;
+
+  // Le sezioni che il medico ha nella visita, piu' quella del modello che sta
+  // modificando anche se non c'e' piu' (un esame spento, la TC di una volta):
+  // se no la tendina resterebbe vuota.
+  const sezioniVisibili = SEZIONI_VISITA_CON_MODELLI.filter(
+    (s) => sezioneNellaVisita(s, moduliVisita) || s.sezione === section,
+  );
+  const campiVisita = campiAnteprimaVisita(sezioniVisibili);
 
   // Le sotto-sezioni dell'anamnesi strutturata compaiono solo se la modalità
   // "Multi-sezione" è attiva per i tipi di visita di QUESTA categoria (la modalità
@@ -597,19 +610,16 @@ export function TemplateEditorModal({
   const showAnamnesiSubsections =
     categoryStructured || isAnamnesiSection(section);
 
+  const opzioniVisita: TemplateSection[] = [
+    "prestazione",
+    ...(showAnamnesiSubsections ? anamnesiSections.map((s) => s.templateSection) : []),
+    ...sezioniVisibili.filter((s) => s.sezione !== "prestazione").map((s) => s.sezione),
+  ];
   const sectionOptions: TemplateSection[] =
     category === "visita"
-      ? [
-          "prestazione",
-          ...(showAnamnesiSubsections
-            ? anamnesiSections.map((s) => s.templateSection)
-            : []),
-          "esameObiettivo",
-          "ecg",
-          "ecocardiogramma",
-          "tcCoronarica",
-          "conclusioni",
-        ]
+      ? opzioniVisita.includes(section) || isAnamnesiSection(section)
+        ? opzioniVisita
+        : [...opzioniVisita, section]
       : SECTIONS_BY_CATEGORY[category];
   const canPickSection = sectionOptions.length > 1 && category !== "terapie";
 
@@ -840,6 +850,7 @@ export function TemplateEditorModal({
           <TemplatePlacementMap
             category={category}
             section={section}
+            campiVisita={campiVisita}
             onSectionChange={(nextSection) =>
               setDraft((prev) => ({ ...prev, section: nextSection }))
             }
