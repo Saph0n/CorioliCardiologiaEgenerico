@@ -293,24 +293,38 @@ export class PdfService {
     doctor: Doctor | null;
     opts: FooterVisibilityOptions;
     differita?: boolean;
-    /** Riga di emissione del referto: quando e' stato stampato, e quale copia. */
-    emissione?: string;
   } | null = null;
 
   private static dc(d: jsPDF, c: readonly number[]) { d.setDrawColor(c[0], c[1], c[2]); }
   private static tc(d: jsPDF, c: readonly number[]) { d.setTextColor(c[0], c[1], c[2]); }
 
+  /**
+   * Referto: le chiamate a `pb` in ordine, con la pagina su cui e' finito
+   * quello che segue e `apre` per quelle che aprono un blocco (titolo di
+   * sezione, referto di un modulo) e vogliono almeno due righe con se'. Serve
+   * a non lasciare la firma sola su una pagina: vedi `componiReferto`. Fuori
+   * dal referto e' `null` e non si registra niente.
+   */
+  private static tracciaSalti: { apre: boolean; pagina: number }[] | null = null;
+  /** Referto: la chiamata a `pb`, come indice in `tracciaSalti`, che va a capo comunque. */
+  private static saltoForzato: number | null = null;
+
   // ── page break ───────────────────────────────────────────────────────────────
-  private static pb(doc: jsPDF, y: number, need = 30): number {
-    if (y + need > FOOT_Y - 8) {
+  private static pb(doc: jsPDF, y: number, need = 30, apre = false): number {
+    const chiamata = this.tracciaSalti ? this.tracciaSalti.length : -1;
+    // In cima alla pagina andare a capo darebbe solo una pagina bianca.
+    const inCima = y <= (this.fCtx?.differita ? 24 : 18);
+    const forzato = chiamata >= 0 && chiamata === this.saltoForzato && !inCima;
+    if (forzato || y + need > FOOT_Y - 8) {
       if (this.fCtx && !this.fCtx.differita) {
         this.drawFooter(doc, this.fCtx.doctor, this.fCtx.opts);
       }
       doc.addPage();
       // Sulle pagine dopo la prima il contenuto scende: sopra ci va la riga di
       // identificazione del paziente, scritta poi da `finalizzaPagine`.
-      return this.fCtx?.differita ? 24 : 18;
+      y = this.fCtx?.differita ? 24 : 18;
     }
+    this.tracciaSalti?.push({ apre, pagina: doc.getNumberOfPages() });
     return y;
   }
 
@@ -919,17 +933,10 @@ export class PdfService {
 
     this.rule(doc, FOOT_Y, ML, MR, 0.2);
 
-    // Quando e' stato stampato questo foglio e da quale visita viene. Serve
-    // alla ristampa: se una visita viene corretta e il referto ristampato, due
-    // fogli identici in copertina possono portare contenuti diversi, e senza
-    // una data di emissione non c'e' modo di sapere quale si ha in mano.
-    // Stesso corpo e stesso grigio del numero di pagina: scuro abbastanza da
-    // restare in fotocopia, che e' proprio il caso in cui serve sapere quale
-    // versione si ha in mano.
-    if (this.fCtx?.emissione) {
-      doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);
-      doc.text(san(this.fCtx.emissione), 105, FOOT_Y + 4.5, { align: "center" });
-    }
+    // Al centro c'era "Emesso il ... - rif. ...": ora di stampa e codice
+    // interno della visita. Tolto il 6 ottobre 2026 ("e' inutile", Pablo): il
+    // codice non si puo' cercare da nessuna parte nell'app, quindi per chi
+    // legge il foglio era una sigla senza senso.
 
     // I recapiti dello studio sono saliti nella carta intestata, dove si
     // cercano. Qui resta la numerazione, che serve solo al foglio stampato: si
@@ -1333,7 +1340,7 @@ export class PdfService {
    * di contenuto, perche' non resti da solo in fondo alla pagina.
    */
   private static sezione(doc: jsPDF, y: number, titolo: string, need = 22): number {
-    y = this.pb(doc, y, need);
+    y = this.pb(doc, y, need, true);
     // Fascia grigio chiaro da margine a margine, uguale per tutte le sezioni:
     // prosa e dati pesano lo stesso. L'ha scelta il cardiologo sui referti
     // stampati (mail del 9 settembre 2026) al posto del filetto sotto la
@@ -1360,7 +1367,7 @@ export class PdfService {
    * ciascuno la sua fascia dall'11 settembre 2026.
    */
   private static sottosezione(doc: jsPDF, y: number, titolo: string, bisogno = 16): number {
-    y = this.pb(doc, y, bisogno);
+    y = this.pb(doc, y, bisogno, true);
     y += 2.5;
     doc.setFont("helvetica", "bold"); doc.setFontSize(8.2); this.tc(doc, K30);
     const t = san(titolo);
@@ -1437,7 +1444,7 @@ export class PdfService {
     if (!testo?.trim()) return y;
     // Due righe insieme o si va a capo pagina: il referto testuale di un
     // modulo non deve lasciare un rigo solo sotto la sua tabella.
-    y = this.pb(doc, y, 3.6 + 2 * LH_PROSA + 1);
+    y = this.pb(doc, y, 3.6 + 2 * LH_PROSA + 1, true);
     return this.block(doc, testo, ML, y + 3.6, PW, LH_PROSA, {
       font: "helvetica", style: "normal", fontSize: 10.5, color: K0,
     });
@@ -2273,13 +2280,59 @@ export class PdfService {
     return compatto && compatto.pagine < curato.pagine ? compatto.blob : curato.blob;
   }
 
+  /**
+   * Il referto, senza la firma sola sull'ultima pagina.
+   *
+   * Quando la pagina e' piena fino in fondo, il blocco firma non ci sta e
+   * finiva da solo sul foglio dopo: una pagina con la sola firma e' brutta, e
+   * una firma staccata dal testo che firma e' proprio quello che nei referti
+   * si evita. jsPDF disegna subito e non si puo' spostare indietro quello che
+   * e' gia' sulla pagina, quindi in quel caso il referto si impagina una
+   * seconda volta andando a capo prima, in modo che le ultime righe passino
+   * con la firma (vedi `saltoPerLaFirma`).
+   */
   private static async componiReferto(
     patient: Patient,
     visit: Visit,
     options: VisitPdfOptions | undefined,
     controlloOrfani: boolean,
   ): Promise<{ blob: Blob; pagine: number } | undefined> {
+    try {
+      const prima = await this.impaginaReferto(patient, visit, options, controlloOrfani, null);
+      if (prima?.saltoPerLaFirma == null) return prima;
+      return (await this.impaginaReferto(
+        patient, visit, options, controlloOrfani, prima.saltoPerLaFirma,
+      )) ?? prima;
+    } finally {
+      this.tracciaSalti = null;
+      this.saltoForzato = null;
+    }
+  }
+
+  /**
+   * Dove andare a capo perche' la firma non resti sola: due chiamate a `pb`
+   * prima della fine, cioe' le ultime due righe. Se cosi' un titolo restasse
+   * in fondo alla pagina con meno di due righe sotto, si va a capo dal titolo.
+   */
+  private static saltoPerLaFirma(traccia: { apre: boolean }[]): number | null {
+    let salto = traccia.length - 2;
+    if (salto < 0) return null;
+    let apertura = salto;
+    while (apertura >= 0 && !traccia[apertura].apre) apertura--;
+    if (apertura >= 0 && salto - apertura < 3) salto = apertura;
+    return salto;
+  }
+
+  private static async impaginaReferto(
+    patient: Patient,
+    visit: Visit,
+    options: VisitPdfOptions | undefined,
+    controlloOrfani: boolean,
+    saltoForzato: number | null,
+  ): Promise<{ blob: Blob; pagine: number; saltoPerLaFirma: number | null } | undefined> {
     this.controlloOrfani = controlloOrfani;
+    this.tracciaSalti = [];
+    this.saltoForzato = saltoForzato;
     const nv = this.norm(visit);
     if (!nv.visita) return;
     const vis = nv.visita;
@@ -2292,21 +2345,9 @@ export class PdfService {
       showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
       showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
     };
-    // Timbro di emissione: quando questa copia e' stata prodotta e da quale
-    // visita viene. La visita si puo' correggere e il referto ristampare, e
-    // due copie della stessa visita sono due fogli diversi.
-    const ora = new Date();
-    const rif = (visit.id ?? "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
-    const emissione = [
-      `Emesso il ${ora.toLocaleDateString("it-IT")} alle ${
-        ora.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
-      }`,
-      rif ? `rif. ${rif}` : "",
-    ].filter(Boolean).join("   -   ");
-
     // Piedi differiti: la numerazione "Pagina 2 di 3" vuole un totale che si
     // conosce solo a documento chiuso.
-    this.fCtx = { doctor, opts: fo, differita: true, emissione };
+    this.fCtx = { doctor, opts: fo, differita: true };
     const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
     // Il referto viaggia: finisce in una cartella di rete, in un gestionale
@@ -2465,21 +2506,47 @@ export class PdfService {
     y = this.drawTextSection(doc, y, "Accertamenti", vis.accertamenti);
     y = this.drawTextSection(doc, y, "Conclusioni e Terapia", vis.terapiaSpecifica);
 
+    // Il blocco firma vuoto (luogo, data e una riga su cui firmare) il
+    // cardiologo lo ha tolto: chi firma a penna firma sul foglio stampato.
+    // Chi ha caricato l'immagine della sua firma invece la vuole in calce
+    // ("avete la firma olografica?", chiesto dal modulo contatti il 6 ottobre
+    // 2026), e la puo' togliere dalle impostazioni. Sta prima degli allegati:
+    // la firma chiude il referto, le immagini lo seguono.
+    //
+    // Senza luogo e data a sinistra, che ricetta e certificato invece hanno:
+    // sul referto la data della visita sta gia' nell'intestazione e in cima a
+    // ogni pagina, e ripetuta in calce "non convince" (Pablo, 6 ottobre 2026).
+    let saltoPerLaFirma: number | null = null;
+    if (doctor?.signatureStampImage && prefs?.firmaSulReferto !== false) {
+      const traccia = [...(this.tracciaSalti ?? [])];
+      y = await this.drawSignatureBlock(doc, doctor, y);
+      // Sulla pagina della firma devono esserci almeno due righe: meno, e la
+      // firma e' andata a capo da sola o si e' portata dietro un rigo orfano.
+      // Si rifa' il referto, una volta sola.
+      const paginaFirma = doc.getNumberOfPages();
+      const conLaFirma = traccia.filter((v) => v.pagina === paginaFirma).length;
+      if (conLaFirma < 2 && paginaFirma > 1 && saltoForzato === null) {
+        saltoPerLaFirma = this.saltoPerLaFirma(traccia);
+      }
+    }
+
     // Le immagini chiudono il referto, dopo le conclusioni. Stavano prima, e
     // con quattro allegati da 55 mm la sezione che il curante e il paziente
     // cercano per prima finiva dietro una galleria, a pagina tre. Un allegato
     // sta in fondo: e' quello che significa allegato.
     if (options?.includeImages) await this.drawImages(doc, vis.immagini, y);
 
-    // Niente blocco firma in calce al referto: luogo, data e riga per la firma
-    // erano stati aggiunti sull'esempio dei referti ospedalieri, il cardiologo
-    // li ha tolti. Il referto si chiude sulle conclusioni; chi lo firma lo
-    // firma sul foglio stampato, e il nome del medico e' gia' in testa a ogni
-    // pagina. Ricetta, certificato e richiesta di esame la firma la tengono:
+    // Senza immagine della firma, niente blocco firma in calce al referto:
+    // luogo, data e riga per la firma erano stati aggiunti sull'esempio dei
+    // referti ospedalieri, il cardiologo li ha tolti. Il referto si chiude
+    // sulle conclusioni, e il nome del medico e' gia' in testa a ogni pagina.
+    // Ricetta, certificato e richiesta di esame la firma la tengono sempre:
     // senza, non varrebbero niente.
     try {
       this.finalizzaPagine(doc, patient, visit.dataVisita, doctor, fo);
-      return { blob: doc.output("blob") as Blob, pagine: doc.getNumberOfPages() };
+      return {
+        blob: doc.output("blob") as Blob, pagine: doc.getNumberOfPages(), saltoPerLaFirma,
+      };
     } finally { this.fCtx = null; this.controlloOrfani = true; }
   }
 

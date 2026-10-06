@@ -92,10 +92,11 @@ describe("seed dei modelli della visita", () => {
 });
 
 describe("modelli di ogni categoria", () => {
-  it("semina anche terapie, ricette, esami e certificati", async () => {
+  it("semina anche ricette, esami e certificati", async () => {
     const t = await storageService.getTemplates();
     const categorie = new Set(t.map((x) => x.category));
-    expect(categorie).toContain("terapie");
+    // Le terapie non sono piu' una categoria: stanno fra le conclusioni.
+    expect(categorie).not.toContain("terapie");
     expect(categorie).toContain("ricette");
     expect(categorie).toContain("esame_complementare");
     expect(categorie).toContain("certificato");
@@ -116,10 +117,10 @@ describe("modelli di ogni categoria", () => {
       ]),
     );
     const t = await storageService.getTemplates();
-    const diete = t.filter((x) => x.category === "terapie").map((x) => x.label);
+    const diete = t.filter((x) => x.section === "conclusioni").map((x) => x.label);
     expect(diete).toContain("Dieta mediterranea — impostazione generale");
     expect(diete).toContain("Dieta iposodica — ipertensione e scompenso");
-    // Il modello gia' presente non viene toccato.
+    // Il modello gia' presente, riscritto dal medico, resta com'e'.
     expect(t.find((x) => x.label === "Controllo periodico")?.text).toBe("vecchio");
   });
 });
@@ -157,11 +158,15 @@ describe("regressione: elenco dei seminati più vecchio dei predefiniti", () => 
   it("dopo il riallineamento una cancellazione resta tale", async () => {
     await storageService.getTemplates();
     const tutti = await storageService.getTemplates();
-    const bersaglio = tutti.find((x) => x.label === "Controllo periodico")!;
+    const bersaglio = tutti.find(
+      (x) => x.label === "Dieta mediterranea — impostazione generale",
+    )!;
     await storageService.deleteTemplate(bersaglio.id);
 
     const dopo = await storageService.getTemplates();
-    expect(dopo.some((x) => x.label === "Controllo periodico")).toBe(false);
+    expect(
+      dopo.some((x) => x.label === "Dieta mediterranea — impostazione generale"),
+    ).toBe(false);
   });
 });
 
@@ -238,7 +243,7 @@ describe("certificato non agonistico: riferimento normativo", () => {
   });
 });
 
-const { MODELLI_RISCRITTI } = await import("../../data/modelliRiscritti");
+const { MODELLI_RISCRITTI, TERAPIE_RITIRATE } = await import("../../data/modelliRiscritti");
 
 describe("predefiniti riscritti o ritirati (28 settembre 2026)", () => {
   const vecchio = (label: string) =>
@@ -317,5 +322,95 @@ describe("ricette predefinite modificate dal medico", () => {
     await storageService.updateTemplate(ricetta.id, { text: "Cardioaspirina 100 mg a pranzo." });
     const dopo = (await storageService.getTemplates()).find((x) => x.id === ricetta.id);
     expect(dopo?.text).toBe("Cardioaspirina 100 mg a pranzo.");
+  });
+});
+
+describe("scheda Terapie unita alle conclusioni (6 ottobre 2026)", () => {
+  const terapia = (id: string, label: string, text: string, isDefault = true) => ({
+    id, category: "terapie", section: "generale", label, text, isDefault,
+  });
+  const testoDi = (label: string) =>
+    (MedicalTemplates.visita.conclusioni as { label: string; text: string }[])
+      .find((t) => t.label === label)!.text;
+  const ritirato = (label: string) => TERAPIE_RITIRATE.find((t) => t.label === label)!.vecchio;
+
+  it("un'installazione nuova ha le diete fra le conclusioni e non i doppioni", async () => {
+    const t = await storageService.getTemplates();
+    const conclusioni = t.filter((x) => x.section === "conclusioni").map((x) => x.label);
+    expect(conclusioni).toContain("Quando rivolgersi al Pronto Soccorso");
+    expect(conclusioni).toContain("Scompenso cardiaco — liquidi, sale e peso");
+    expect(conclusioni).toContain("Dieta chetogenica - informazioni e cautele");
+    for (const { label } of TERAPIE_RITIRATE) expect(conclusioni).not.toContain(label);
+  });
+
+  it("chi ha l'app installata ritrova le sue terapie fra le conclusioni, senza doppioni", async () => {
+    const dieta = "Dieta mediterranea — impostazione generale";
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([
+        terapia("1", dieta, testoDi(dieta)),
+        terapia("2", "La mia dieta", "scritta da me", false),
+      ]),
+    );
+    store.set("AppDottori_templates_seeded", JSON.stringify([`terapie|generale|${dieta}`]));
+
+    const t = await storageService.getTemplates();
+    expect(t.some((x) => x.category === "terapie")).toBe(false);
+    expect(t.filter((x) => x.label === dieta)).toHaveLength(1);
+    expect(t.find((x) => x.label === dieta)?.section).toBe("conclusioni");
+    const mia = t.find((x) => x.label === "La mia dieta");
+    expect(mia).toMatchObject({ category: "visita", section: "conclusioni", text: "scritta da me" });
+  });
+
+  it("toglie i doppioni mai toccati, anche con la vecchia grafia degli accenti", async () => {
+    const vecchiaGrafia = ritirato("Controllo periodico").replace(/à/g, "a'");
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([
+        terapia("1", "Controllo periodico", vecchiaGrafia),
+        terapia("2", "Automonitoraggio pressorio", ritirato("Automonitoraggio pressorio")),
+      ]),
+    );
+    const t = await storageService.getTemplates();
+    expect(t.some((x) => x.label === "Controllo periodico")).toBe(false);
+    expect(t.some((x) => x.label === "Automonitoraggio pressorio")).toBe(false);
+  });
+
+  it("tiene un doppione che il medico ha riscritto", async () => {
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([terapia("1", "Automonitoraggio pressorio", "Diario due volte al giorno.")]),
+    );
+    const t = await storageService.getTemplates();
+    expect(t.find((x) => x.label === "Automonitoraggio pressorio")).toMatchObject({
+      section: "conclusioni",
+      text: "Diario due volte al giorno.",
+    });
+  });
+
+  it("un modello cancellato dalla vecchia scheda non torna", async () => {
+    const chetogenica = "Dieta chetogenica - informazioni e cautele";
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([terapia("1", "Quando rivolgersi al Pronto Soccorso", "x")]),
+    );
+    store.set(
+      "AppDottori_templates_seeded",
+      JSON.stringify([`terapie|generale|${chetogenica}`]),
+    );
+    const t = await storageService.getTemplates();
+    expect(t.some((x) => x.label === chetogenica)).toBe(false);
+  });
+
+  it("un backup vecchio importato dopo viene sistemato alla lettura", async () => {
+    await storageService.getTemplates();
+    const correnti = JSON.parse(store.get("AppDottori_templates")!);
+    store.set(
+      "AppDottori_templates",
+      JSON.stringify([...correnti, terapia("x", "Dal backup", "testo", false)]),
+    );
+    const t = await storageService.getTemplates();
+    expect(t.find((x) => x.label === "Dal backup")?.section).toBe("conclusioni");
+    expect(t.some((x) => x.category === "terapie")).toBe(false);
   });
 });

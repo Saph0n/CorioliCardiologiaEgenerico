@@ -107,9 +107,13 @@ function SkeletonPageHeader({
   return (
     <div className="flex flex-col gap-6 w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="space-y-2 min-w-0">
-          <Skeleton className="h-9 w-48 md:w-64 max-w-full rounded-lg" />
-          <Skeleton className="h-5 w-56 max-w-full rounded-md" />
+        <div className="flex items-center gap-4 min-w-0">
+          {/* Il riquadro dell'icona: ce l'ha la testata di ogni pagina. */}
+          <Skeleton className="h-12 w-12 md:h-14 md:w-14 rounded-xl shrink-0" />
+          <div className="space-y-2 min-w-0">
+            <Skeleton className="h-9 w-48 md:w-64 max-w-full rounded-lg" />
+            <Skeleton className="h-5 w-56 max-w-full rounded-md" />
+          </div>
         </div>
         {withActions && (
           <div className="flex gap-3 w-full md:w-auto">

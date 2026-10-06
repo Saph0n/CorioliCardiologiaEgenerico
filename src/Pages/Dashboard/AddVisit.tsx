@@ -4935,12 +4935,13 @@ export default function AddVisit() {
                     <label className="text-sm font-bold text-gray-700">
                       {numeroSezione.conclusioni}. Conclusioni e terapia
                     </label>
+                    {/* Qui stavano anche i modelli della scheda "Terapie",
+                        unita alle conclusioni il 6 ottobre 2026. */}
                     <TemplateSelector
                       templates={allTemplates.filter(
                         (t) =>
-                          (t.category === "visita" &&
-                            t.section === "conclusioni") ||
-                          t.category === "terapie",
+                          t.category === "visita" &&
+                          t.section === "conclusioni",
                       )}
                       onSelect={(t) =>
                         handleTemplateSelect("terapiaSpecifica", t)

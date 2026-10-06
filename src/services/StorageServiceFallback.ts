@@ -1,6 +1,6 @@
 import { StorageService, Patient, Visit, VisitRevision, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 import { MedicalTemplates } from '../data/medicalTemplates';
-import { MODELLI_RISCRITTI, type ModelloPrecedente } from '../data/modelliRiscritti';
+import { MODELLI_RISCRITTI, TERAPIE_RITIRATE, type ModelloPrecedente } from '../data/modelliRiscritti';
 import { computeVisitChanges } from '../utils/visitHistory';
 import { BACKUP_SCHEMA_VERSION } from '../utils/backupValidation';
 import { correggiAccenti } from '../utils/accenti';
@@ -588,14 +588,11 @@ class LocalStorageFallbackService implements StorageService {
     );
 
     // Le altre categorie sono piatte. Rientrano nel riallineamento come la
-    // visita: gli schemi dietetici stanno fra i modelli di terapia, e senza
-    // questo non arriverebbero a chi ha gia' lo store popolato.
+    // visita, e senza questo non arriverebbero a chi ha gia' lo store
+    // popolato. La categoria "terapie" non c'e' piu': i suoi modelli sono
+    // conclusioni della visita (vedi `terapieInConclusioni`).
     const nota = (t: { note?: string }) => (t.note ? { note: t.note } : {});
     const piatte: Omit<MedicalTemplate, 'id'>[] = [
-      ...MedicalTemplates.terapie.map((t) => ({
-        category: 'terapie' as const, section: 'generale' as const,
-        label: t.label, text: t.text, isDefault: true,
-      })),
       ...MedicalTemplates.ricette.map((t) => ({
         category: 'ricette' as const, section: 'generale' as const,
         label: t.label, text: t.text, ...nota(t), isDefault: true,
@@ -611,6 +608,59 @@ class LocalStorageFallbackService implements StorageService {
     ];
 
     return [...visita, ...piatte];
+  }
+
+  /**
+   * La vecchia scheda "Terapie" dei modelli dentro le conclusioni della visita.
+   *
+   * I modelli "terapie" comparivano gia' nel menu di "Conclusioni e terapia",
+   * insieme alle conclusioni: nelle impostazioni erano due schede per la
+   * stessa cosa ("non capisco perche' terapie ha una sua scheda", Pablo, 6
+   * ottobre 2026). Ogni modello "terapie" diventa una conclusione, compresi
+   * quelli scritti o modificati dal medico; i quattro predefiniti che
+   * ripetevano le conclusioni (`TERAPIE_RITIRATE`) se ne vanno, ma solo se il
+   * testo e' ancora quello seminato.
+   *
+   * Gira a ogni lettura e non una volta sola: un backup di prima, importato
+   * piu' avanti, riporta modelli "terapie", e senza scheda resterebbero
+   * invisibili nelle impostazioni. Senza modelli "terapie" non fa niente.
+   *
+   * Restituisce true se ha cambiato qualcosa.
+   */
+  private terapieInConclusioni(templates: MedicalTemplate[]): boolean {
+    if (!templates.some((t) => t.category === 'terapie')) return false;
+    const ritirato = (t: MedicalTemplate) => {
+      const m = TERAPIE_RITIRATE.find((r) => r.label === correggiAccenti(t.label ?? ''));
+      return Boolean(
+        m && t.isDefault &&
+        correggiAccenti(t.text ?? '') === correggiAccenti(m.vecchio),
+      );
+    };
+    const nuovi = templates
+      .filter((t) => t.category !== 'terapie' || !ritirato(t))
+      .map((t) =>
+        t.category === 'terapie'
+          ? { ...t, category: 'visita' as const, section: 'conclusioni' as const }
+          : t,
+      );
+    templates.length = 0;
+    templates.push(...nuovi);
+    return true;
+  }
+
+  /**
+   * Le firme dei predefiniti "terapie" gia' seminati, riscritte come
+   * conclusioni. Senza, un modello che il medico aveva cancellato dalla vecchia
+   * scheda risulterebbe mai seminato con la firma nuova, e il riallineamento
+   * lo rimetterebbe.
+   */
+  private firmeTerapieComeConclusioni(firme: Set<string>): void {
+    const VECCHIA = 'terapie|generale|';
+    for (const firma of [...firme]) {
+      if (firma.startsWith(VECCHIA)) {
+        firme.add(`visita|conclusioni|${firma.slice(VECCHIA.length)}`);
+      }
+    }
   }
 
   /** Identita' di un modello predefinito, per riconoscerlo fra un avvio e l'altro. */
@@ -655,7 +705,14 @@ class LocalStorageFallbackService implements StorageService {
     //    seminati e' piu' vecchio dell'insieme dei predefiniti. E' successo:
     //    un marker scritto quando si seminava la sola categoria "visita" non
     //    conosceva terapie e ricette, e al primo avvio le duplicava tutte.
+    // Prima del riallineamento: i modelli spostati devono gia' avere la firma
+    // di conclusione, se no il riallineamento li vedrebbe mancanti e ne
+    // aggiungerebbe una seconda copia.
+    if (this.terapieInConclusioni(templates)) {
+      await this.saveToStorage('templates', templates);
+    }
     const firmeSeminate = new Set(await this.getFromStorage<string>('templates_seeded'));
+    this.firmeTerapieComeConclusioni(firmeSeminate);
     const firmePresenti = new Set(templates.map((t) => this.firmaModello(t)));
     const mancanti = this.modelliPredefiniti().filter((t) => {
       const firma = this.firmaModello(t);

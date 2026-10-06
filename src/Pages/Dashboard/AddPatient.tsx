@@ -22,7 +22,7 @@ import { I18nProvider } from "@react-aria/i18n";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { PatientService } from "../../services/OfflineServices";
 import { PageHeader } from "../../components/PageHeader";
-import { ExternalLink, Check, ChevronDown, CalendarPlus } from "lucide-react";
+import { ExternalLink, Check, ChevronDown, CalendarPlus, Pencil, UserPlus } from "lucide-react";
 import { parseDate, type CalendarDate } from "@internationalized/date";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -601,6 +601,7 @@ export default function AddPatient() {
         }
       />
       <PageHeader
+        icon={isEditMode ? Pencil : UserPlus}
         title={isEditMode ? "Modifica paziente" : "Nuovo paziente"}
         subtitle={
           isEditMode

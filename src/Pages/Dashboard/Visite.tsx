@@ -23,6 +23,7 @@ import {
   DownloadIcon,
   Trash2Icon,
   Pencil,
+  ClipboardList,
 } from "lucide-react";
 import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService } from "../../services/OfflineServices";
@@ -342,6 +343,7 @@ export default function Visite() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
+        icon={ClipboardList}
         title="Visite"
         actions={HeaderActions}
       />

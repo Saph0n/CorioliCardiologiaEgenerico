@@ -701,6 +701,7 @@ export default function GruppiRicerca() {
   return (
     <div className="corioli-page space-y-6">
       <PageHeader
+        icon={FlaskConical}
         title={progettoAperto ? progettoAperto.nome : "Gruppi di ricerca"}
         subtitle={sottotitolo}
         actions={azioni}

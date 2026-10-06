@@ -81,6 +81,7 @@ export default function PazientiARischio() {
   return (
     <div className="corioli-page space-y-6">
       <PageHeader
+        icon={HeartPulse}
         title="Pazienti a rischio"
         subtitle={
           voci.length === 0

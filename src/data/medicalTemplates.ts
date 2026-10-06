@@ -170,69 +170,55 @@ export const MedicalTemplates = {
       {
         label: "Stratificazione del rischio cardiovascolare",
         text: "Fattori di rischio cardiovascolare rilevati: ___.\nGli indici calcolati in cartella sono riportati a titolo di supporto e vanno letti nel contesto clinico complessivo.\nSi consiglia ___ (correzione dello stile di vita / terapia ipolipemizzante / rivalutazione a ___ mesi) secondo le raccomandazioni ESC vigenti."
+      },
+      {
+        label: "Quando rivolgersi al Pronto Soccorso",
+        text: "Si raccomanda di rivolgersi al Pronto Soccorso in caso di dolore toracico prolungato, dispnea a riposo di nuova insorgenza, sincope, cardiopalmo persistente o comparsa di edemi rapidamente ingravescenti."
+      },
+      // ── Indicazioni e schemi dietetico-nutrizionali ──────────────────────
+      // Stavano nella scheda "Terapie" dei modelli, che finiva nello stesso
+      // menu di queste conclusioni: due posti per la stessa cosa. Unite il 6
+      // ottobre 2026 (Pablo), tenendo solo quelli utili: i quattro che
+      // ripetevano le conclusioni qui sopra sono stati tolti (vedi
+      // `TERAPIE_RITIRATE` in data/modelliRiscritti.ts).
+      // Gli schemi sono indicazioni qualitative di impostazione alimentare,
+      // non piani dietetici con grammature: quelli sono competenza del
+      // nutrizionista. Chetogenica, digiuno intermittente e tabella dei grassi
+      // saturi li ha chiesti il cardiologo l'8 settembre 2026.
+      {
+        label: "Dieta mediterranea — impostazione generale",
+        text: "IMPOSTAZIONE ALIMENTARE CONSIGLIATA\n\n- Verdura a ogni pasto principale e 2-3 porzioni di frutta al giorno.\n- Cereali preferibilmente integrali: pane, pasta, riso, orzo, farro.\n- Legumi almeno 3-4 volte a settimana, anche in sostituzione del secondo piatto.\n- Pesce 2-3 volte a settimana, privilegiando quello azzurro.\n- Carni bianche con moderazione; carni rosse non più di una volta a settimana e salumi solo occasionalmente.\n- Olio extravergine di oliva come condimento principale, a crudo.\n- Frutta secca non salata, una piccola porzione quasi tutti i giorni.\n- Formaggi con moderazione; latte e yogurt preferibilmente a ridotto contenuto di grassi.\n- Acqua come bevanda abituale; limitare bevande zuccherate e succhi di frutta.\n\nATTIVITÀ FISICA\nAlmeno 150 minuti a settimana di attività aerobica di intensità moderata (camminata veloce, bicicletta, nuoto), distribuiti su più giorni."
+      },
+      {
+        label: "Dieta iposodica — ipertensione e scompenso",
+        text: "RIDUZIONE DEL SALE\n\n- Non aggiungere sale a tavola e ridurlo progressivamente in cucina: il gusto si riadatta in poche settimane.\n- Insaporire con erbe aromatiche, spezie, aglio, cipolla, succo di limone e aceto.\n- Limitare gli alimenti conservati sotto sale: salumi, formaggi stagionati, cibi in scatola, dadi ed estratti per brodo, salse pronte, snack salati.\n- Leggere le etichette: il sodio è presente anche in prodotti che non sembrano salati, come pane, cereali da prima colazione e prodotti da forno.\n- Preferire pane senza sale dove disponibile.\n- Scolare e sciacquare i legumi in scatola prima dell'uso.\n\nNOTA\nGran parte del sale che assumiamo non viene dalla saliera ma dagli alimenti già pronti: è lì che si ottiene la riduzione maggiore."
+      },
+      {
+        label: "Alimentazione per ipercolesterolemia",
+        text: "INDICAZIONI ALIMENTARI\n\n- Ridurre i grassi saturi: burro, panna, lardo, strutto, carni grasse, salumi, formaggi stagionati, prodotti da forno industriali.\n- Evitare i grassi idrogenati e gli alimenti che riportano in etichetta grassi vegetali parzialmente idrogenati.\n- Preferire olio extravergine di oliva a crudo come condimento.\n- Aumentare le fibre solubili: avena, orzo, legumi, mele, agrumi, verdura.\n- Pesce 2-3 volte a settimana, soprattutto azzurro.\n- Frutta secca non salata in piccole porzioni quotidiane.\n- Limitare le uova secondo indicazione medica e preferire cotture senza grassi aggiunti.\n- Privilegiare cotture al vapore, al forno, alla griglia o in umido rispetto alla frittura.\n\nNOTA\nL'alimentazione da sola può non bastare a raggiungere l'obiettivo di colesterolo LDL indicato: va mantenuta anche quando è in corso una terapia farmacologica."
+      },
+      {
+        label: "Alimentazione per ipertrigliceridemia",
+        text: "INDICAZIONI ALIMENTARI\n\n- Ridurre gli zuccheri semplici: bevande zuccherate, succhi di frutta, dolci, miele, sciroppi, snack industriali.\n- Attenzione al fruttosio aggiunto e agli alimenti che lo contengono come dolcificante.\n- Limitare fortemente l'alcol: sui trigliceridi ha un effetto diretto e spesso è la causa principale del valore elevato.\n- Preferire cereali integrali a quelli raffinati.\n- Pesce azzurro 2-3 volte a settimana.\n- Ridurre le porzioni e la frequenza dei prodotti da forno dolci e salati.\n- Ridurre il peso corporeo dove indicato: anche un calo modesto abbassa i trigliceridi in modo apprezzabile.\n- Attività fisica aerobica regolare, almeno 150 minuti a settimana.\n\nNOTA\nI trigliceridi rispondono all'alimentazione più rapidamente del colesterolo: il controllo va ripetuto dopo un periodo adeguato di dieta."
+      },
+      {
+        label: "Scompenso cardiaco — liquidi, sale e peso",
+        text: "CONTROLLO DEL PESO\n- Pesarsi ogni mattina, dopo la minzione e prima di colazione, sempre con la stessa bilancia.\n- Annotare il peso e segnalare al medico un aumento di 2 kg o più in due-tre giorni: è un segno di ritenzione di liquidi.\n\nLIQUIDI\n- Attenersi alla quantità di liquidi indicata dal medico, contando anche brodo, minestre, tè, caffè, frutta molto acquosa e gelati.\n- In caso di sete intensa: sciacqui con acqua fredda, cubetti di ghiaccio, chewing gum senza zucchero.\n\nSALE\n- Seguire le indicazioni della dieta iposodica: è la misura alimentare che incide di più sulla congestione.\n\nSEGNALARE AL MEDICO\nAumento rapido del peso, gonfiore a caviglie o gambe, affanno che peggiora o compare da sdraiati, necessità di aggiungere cuscini per dormire."
+      },
+      {
+        label: "Dieta chetogenica - informazioni e cautele",
+        text: "SCHEMA CHETOGENICO - INFORMAZIONI E CAUTELE\n\nNon è una prescrizione: è la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- Riduzione forte dei carboidrati (indicativamente sotto i 50 g al giorno), quota proteica moderata, grassi come fonte energetica principale.\n- L'organismo passa a usare i corpi chetonici: da qui il nome.\n- Nelle prime settimane il calo di peso è in buona parte acqua, e la pressione arteriosa può abbassarsi.\n\nCOSA SI RIDUCE\n- Pane, pasta, riso, patate, cereali, prodotti da forno, dolci, zucchero, bevande zuccherate.\n- Frutta più ricca di zuccheri; legumi in quantità limitata.\n\nCOSA RESTA\n- Verdura non amidacea in abbondanza, pesce, uova, carne, formaggi secondo indicazione, olio extravergine di oliva, frutta secca.\n\nQUANDO NON VA INIZIATA SENZA VALUTAZIONE\n- Insufficienza renale o epatica, diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare.\n- In terapia con SGLT2-inibitori: rischio di chetoacidosi euglicemica.\n- In terapia antipertensiva o diuretica le dosi possono dover essere riviste: va concordato prima di iniziare.\n\nDA SEGNALARE AL MEDICO\nStanchezza marcata, capogiri, crampi, stitichezza ostinata, cardiopalmo.\n\nNOTA\nÈ uno schema pensato per un periodo definito e con un obiettivo preciso, non per un uso indefinito. L'effetto sul colesterolo LDL non è prevedibile a priori e va ricontrollato.",
+      },
+      {
+        label: "Digiuno intermittente - informazioni e cautele",
+        text: "DIGIUNO INTERMITTENTE - INFORMAZIONI E CAUTELE\n\nNon è una prescrizione: è la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- L'alimentazione si concentra in una finestra oraria: le formule più usate sono 16 ore di digiuno e 8 di alimentazione, oppure 14 e 10.\n- Non riguarda che cosa si mangia ma quando: la qualità del cibo resta quella dell'impostazione mediterranea.\n- Acqua, tè e caffè non zuccherati sono ammessi nelle ore di digiuno.\n\nCOME SI IMPOSTA\n- Meglio partire da una finestra ampia e restringerla gradualmente.\n- Spostare o saltare la cena è in genere più sostenibile che saltare la colazione, ma conta soprattutto la regolarità.\n- Nella finestra di alimentazione non si recupera: le porzioni restano quelle abituali.\n\nQUANDO NON VA INIZIATO SENZA VALUTAZIONE\n- Diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare, età avanzata con calo ponderale in atto.\n- Con terapie da assumere a orari fissi o a stomaco pieno gli orari vanno rivisti insieme al medico.\n\nDA SEGNALARE AL MEDICO\nCapogiri, sudorazione fredda, tremori o confusione sono i sintomi dell'ipoglicemia: impongono di interrompere il digiuno e di avvisare il medico.",
+      },
+      {
+        label: "Grassi saturi per porzione - tabella di riferimento",
+        text: "GRASSI SATURI: QUANTO CE N'È IN UNA PORZIONE\n\nValori indicativi per porzione abituale, arrotondati. Servono a dare la misura, non a fare un calcolo.\n\nMOLTO ALTO - oltre 8 g per porzione\n- Burro, 20 g (una noce): circa 10 g\n- Panna da cucina, 100 ml: circa 13 g\n- Formaggio stagionato (grana, pecorino), 50 g: circa 10 g\n\nALTO - da 4 a 8 g per porzione\n- Mozzarella, 100 g: circa 7 g\n- Salame, 50 g: circa 6 g\n- Croissant o brioche industriale, 1 pezzo: circa 6 g\n- Carne rossa grassa, 100 g: circa 5 g\n\nMEDIO - da 1 a 4 g per porzione\n- Latte intero, 200 ml: circa 4 g\n- Prosciutto crudo sgrassato, 50 g: circa 2 g\n- Yogurt intero, 125 g: circa 2 g\n- Uovo, 1 medio: circa 2 g\n- Olio extravergine di oliva, 10 g (un cucchiaio): circa 1,5 g\n\nBASSO - sotto 1 g per porzione\n- Pesce azzurro, 100 g: circa 1 g\n- Petto di pollo o tacchino, 100 g: circa 0,5 g\n- Legumi cotti, 150 g: meno di 0,5 g\n- Verdura, frutta, pane e pasta: quantità trascurabili\n\nCOME SI LEGGE\nL'indicazione corrente è di tenere i grassi saturi sotto il 10% delle calorie della giornata, e sotto il 7% quando il colesterolo LDL è alto: per 2000 kcal sono rispettivamente 22 g e 15 g al giorno. La tabella serve a vedere dove finisce il grosso della quota, non a eliminare qualcosa.",
       }
     ]
   },
-  terapie: [
-    // ── Schemi dietetico-nutrizionali ──────────────────────────────────────
-    // Stanno fra i modelli di terapia e non in un documento a se' perche' e'
-    // qui che il referto cardiologico mette i consigli sullo stile di vita:
-    // il paziente se li porta a casa insieme al resto.
-    // Sono indicazioni qualitative di impostazione alimentare, non piani
-    // dietetici con grammature: quelli sono competenza del nutrizionista.
-    {
-      label: "Dieta mediterranea — impostazione generale",
-      text: "IMPOSTAZIONE ALIMENTARE CONSIGLIATA\n\n- Verdura a ogni pasto principale e 2-3 porzioni di frutta al giorno.\n- Cereali preferibilmente integrali: pane, pasta, riso, orzo, farro.\n- Legumi almeno 3-4 volte a settimana, anche in sostituzione del secondo piatto.\n- Pesce 2-3 volte a settimana, privilegiando quello azzurro.\n- Carni bianche con moderazione; carni rosse non più di una volta a settimana e salumi solo occasionalmente.\n- Olio extravergine di oliva come condimento principale, a crudo.\n- Frutta secca non salata, una piccola porzione quasi tutti i giorni.\n- Formaggi con moderazione; latte e yogurt preferibilmente a ridotto contenuto di grassi.\n- Acqua come bevanda abituale; limitare bevande zuccherate e succhi di frutta.\n\nATTIVITÀ FISICA\nAlmeno 150 minuti a settimana di attività aerobica di intensità moderata (camminata veloce, bicicletta, nuoto), distribuiti su più giorni."
-    },
-    {
-      label: "Dieta iposodica — ipertensione e scompenso",
-      text: "RIDUZIONE DEL SALE\n\n- Non aggiungere sale a tavola e ridurlo progressivamente in cucina: il gusto si riadatta in poche settimane.\n- Insaporire con erbe aromatiche, spezie, aglio, cipolla, succo di limone e aceto.\n- Limitare gli alimenti conservati sotto sale: salumi, formaggi stagionati, cibi in scatola, dadi ed estratti per brodo, salse pronte, snack salati.\n- Leggere le etichette: il sodio è presente anche in prodotti che non sembrano salati, come pane, cereali da prima colazione e prodotti da forno.\n- Preferire pane senza sale dove disponibile.\n- Scolare e sciacquare i legumi in scatola prima dell'uso.\n\nNOTA\nGran parte del sale che assumiamo non viene dalla saliera ma dagli alimenti già pronti: è lì che si ottiene la riduzione maggiore."
-    },
-    {
-      label: "Alimentazione per ipercolesterolemia",
-      text: "INDICAZIONI ALIMENTARI\n\n- Ridurre i grassi saturi: burro, panna, lardo, strutto, carni grasse, salumi, formaggi stagionati, prodotti da forno industriali.\n- Evitare i grassi idrogenati e gli alimenti che riportano in etichetta grassi vegetali parzialmente idrogenati.\n- Preferire olio extravergine di oliva a crudo come condimento.\n- Aumentare le fibre solubili: avena, orzo, legumi, mele, agrumi, verdura.\n- Pesce 2-3 volte a settimana, soprattutto azzurro.\n- Frutta secca non salata in piccole porzioni quotidiane.\n- Limitare le uova secondo indicazione medica e preferire cotture senza grassi aggiunti.\n- Privilegiare cotture al vapore, al forno, alla griglia o in umido rispetto alla frittura.\n\nNOTA\nL'alimentazione da sola può non bastare a raggiungere l'obiettivo di colesterolo LDL indicato: va mantenuta anche quando è in corso una terapia farmacologica."
-    },
-    {
-      label: "Alimentazione per ipertrigliceridemia",
-      text: "INDICAZIONI ALIMENTARI\n\n- Ridurre gli zuccheri semplici: bevande zuccherate, succhi di frutta, dolci, miele, sciroppi, snack industriali.\n- Attenzione al fruttosio aggiunto e agli alimenti che lo contengono come dolcificante.\n- Limitare fortemente l'alcol: sui trigliceridi ha un effetto diretto e spesso è la causa principale del valore elevato.\n- Preferire cereali integrali a quelli raffinati.\n- Pesce azzurro 2-3 volte a settimana.\n- Ridurre le porzioni e la frequenza dei prodotti da forno dolci e salati.\n- Ridurre il peso corporeo dove indicato: anche un calo modesto abbassa i trigliceridi in modo apprezzabile.\n- Attività fisica aerobica regolare, almeno 150 minuti a settimana.\n\nNOTA\nI trigliceridi rispondono all'alimentazione più rapidamente del colesterolo: il controllo va ripetuto dopo un periodo adeguato di dieta."
-    },
-    {
-      label: "Scompenso cardiaco — liquidi, sale e peso",
-      text: "CONTROLLO DEL PESO\n- Pesarsi ogni mattina, dopo la minzione e prima di colazione, sempre con la stessa bilancia.\n- Annotare il peso e segnalare al medico un aumento di 2 kg o più in due-tre giorni: è un segno di ritenzione di liquidi.\n\nLIQUIDI\n- Attenersi alla quantità di liquidi indicata dal medico, contando anche brodo, minestre, tè, caffè, frutta molto acquosa e gelati.\n- In caso di sete intensa: sciacqui con acqua fredda, cubetti di ghiaccio, chewing gum senza zucchero.\n\nSALE\n- Seguire le indicazioni della dieta iposodica: è la misura alimentare che incide di più sulla congestione.\n\nSEGNALARE AL MEDICO\nAumento rapido del peso, gonfiore a caviglie o gambe, affanno che peggiora o compare da sdraiati, necessità di aggiungere cuscini per dormire."
-    },
-    {
-      label: "Dieta chetogenica - informazioni e cautele",
-      text: "SCHEMA CHETOGENICO - INFORMAZIONI E CAUTELE\n\nNon è una prescrizione: è la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- Riduzione forte dei carboidrati (indicativamente sotto i 50 g al giorno), quota proteica moderata, grassi come fonte energetica principale.\n- L'organismo passa a usare i corpi chetonici: da qui il nome.\n- Nelle prime settimane il calo di peso è in buona parte acqua, e la pressione arteriosa può abbassarsi.\n\nCOSA SI RIDUCE\n- Pane, pasta, riso, patate, cereali, prodotti da forno, dolci, zucchero, bevande zuccherate.\n- Frutta più ricca di zuccheri; legumi in quantità limitata.\n\nCOSA RESTA\n- Verdura non amidacea in abbondanza, pesce, uova, carne, formaggi secondo indicazione, olio extravergine di oliva, frutta secca.\n\nQUANDO NON VA INIZIATA SENZA VALUTAZIONE\n- Insufficienza renale o epatica, diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare.\n- In terapia con SGLT2-inibitori: rischio di chetoacidosi euglicemica.\n- In terapia antipertensiva o diuretica le dosi possono dover essere riviste: va concordato prima di iniziare.\n\nDA SEGNALARE AL MEDICO\nStanchezza marcata, capogiri, crampi, stitichezza ostinata, cardiopalmo.\n\nNOTA\nÈ uno schema pensato per un periodo definito e con un obiettivo preciso, non per un uso indefinito. L'effetto sul colesterolo LDL non è prevedibile a priori e va ricontrollato.",
-    },
-    {
-      label: "Digiuno intermittente - informazioni e cautele",
-      text: "DIGIUNO INTERMITTENTE - INFORMAZIONI E CAUTELE\n\nNon è una prescrizione: è la descrizione di uno schema, da valutare caso per caso e da seguire sotto controllo medico.\n\nCOME FUNZIONA\n- L'alimentazione si concentra in una finestra oraria: le formule più usate sono 16 ore di digiuno e 8 di alimentazione, oppure 14 e 10.\n- Non riguarda che cosa si mangia ma quando: la qualità del cibo resta quella dell'impostazione mediterranea.\n- Acqua, tè e caffè non zuccherati sono ammessi nelle ore di digiuno.\n\nCOME SI IMPOSTA\n- Meglio partire da una finestra ampia e restringerla gradualmente.\n- Spostare o saltare la cena è in genere più sostenibile che saltare la colazione, ma conta soprattutto la regolarità.\n- Nella finestra di alimentazione non si recupera: le porzioni restano quelle abituali.\n\nQUANDO NON VA INIZIATO SENZA VALUTAZIONE\n- Diabete in terapia con insulina o sulfaniluree (rischio di ipoglicemia), gravidanza e allattamento, disturbi del comportamento alimentare, età avanzata con calo ponderale in atto.\n- Con terapie da assumere a orari fissi o a stomaco pieno gli orari vanno rivisti insieme al medico.\n\nDA SEGNALARE AL MEDICO\nCapogiri, sudorazione fredda, tremori o confusione sono i sintomi dell'ipoglicemia: impongono di interrompere il digiuno e di avvisare il medico.",
-    },
-    {
-      label: "Grassi saturi per porzione - tabella di riferimento",
-      text: "GRASSI SATURI: QUANTO CE N'È IN UNA PORZIONE\n\nValori indicativi per porzione abituale, arrotondati. Servono a dare la misura, non a fare un calcolo.\n\nMOLTO ALTO - oltre 8 g per porzione\n- Burro, 20 g (una noce): circa 10 g\n- Panna da cucina, 100 ml: circa 13 g\n- Formaggio stagionato (grana, pecorino), 50 g: circa 10 g\n\nALTO - da 4 a 8 g per porzione\n- Mozzarella, 100 g: circa 7 g\n- Salame, 50 g: circa 6 g\n- Croissant o brioche industriale, 1 pezzo: circa 6 g\n- Carne rossa grassa, 100 g: circa 5 g\n\nMEDIO - da 1 a 4 g per porzione\n- Latte intero, 200 ml: circa 4 g\n- Prosciutto crudo sgrassato, 50 g: circa 2 g\n- Yogurt intero, 125 g: circa 2 g\n- Uovo, 1 medio: circa 2 g\n- Olio extravergine di oliva, 10 g (un cucchiaio): circa 1,5 g\n\nBASSO - sotto 1 g per porzione\n- Pesce azzurro, 100 g: circa 1 g\n- Petto di pollo o tacchino, 100 g: circa 0,5 g\n- Legumi cotti, 150 g: meno di 0,5 g\n- Verdura, frutta, pane e pasta: quantità trascurabili\n\nCOME SI LEGGE\nL'indicazione corrente è di tenere i grassi saturi sotto il 10% delle calorie della giornata, e sotto il 7% quando il colesterolo LDL è alto: per 2000 kcal sono rispettivamente 22 g e 15 g al giorno. La tabella serve a vedere dove finisce il grosso della quota, non a eliminare qualcosa.",
-    },
-    {
-      label: "Controllo periodico",
-      text: "Si consiglia di proseguire i controlli cardiologici periodici e di mantenere uno stile di vita sano: attività fisica aerobica di intensità moderata almeno 150 minuti a settimana, dieta iposodica e mediterranea, astensione dal fumo, consumo di alcol entro i limiti raccomandati."
-    },
-    {
-      label: "Automonitoraggio pressorio",
-      text: "Si consiglia automisurazione domiciliare della pressione arteriosa e della frequenza cardiaca due volte al giorno (mattino e sera), a riposo da almeno 5 minuti e in posizione seduta, annotando i valori su un diario da portare al prossimo controllo."
-    },
-    {
-      label: "Rivalutazione dopo modifica terapeutica",
-      text: "Si imposta la terapia indicata e si programma una rivalutazione clinica al termine del periodo di titolazione. Si raccomanda controllo di funzione renale ed elettroliti a 15 giorni. Tornare a controllo in caso di comparsa di effetti indesiderati."
-    },
-    {
-      label: "Correzione dei fattori di rischio",
-      text: "Si raccomandano: riduzione dell'apporto di sodio, calo ponderale fino a un BMI inferiore a 25, attività fisica aerobica regolare, astensione completa dal fumo e correzione dell'assetto lipidico secondo il profilo di rischio complessivo."
-    },
-    {
-      label: "Quando rivolgersi al Pronto Soccorso",
-      text: "Si raccomanda di rivolgersi al Pronto Soccorso in caso di dolore toracico prolungato, dispnea a riposo di nuova insorgenza, sincope, cardiopalmo persistente o comparsa di edemi rapidamente ingravescenti."
-    }
-  ],
   ricette: [
     {
       label: "Terapia antipertensiva",

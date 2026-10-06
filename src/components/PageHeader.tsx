@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 
 interface PageHeaderProps {
   title: string;
@@ -9,30 +10,38 @@ interface PageHeaderProps {
   subtitle?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
+  /** L'icona della pagina, nel riquadro scuro a sinistra del titolo. */
+  icon: LucideIcon;
 }
 
 /**
- * Testata delle pagine.
+ * Testata delle pagine, uguale a quella di Corioli Ginecologia: riquadro
+ * scuro con l'icona della pagina, titolo grande in grassetto, sottotitolo.
  *
- * Prima portava a sinistra un riquadro scuro con l'icona della pagina: era
- * l'elemento piu' scuro dello schermo, piu' del pulsante principale, e diceva
- * di nuovo quello che dice gia' la voce attiva del menu.
+ * Il riquadro era stato tolto nella revisione del 23 settembre 2026 (era
+ * l'elemento piu' scuro dello schermo e ripeteva la voce attiva del menu). Il
+ * 6 ottobre 2026 Pablo lo ha voluto di nuovo, prima sulla Home ("preferisco
+ * come e' su ginecologia") e poi su tutte le pagine, perche' le testate
+ * fossero coerenti con quella della Home. L'icona e' obbligatoria per lo
+ * stesso motivo: una pagina nuova non puo' uscire con una testata diversa.
  *
- * Titolo e sottotitolo sono lo stesso carattere in due tagli (`font-titolo`
- * in tailwind.config.js), a 28/36 e 16/24. Prima erano 24px stretto a mano e
- * 14px: la data sotto al saluto della Home sembrava una didascalia, e il
- * saluto usciva piu' piccolo dei numeri delle card subito sotto (30px).
  * Lo scheletro di caricamento (`SkeletonPageHeader`) ha la stessa altezza.
  */
-export function PageHeader({ title, subtitle, actions, children }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, actions, children, icon: Icona }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-5 w-full">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div className="min-w-0">
-          <h1 className="font-titolo text-[28px] leading-9 font-semibold text-foreground">
-            {title}
-          </h1>
-          {subtitle && <p className="text-base text-default-600 mt-1">{subtitle}</p>}
+    <div className="flex flex-col gap-6 w-full">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="p-3 rounded-xl bg-slate-800 text-white shrink-0">
+            <Icona className="hidden md:block w-8 h-8" />
+            <Icona className="md:hidden w-6 h-6" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+              {title}
+            </h1>
+            {subtitle && <p className="text-base text-default-500 mt-1">{subtitle}</p>}
+          </div>
         </div>
         {actions && <div className="flex gap-3 w-full md:w-auto">{actions}</div>}
       </div>

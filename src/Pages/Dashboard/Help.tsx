@@ -655,6 +655,7 @@ export default function HelpAndFeedback() {
   return (
     <div className="corioli-page space-y-6 animate-in fade-in duration-500 flex flex-col min-h-0">
       <PageHeader
+        icon={LifeBuoy}
         title="Aiuto"
         actions={
           // Era un pulsante fisso nella navbar. Dopo un import di backup l'app

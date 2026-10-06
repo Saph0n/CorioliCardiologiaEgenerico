@@ -22,6 +22,7 @@ import {
   Search,
   Trash2,
   Upload,
+  FolderOpen,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -320,6 +321,7 @@ export default function PatientFiles() {
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       <PageHeader
+        icon={FolderOpen}
         title="File del paziente"
         subtitle={
           patient

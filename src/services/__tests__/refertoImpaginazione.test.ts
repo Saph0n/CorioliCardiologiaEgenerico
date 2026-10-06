@@ -141,8 +141,8 @@ describe("referto di visita: niente esce dal foglio", () => {
   });
 
   it("niente scrive nella fascia riservata al piede", async () => {
-    // Sotto il filetto ci va solo il piede — numerazione, firma
-    // dell'applicazione, timbro di emissione — che si disegna a FOOT_Y + 4,5.
+    // Sotto il filetto ci va solo il piede — numerazione e firma
+    // dell'applicazione — che si disegna a FOOT_Y + 4,5.
     const dentroIlPiede = (await scritteDelReferto(paziente, visitaPiena))
       .filter((s) => s.y > FOOT_Y && s.y < FOOT_Y + 3)
       .map((s) => `"${s.testo}" a ${s.y.toFixed(1)} mm`);

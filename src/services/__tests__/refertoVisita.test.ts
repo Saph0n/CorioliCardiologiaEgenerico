@@ -451,12 +451,12 @@ describe("referto di visita: impaginazione da referto ospedaliero", () => {
     expect(occorrenze).toBeGreaterThan(1);
   });
 
-  it("dice quando e' stata stampata questa copia", async () => {
-    // La visita si puo' correggere e il referto ristampare: due copie della
-    // stessa visita sono due fogli diversi, e devono poterlo dire.
+  it("non porta ora di stampa e codice della visita nel piede", async () => {
+    // "Emesso il ... - rif. ..." tolto il 6 ottobre 2026: il codice interno
+    // della visita non si puo' cercare nell'app, per chi legge era una sigla.
     const testo = await testoDelPdf(visita({}));
-    expect(testo).toContain("Emesso il");
-    expect(testo).toContain("rif. v1");
+    expect(testo).not.toContain("Emesso il");
+    expect(testo).not.toContain("rif. v1");
   });
 
   it("si presenta con un titolo nelle proprieta' del file", async () => {

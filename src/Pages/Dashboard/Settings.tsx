@@ -58,6 +58,7 @@ import { PageHeader } from "../../components/PageHeader";
 import BackupManager from "../../components/BackupManager";
 import { TemplateEditorModal } from "../../components/TemplateEditorModal";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
+import { FirmaTimbroCard } from "../../components/FirmaTimbroCard";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import {
   DoctorService,
@@ -166,6 +167,7 @@ function SettingsSectionNotice({
 const VOCI_INDICE_IMPOSTAZIONI: { id: string; label: string }[] = [
   { id: "impostazioni-sicurezza", label: "Sicurezza" },
   { id: "impostazioni-profilo", label: "Profilo" },
+  { id: "impostazioni-firma", label: "Firma olografica" },
   { id: "impostazioni-ambulatori", label: "Ambulatori" },
   { id: "impostazioni-dati", label: "Dati e backup" },
   { id: "impostazioni-visita", label: "Visita e referto" },
@@ -351,6 +353,9 @@ const SettingsScreen = () => {
     gruppiRicerca: [] as string[],
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
+    // Vale solo se nel profilo c'e' l'immagine della firma: senza, il referto
+    // resta senza blocco firma come l'ha voluto il cardiologo.
+    firmaSulReferto: true,
     sogliaCacSevera: SOGLIA_CAC_PREDEFINITA as number,
     moduliVisita: { ...MODULI_VISITA_SPENTI } as ModuliVisitaAttivi,
     prontuarioEnabled: false,
@@ -535,8 +540,7 @@ const SettingsScreen = () => {
           specializzazione: doctor.specializzazione || "",
         });
         setAmbulatori(doctor.ambulatori || []);
-        const sig = (doctor as any).signatureStampImage;
-        if (sig) setSignatureStampImage(sig);
+        setSignatureStampImage(doctor.signatureStampImage || "");
       }
     } catch (error) {
       console.error("Errore nel caricamento dati dottore:", error);
@@ -1505,6 +1509,7 @@ const SettingsScreen = () => {
   return (
     <div className="corioli-page space-y-6 animate-in fade-in duration-500">
       <PageHeader
+        icon={SettingsIcon}
         title="Impostazioni"
       />
 
@@ -1695,6 +1700,15 @@ const SettingsScreen = () => {
               </div>
             </CardBody>
           </Card>
+
+          <FirmaTimbroCard
+            immagine={signatureStampImage}
+            onImmagineChange={setSignatureStampImage}
+            firmaSulReferto={preferences.firmaSulReferto !== false}
+            onFirmaSulRefertoChange={(value) =>
+              handlePreferenceChange("firmaSulReferto", value)
+            }
+          />
 
           {/* Ambulatori */}
           <Card
@@ -2588,24 +2602,10 @@ const SettingsScreen = () => {
             }
           >
             <Tab key="visita" title="Visita" />
-            <Tab key="terapie" title="Terapie" />
             <Tab key="ricette" title="Ricette" />
             <Tab key="esame_complementare" title="Esami" />
             <Tab key="certificato" title="Certificati" />
           </Tabs>
-
-          {selectedCategory === "terapie" && (
-            <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4">
-              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <p className="text-xs leading-relaxed text-default-600">
-                I modelli <strong>Terapie</strong> compaiono nella sezione{" "}
-                <strong>Conclusioni e terapia</strong> della visita. Scrivili in forma{" "}
-                <strong>discorsiva</strong> (indicazioni e raccomandazioni). Per
-                l&apos;elenco dei farmaci da stampare in ricetta usa la scheda{" "}
-                <strong>Ricette</strong>.
-              </p>
-            </div>
-          )}
 
           {selectedCategory === "ricette" && (
             <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4">

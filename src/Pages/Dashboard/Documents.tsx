@@ -269,6 +269,7 @@ export default function Documents() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
+        icon={FileText}
         title="Documenti personali"
         subtitle="Corsi ECM, attestati e documenti professionali tuoi: le carte dei pazienti stanno nella loro scheda."
         actions={HeaderActions}

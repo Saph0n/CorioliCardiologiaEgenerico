@@ -7,6 +7,7 @@ import {
   Button,
   Chip,
   Avatar,
+  Tooltip,
 } from "@nextui-org/react";
 import {
   UserPlus,
@@ -22,6 +23,7 @@ import {
   ClipboardList,
   Cake,
   Clock,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   DoctorService,
@@ -36,7 +38,6 @@ import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
-import { toLocalIsoDate } from "../../utils/dateUtils";
 import { PreferenceService } from "../../services/OfflineServices";
 import {
   formattaDurata,
@@ -52,6 +53,8 @@ import { RigaPazienteARischio } from "../../components/cardio/RigaPazienteARisch
 import { formatPatientDisplayName, patientInitials } from "../../utils/patientDisplay";
 import { titoloMedico } from "../../utils/doctorProfile";
 import { EVENTO_PAZIENTI_CAMBIATI } from "../../utils/guidaPrimoAvvio";
+import { esamiDelleVisite, NOME_ESAME, type EsameStrumentale } from "../../utils/esamiVisita";
+import { EtichettaAltriEsami, EtichettaEsame } from "../../components/cardio/EtichettaEsame";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -61,7 +64,16 @@ interface GroupedRecentVisit {
   count: number;
   tipo?: Visit["tipo"];
   mixedTypes: boolean;
+  /** Esami strumentali fatti quel giorno, per le etichette. */
+  esami: EsameStrumentale[];
 }
+
+/**
+ * Etichette d'esame che stanno in una riga di "Visite recenti" accanto al
+ * nome: oltre, un "+N" con l'elenco al passaggio del mouse. Con tre il nome
+ * del paziente restava di poche lettere.
+ */
+const ESAMI_IN_RIGA = 2;
 
 /** Una riga della colonna del rischio, con nome e iniziali gia' risolti. */
 interface VoceRischioConNome extends VoceRischio {
@@ -116,14 +128,18 @@ const getVisitDateKey = (dataVisita: string): string => {
 
 const groupRecentVisits = (
   visits: (Visit & { patientName: string })[],
-  maxItems = 5,
+  maxItems = 6,
 ): GroupedRecentVisit[] => {
   const groups = new Map<string, GroupedRecentVisit>();
+  const visitePerGruppo = new Map<string, Visit[]>();
 
   for (const visit of visits) {
     const dateKey = getVisitDateKey(visit.dataVisita);
     const key = `${visit.patientId}_${dateKey}`;
     const existing = groups.get(key);
+    const stessoGiorno = visitePerGruppo.get(key);
+    if (stessoGiorno) stessoGiorno.push(visit);
+    else visitePerGruppo.set(key, [visit]);
 
     if (!existing) {
       groups.set(key, {
@@ -134,6 +150,7 @@ const groupRecentVisits = (
         count: 1,
         tipo: visit.tipo,
         mixedTypes: false,
+        esami: [],
       });
       continue;
     }
@@ -144,60 +161,52 @@ const groupRecentVisits = (
     }
   }
 
-  return Array.from(groups.values())
+  return Array.from(groups.entries())
+    .map(([key, gruppo]) => ({
+      ...gruppo,
+      esami: esamiDelleVisite(visitePerGruppo.get(key) ?? []),
+    }))
     .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
     .slice(0, maxItems);
 };
 
+/**
+ * Sotto al saluto: l'ultima visita registrata, come su Corioli Ginecologia
+ * ("Ultima visita: 11 settembre con Maria Vecchi").
+ *
+ * Prima, con visite di oggi, diceva "Hai registrato 1 visita oggi", e
+ * l'ultima visita compariva solo alla prima apertura della giornata: la stessa
+ * riga cambiava frase nel corso del giorno. A Pablo non piaceva (6 ottobre
+ * 2026), ora e' sempre la stessa forma. Senza visite resta la data di oggi.
+ */
 const buildDashboardSubtitle = (
-  visits: (Visit & { patientName: string })[],
+  visits: (Visit & { patientNameInFrase: string })[],
 ): string => {
+  const last = visits[0];
+  if (!last) return oggiPerEsteso();
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const visitDate = new Date(last.dataVisita);
+  if (isNaN(visitDate.getTime())) return oggiPerEsteso();
+  visitDate.setHours(0, 0, 0, 0);
 
-  const visitsToday = visits.filter((v) => {
-    const d = new Date(v.dataVisita);
-    if (isNaN(d.getTime())) return false;
-    d.setHours(0, 0, 0, 0);
-    return d.getTime() === today.getTime();
-  });
-
-  if (visitsToday.length > 0) {
-    const n = visitsToday.length;
-    return n === 1
-      ? "Hai registrato 1 visita oggi"
-      : `Hai registrato ${n} visite oggi`;
-  }
-
-  const todayKey = toLocalIsoDate(today);
-  let isFirstOpenToday = false;
-  try {
-    const lastOpen = localStorage.getItem("corioli_home_last_open");
-    isFirstOpenToday = lastOpen !== todayKey;
-    if (isFirstOpenToday) {
-      localStorage.setItem("corioli_home_last_open", todayKey);
-    }
-  } catch {
-    /* ignore */
-  }
-
-  if (isFirstOpenToday && visits.length > 0) {
-    const last = visits[0];
-    const visitDate = new Date(last.dataVisita);
-    visitDate.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const when =
-      visitDate.getTime() === yesterday.getTime()
+  const when =
+    visitDate.getTime() === today.getTime()
+      ? "oggi"
+      : visitDate.getTime() === yesterday.getTime()
         ? "ieri"
         : visitDate.toLocaleDateString("it-IT", {
             day: "numeric",
             month: "long",
+            // L'anno solo se non e' quello in corso: "11 settembre" basta.
+            ...(visitDate.getFullYear() !== today.getFullYear()
+              ? { year: "numeric" as const }
+              : {}),
           });
-    return `Ultima visita: ${when} con ${last.patientName}`;
-  }
-
-  return oggiPerEsteso();
+  return `Ultima visita: ${when} con ${last.patientNameInFrase}`;
 };
 
 /** "mercoledì 23 settembre": sotto al saluto, al posto di una frase di rito. */
@@ -344,13 +353,20 @@ export default function Home() {
               ? formatPatientDisplayName(p) ?? "Paziente senza nome"
               : "Paziente sconosciuto",
             patientCf: p?.codiceFiscale || "",
+            // Per la frase sotto al saluto: "con Maria Vecchi", non "con
+            // VECCHI Maria". Il maiuscolo del cognome serve negli elenchi.
+            patientNameInFrase: p
+              ? [p.nome, p.cognome].filter(Boolean).join(" ") || "paziente senza nome"
+              : "paziente sconosciuto",
           };
         });
         const sortedVisits = enrichedVisits.sort(
           (a, b) =>
             new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime(),
         );
-        const groupedRecentVisits = groupRecentVisits(sortedVisits, 5);
+        // Sei, come i pazienti recenti nella colonna accanto: le righe delle
+        // due colonne stanno allineate.
+        const groupedRecentVisits = groupRecentVisits(sortedVisits, 6);
         const subtitle = buildDashboardSubtitle(sortedVisits);
 
         // Gruppi di ricerca: il pannello compare solo se la funzione e' attiva.
@@ -438,6 +454,7 @@ export default function Home() {
       <PageHeader
         title={`${getGreetingMessage()}, ${doctorName ? `${titolo} ${doctorName}` : "Dottore"}`}
         subtitle={stats.subtitle}
+        icon={LayoutDashboard}
         actions={HeaderActions}
       />
 
@@ -607,7 +624,12 @@ export default function Home() {
                               Paziente senza nome
                             </p>
                           )}
-                          <p className="text-xs text-gray-500 truncate">
+                          {/* Altezza fissa, la stessa della seconda riga delle
+                              visite recenti accanto (dove ci sono le etichette
+                              degli esami): il codice fiscale e' a spaziatura
+                              fissa e allungava la riga di un pixel, e le righe
+                              delle due colonne non stavano piu' allineate. */}
+                          <p className="text-xs leading-5 h-5 text-gray-500 truncate">
                             <CodiceFiscaleValue
                               value={patient.codiceFiscale}
                               generatedFromImport={Boolean(
@@ -694,11 +716,33 @@ export default function Home() {
                         <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                           {group.patientName}
                         </p>
-                        {/* div, non p: contiene una Chip (che rende un div) ed è usato come contenitore flex */}
-                        <p className="text-xs text-default-600 truncate">
-                          {group.dateLabel}
-                          {group.count > 1 && <> · {group.count} visite</>}
-                        </p>
+                        {/* Gli esami del giorno prima della data (Pablo, 6
+                            ottobre 2026). Riga alta 20px come le etichette, e
+                            come la seconda riga dei pazienti recenti: le due
+                            colonne restano allineate. */}
+                        <div className="flex h-5 min-w-0 items-center gap-1.5">
+                          {group.esami.slice(0, ESAMI_IN_RIGA).map((esame) => (
+                            <EtichettaEsame key={esame} esame={esame} />
+                          ))}
+                          {group.esami.length > ESAMI_IN_RIGA && (
+                            <Tooltip
+                              content={group.esami
+                                .slice(ESAMI_IN_RIGA)
+                                .map((e) => NOME_ESAME[e])
+                                .join(", ")}
+                            >
+                              <span className="shrink-0">
+                                <EtichettaAltriEsami
+                                  quanti={group.esami.length - ESAMI_IN_RIGA}
+                                />
+                              </span>
+                            </Tooltip>
+                          )}
+                          <span className="min-w-0 truncate text-xs text-default-600">
+                            {group.dateLabel}
+                            {group.count > 1 && <> · {group.count} visite</>}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <ArrowRight

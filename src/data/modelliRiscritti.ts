@@ -83,3 +83,36 @@ export const MODELLI_RISCRITTI: readonly ModelloPrecedente[] = [
       "Esame eseguito presso ___ in data ___.\nCalcium score (Agatston) pari a ___.\nPlacca ___ (calcifica / mista / non calcifica) a carico di ___, con stenosi stimata del ___%.\nCAD-RADS ___.\nConclusioni del radiologo: ___.\nSi programma ___ (ottimizzazione terapia / test funzionale / coronarografia).",
   },
 ];
+
+/**
+ * Predefiniti della vecchia scheda "Terapie" tolti il 6 ottobre 2026.
+ *
+ * La scheda finiva nello stesso menu delle conclusioni, e i suoi modelli sono
+ * diventati conclusioni (`terapieInConclusioni` in StorageServiceFallback).
+ * Questi quattro ripetevano conclusioni che c'erano gia' ("Quadro nella norma
+ * — controllo periodico", "Ottimizzazione della terapia", "Stratificazione
+ * del rischio"), e chi ha l'app installata li perde **solo se non li ha mai
+ * toccati**: un testo riscritto dal medico resta, fra le conclusioni.
+ */
+export const TERAPIE_RITIRATE: readonly { label: string; vecchio: string }[] = [
+  {
+    label: "Controllo periodico",
+    vecchio:
+      "Si consiglia di proseguire i controlli cardiologici periodici e di mantenere uno stile di vita sano: attività fisica aerobica di intensità moderata almeno 150 minuti a settimana, dieta iposodica e mediterranea, astensione dal fumo, consumo di alcol entro i limiti raccomandati.",
+  },
+  {
+    label: "Automonitoraggio pressorio",
+    vecchio:
+      "Si consiglia automisurazione domiciliare della pressione arteriosa e della frequenza cardiaca due volte al giorno (mattino e sera), a riposo da almeno 5 minuti e in posizione seduta, annotando i valori su un diario da portare al prossimo controllo.",
+  },
+  {
+    label: "Rivalutazione dopo modifica terapeutica",
+    vecchio:
+      "Si imposta la terapia indicata e si programma una rivalutazione clinica al termine del periodo di titolazione. Si raccomanda controllo di funzione renale ed elettroliti a 15 giorni. Tornare a controllo in caso di comparsa di effetti indesiderati.",
+  },
+  {
+    label: "Correzione dei fattori di rischio",
+    vecchio:
+      "Si raccomandano: riduzione dell'apporto di sodio, calo ponderale fino a un BMI inferiore a 25, attività fisica aerobica regolare, astensione completa dal fumo e correzione dell'assetto lipidico secondo il profilo di rischio complessivo.",
+  },
+];

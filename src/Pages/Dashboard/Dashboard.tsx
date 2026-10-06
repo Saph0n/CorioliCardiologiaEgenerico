@@ -307,6 +307,7 @@ export default function Dashboard() {
   return (
     <div className="corioli-page space-y-6 animate-in fade-in duration-500">
       <PageHeader
+        icon={Users}
         title="Pazienti"
         subtitle={
           loading
