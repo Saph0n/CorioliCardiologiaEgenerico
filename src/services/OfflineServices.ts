@@ -195,6 +195,7 @@ export class DoctorService {
     email?: string;
     telefono?: string;
     specializzazione?: string;
+    partitaIva?: string;
     ambulatori?: any[];
     profileImage?: string;
     signatureStampImage?: string;

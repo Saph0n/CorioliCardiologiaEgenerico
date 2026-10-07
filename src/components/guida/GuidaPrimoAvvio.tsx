@@ -236,6 +236,9 @@ function AnteprimaIntestazione({
           {contatti.length > 0 && (
             <p className="guida-anteprima-riga">{contatti.join("   -   ")}</p>
           )}
+          {doctor?.partitaIva?.trim() && (
+            <p className="guida-anteprima-riga">P.IVA {doctor.partitaIva}</p>
+          )}
         </div>
       </div>
       <div className="guida-anteprima-filetto" />

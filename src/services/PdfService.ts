@@ -600,6 +600,11 @@ export class PdfService {
         contatti.push(san(doctor.email));
       }
       if (contatti.length) recapiti.push(contatti.join("   -   "));
+      // La partita IVA chiude i recapiti, su una riga sua: in coda a telefono
+      // ed email la riga diventava piu' larga di meta' foglio. Si stampa
+      // sempre quando c'e' (chiesto da Pablo il 7 ottobre 2026).
+      const partitaIva = doctor?.partitaIva?.trim();
+      if (partitaIva) recapiti.push(`P.IVA ${san(partitaIva)}`);
 
       doc.setFont("helvetica", "normal"); doc.setFontSize(7); this.tc(doc, K80);
       recapiti.forEach((riga, i) => {

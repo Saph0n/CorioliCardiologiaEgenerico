@@ -103,6 +103,10 @@ import {
   genAnamnesiCustomKey,
 } from "../../utils/anamnesiStrutturata";
 import { AppModal } from "../../components/AppModal";
+import {
+  normalizzaPartitaIva,
+  validatePartitaIva,
+} from "../../utils/formValidation";
 import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
 type SettingsNoticeScope = "profilo" | "ambulatori" | "dati" | "modelli" | "duplicati";
@@ -251,6 +255,7 @@ const SettingsScreen = () => {
     email: string;
     telefono: string;
     specializzazione: string;
+    partitaIva: string;
   }>({
     titolo: "Dott.",
     nome: "",
@@ -258,7 +263,10 @@ const SettingsScreen = () => {
     email: "",
     telefono: "",
     specializzazione: "",
+    partitaIva: "",
   });
+  /** Errore della partita IVA, mostrato uscendo dal campo o al salvataggio. */
+  const [errorePartitaIva, setErrorePartitaIva] = useState<string | null>(null);
 
   // Template State
   const [templates, setTemplates] = useState<MedicalTemplate[]>([]);
@@ -538,6 +546,7 @@ const SettingsScreen = () => {
           email: doctor.email,
           telefono: doctor.telefono || "",
           specializzazione: doctor.specializzazione || "",
+          partitaIva: doctor.partitaIva || "",
         });
         setAmbulatori(doctor.ambulatori || []);
         setSignatureStampImage(doctor.signatureStampImage || "");
@@ -1477,6 +1486,14 @@ const SettingsScreen = () => {
       setIsLoading(false);
       return;
     }
+    const erroreIva = validatePartitaIva(doctorInfo.partitaIva);
+    if (erroreIva) {
+      setErrorePartitaIva(erroreIva);
+      showNotice("profilo", "error", erroreIva, 5000);
+      setIsLoading(false);
+      return;
+    }
+    const partitaIva = normalizzaPartitaIva(doctorInfo.partitaIva);
 
     try {
       await DoctorService.updateDoctor({
@@ -1486,9 +1503,13 @@ const SettingsScreen = () => {
         email: doctorInfo.email.trim(),
         telefono: doctorInfo.telefono.trim(),
         specializzazione: doctorInfo.specializzazione.trim(),
+        // Stringa vuota e non undefined: se il medico la cancella, deve
+        // sparire anche dal profilo salvato e dai referti.
+        partitaIva,
         ambulatori: ambulatori,
         signatureStampImage: signatureStampImage || undefined,
       });
+      setDoctorInfo((prev) => ({ ...prev, partitaIva }));
 
       savePreferences();
       window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
@@ -1685,6 +1706,24 @@ const SettingsScreen = () => {
                   }
                   variant="bordered"
                   placeholder="Es. Cardiologia"
+                />
+                <Input
+                  label="Partita IVA"
+                  value={doctorInfo.partitaIva}
+                  onValueChange={(value) => {
+                    handleDoctorInfoChange("partitaIva", value);
+                    setErrorePartitaIva(null);
+                  }}
+                  onBlur={() =>
+                    setErrorePartitaIva(validatePartitaIva(doctorInfo.partitaIva))
+                  }
+                  isInvalid={!!errorePartitaIva}
+                  errorMessage={errorePartitaIva ?? undefined}
+                  description="Facoltativa. Se compilata, compare nell'intestazione di referti e documenti."
+                  variant="bordered"
+                  inputMode="numeric"
+                  maxLength={16}
+                  placeholder="11 cifre"
                 />
               </div>
 

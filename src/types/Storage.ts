@@ -742,6 +742,11 @@ export interface Doctor {
   email: string;
   telefono?: string;
   specializzazione?: string;
+  /**
+   * Partita IVA, solo le 11 cifre. Facoltativa: quando c'e' si stampa
+   * nell'intestazione di referti e documenti, sotto i recapiti.
+   */
+  partitaIva?: string;
   ambulatori?: Ambulatorio[];
   /** Data URL (base64) della foto profilo */
   profileImage?: string;

@@ -1226,6 +1226,7 @@ class LocalStorageFallbackService implements StorageService {
           email: currentDoctor.email || incomingDoctor.email,
           telefono: currentDoctor.telefono || incomingDoctor.telefono,
           specializzazione: currentDoctor.specializzazione || incomingDoctor.specializzazione,
+          partitaIva: currentDoctor.partitaIva || incomingDoctor.partitaIva,
           profileImage: currentDoctor.profileImage || incomingDoctor.profileImage,
           signatureStampImage: currentDoctor.signatureStampImage || incomingDoctor.signatureStampImage,
           ambulatori: mergedAmbulatori,

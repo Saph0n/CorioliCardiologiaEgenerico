@@ -17,6 +17,7 @@ vi.mock("../OfflineServices", () => ({
       nome: "Vincenzo",
       cognome: "Trani",
       specializzazione: "Cardiologia",
+      partitaIva: "12345678903",
       ambulatori: [{ isPrimario: true, nome: "Studio", indirizzo: "Via Garibaldi 14", citta: "Bergamo" }],
     }),
   },
@@ -838,6 +839,11 @@ describe("referto di visita: intestazione", () => {
     // con due specialita' dice qualcosa che il titolo non dice.
     const testo = await testoDelPdf(visita({}));
     expect(testo).toContain("(Cardiologia)");
+  });
+
+  it("stampa la partita IVA del medico fra i recapiti", async () => {
+    const testo = await testoDelPdf(visita({}));
+    expect(testo).toContain("(P.IVA 12345678903)");
   });
 });
 
