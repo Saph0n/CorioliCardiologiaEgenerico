@@ -141,13 +141,19 @@ import {
   calcolaEgfrCkdEpi,
   calcolaHomaIr,
   calcolaLdlFriedewald,
+  calcolaMassaVs,
+  calcolaMassaVsIndicizzata,
   calcolaNonHdl,
   calcolaCaloNotturno,
   calcolaPercentualeFcMax,
   calcolaRapportoCtHdl,
   calcolaRapportoTgHdl,
   calcolaQtcBazett,
+  calcolaQtcFramingham,
+  calcolaQtcFridericia,
+  calcolaQtcHodges,
   calcolaScore2,
+  calcolaSpessoreParietaleRelativo,
   stadioKdigo,
 } from "../../utils/cardioCalcs";
 import {
@@ -210,6 +216,7 @@ import {
 } from "../../utils/fibrillazioneAtriale";
 import {
   FASCE_HOMA_IR,
+  geometriaVentricoloSinistro,
   scomponiPressione,
   valutaMisura,
   valutaPressione,
@@ -1872,6 +1879,18 @@ export default function AddVisit() {
       ),
     [visitaData.ecg.qt, visitaData.frequenzaCardiaca],
   );
+  // Le altre correzioni del QT, chieste dal cardiologo accanto a Bazett.
+  const qtcAltreCalc = useMemo(() => {
+    const qt = visitaData.ecg.qt;
+    const fc = visitaData.frequenzaCardiaca
+      ? Number(visitaData.frequenzaCardiaca)
+      : undefined;
+    return [
+      { label: "QTc (Fridericia)", outcome: calcolaQtcFridericia(qt, fc) },
+      { label: "QTc (Framingham)", outcome: calcolaQtcFramingham(qt, fc) },
+      { label: "QTc (Hodges)", outcome: calcolaQtcHodges(qt, fc) },
+    ];
+  }, [visitaData.ecg.qt, visitaData.frequenzaCardiaca]);
   const score2Calc = useMemo(
     () =>
       calcolaScore2({
@@ -2169,6 +2188,48 @@ export default function AddVisit() {
   const bmiSegnale = useMemo(
     () => valutaMisura("vitali.bmi", bmi ?? undefined),
     [bmi],
+  );
+
+  // ── Massa e geometria del ventricolo sinistro ─────────────────────────────
+  // Dalle misure lineari dell'eco; l'indicizzazione usa il peso di questa
+  // visita e l'altezza della scheda, gli stessi del BMI.
+  const eco = visitaData.ecocardiogramma;
+  const massaVsCalc = useMemo(
+    () => calcolaMassaVs(eco.ddvs, eco.siv, eco.pp),
+    [eco.ddvs, eco.siv, eco.pp],
+  );
+  const massaVsIndCalc = useMemo(
+    () =>
+      calcolaMassaVsIndicizzata(
+        eco.ddvs,
+        eco.siv,
+        eco.pp,
+        visitaData.pesoCorporeo,
+        altezzaCm ?? undefined,
+      ),
+    [eco.ddvs, eco.siv, eco.pp, visitaData.pesoCorporeo, altezzaCm],
+  );
+  const massaVsIndSegnale = useMemo(
+    () =>
+      valutaMisura(
+        "eco.massaIndicizzata",
+        massaVsIndCalc.ok ? massaVsIndCalc.result.value : undefined,
+        sessoPaziente,
+      ),
+    [massaVsIndCalc, sessoPaziente],
+  );
+  const rwtCalc = useMemo(
+    () => calcolaSpessoreParietaleRelativo(eco.ddvs, eco.pp),
+    [eco.ddvs, eco.pp],
+  );
+  const rwtSegnale = useMemo(
+    () => valutaMisura("eco.rwt", rwtCalc.ok ? rwtCalc.result.value : undefined),
+    [rwtCalc],
+  );
+  const geometriaVs = geometriaVentricoloSinistro(
+    massaVsIndCalc.ok ? massaVsIndCalc.result.value : undefined,
+    rwtCalc.ok ? rwtCalc.result.value : undefined,
+    sessoPaziente,
   );
 
   const esitoBnp = useMemo(
@@ -3076,13 +3137,31 @@ export default function AddVisit() {
                       {...misura("ecg.asse")}
                     />
                   </div>
-                  <div className="max-w-xs">
+                  {/* Una riga sola finche' mancano QT o frequenza: il motivo
+                      e' lo stesso per tutte e quattro le formule. */}
+                  {qtcCalc.ok ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <CalcSuggestion
+                        label="QTc (Bazett)"
+                        outcome={qtcCalc}
+                        segnale={qtcSegnale}
+                      />
+                      {qtcAltreCalc.map(({ label, outcome }) => (
                         <CalcSuggestion
-                      label="QTc (Bazett)"
-                      outcome={qtcCalc}
-                      segnale={qtcSegnale}
-                    />
-                  </div>
+                          key={label}
+                          label={label}
+                          outcome={outcome}
+                          segnale={valutaMisura(
+                            "ecg.qtc",
+                            outcome.ok ? outcome.result.value : undefined,
+                            sessoPaziente,
+                          )}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <CalcSuggestion label="QTc" outcome={qtcCalc} />
+                  )}
                   <RefertoTextarea
                     value={visitaData.ecg.referto ?? ""}
                     onValueChange={(value) =>
@@ -3337,6 +3416,41 @@ export default function AddVisit() {
                       {...misura("eco.ea")}
                     />
                   </div>
+                  {/* Massa e geometria del VS: suggerimento accanto ai campi,
+                      non entrano da sole nel referto (chiesto da Pablo il 7
+                      ottobre 2026, soglie da confermare con il cardiologo).
+                      Finche' mancano le tre misure basta una riga sola. */}
+                  {massaVsCalc.ok ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <CalcSuggestion label="Massa VS" outcome={massaVsCalc} />
+                      <CalcSuggestion
+                        label="Massa VS indicizzata"
+                        outcome={massaVsIndCalc}
+                        segnale={massaVsIndSegnale}
+                        banda={
+                          massaVsIndCalc.ok && !sessoPaziente ? (
+                            <p className="text-[11px] leading-snug text-default-500">
+                              Sesso non indicato nella scheda: nessuna soglia applicata.
+                            </p>
+                          ) : undefined
+                        }
+                      />
+                      <CalcSuggestion
+                        label="Spessore parietale relativo"
+                        outcome={rwtCalc}
+                        segnale={rwtSegnale}
+                        banda={
+                          geometriaVs ? (
+                            <p className="text-xs font-semibold text-gray-700">
+                              {geometriaVs}
+                            </p>
+                          ) : undefined
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <CalcSuggestion label="Massa VS" outcome={massaVsCalc} />
+                  )}
                   <RefertoTextarea
                     value={visitaData.ecocardiogramma.referto ?? ""}
                     onValueChange={(value) =>

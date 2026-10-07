@@ -333,6 +333,201 @@ export function calcolaQtcBazett(
   };
 }
 
+/**
+ * Le altre correzioni del QT, accanto a Bazett: Bazett sovracorregge a
+ * frequenze alte e sottocorregge a frequenze basse, e il confronto fra
+ * formule dice quanto il numero dipende dalla correzione scelta.
+ *
+ * Con RR = 60 / FC in secondi:
+ * - Fridericia: QT / ∛RR
+ * - Framingham (Sagie 1992): QT + 154 × (1 − RR)
+ * - Hodges: QT + 1,75 × (FC − 60)
+ */
+function calcolaQtcCon(
+  qtMs: number | undefined,
+  frequenzaCardiaca: number | undefined,
+  correggi: (qt: number, rr: number, fc: number) => number,
+  source: string,
+): CalcOutcome {
+  const qt = num(qtMs);
+  const fc = num(frequenzaCardiaca);
+  if (qt == null || fc == null) {
+    return { ok: false, reason: "Servono QT (ms) e frequenza cardiaca (bpm)." };
+  }
+  const qtc = correggi(qt, 60 / fc, fc);
+  if (!(qtc > 0)) return { ok: false, reason: "Valori non coerenti fra loro." };
+  return {
+    ok: true,
+    result: { value: qtc, display: fmt(qtc, 0), unit: "ms", source },
+  };
+}
+
+export function calcolaQtcFridericia(
+  qtMs: number | undefined,
+  frequenzaCardiaca: number | undefined,
+): CalcOutcome {
+  return calcolaQtcCon(
+    qtMs,
+    frequenzaCardiaca,
+    (qt, rr) => qt / Math.cbrt(rr),
+    "Fridericia (QT / ∛RR) — più stabile di Bazett a frequenze alte e basse",
+  );
+}
+
+export function calcolaQtcFramingham(
+  qtMs: number | undefined,
+  frequenzaCardiaca: number | undefined,
+): CalcOutcome {
+  return calcolaQtcCon(
+    qtMs,
+    frequenzaCardiaca,
+    (qt, rr) => qt + 154 * (1 - rr),
+    "Framingham, Sagie 1992 (QT + 154 × (1 − RR))",
+  );
+}
+
+export function calcolaQtcHodges(
+  qtMs: number | undefined,
+  frequenzaCardiaca: number | undefined,
+): CalcOutcome {
+  return calcolaQtcCon(
+    qtMs,
+    frequenzaCardiaca,
+    (qt, _rr, fc) => qt + 1.75 * (fc - 60),
+    "Hodges (QT + 1,75 × (FC − 60))",
+  );
+}
+
+// ─── Ecocardiogramma ─────────────────────────────────────────────────────────
+
+/**
+ * Le misure lineari dell'eco si scrivono in mm. Un DTD VS sotto i 20 mm o uno
+ * spessore sotto i 3 mm sono quasi sempre centimetri scritti nel campo
+ * sbagliato: elevati al cubo darebbero una massa senza senso, quindi meglio
+ * non dare nulla e dirlo.
+ */
+function misureEcoPlausibili(ddvs: number, siv: number, pp: number): boolean {
+  return ddvs >= 20 && ddvs <= 100 && siv >= 3 && siv <= 40 && pp >= 3 && pp <= 40;
+}
+
+/**
+ * Superficie corporea secondo Mosteller: √(altezza cm × peso kg / 3600), in m².
+ * Serve a indicizzare la massa del ventricolo sinistro.
+ */
+export function calcolaSuperficieCorporea(
+  pesoKg: number | undefined,
+  altezzaCm: number | undefined,
+): CalcOutcome {
+  const kg = num(pesoKg);
+  const cm = num(altezzaCm);
+  if (kg == null || cm == null) {
+    return { ok: false, reason: "Servono il peso della visita e l'altezza del paziente." };
+  }
+  const bsa = Math.sqrt((cm * kg) / 3600);
+  return {
+    ok: true,
+    result: {
+      value: bsa,
+      display: fmt(bsa, 2),
+      unit: "m²",
+      source: "Mosteller 1987: √(altezza × peso / 3600)",
+    },
+  };
+}
+
+/**
+ * Massa del ventricolo sinistro con la formula del cubo corretta da Devereux,
+ * quella raccomandata da ASE/EACVI per le misure lineari:
+ * 0,8 × 1,04 × [(DTD VS + SIV + PP)³ − DTD VS³] + 0,6 g, misure in cm.
+ *
+ * I campi della maschera sono in mm: la conversione si fa qui.
+ */
+export function calcolaMassaVs(
+  ddvsMm: number | undefined,
+  sivMm: number | undefined,
+  ppMm: number | undefined,
+): CalcOutcome {
+  const ddvs = num(ddvsMm);
+  const siv = num(sivMm);
+  const pp = num(ppMm);
+  if (ddvs == null || siv == null || pp == null) {
+    return { ok: false, reason: "Servono DTD VS, SIV e parete posteriore." };
+  }
+  if (!misureEcoPlausibili(ddvs, siv, pp)) {
+    return {
+      ok: false,
+      reason: "Misure fuori scala: controllare che DTD VS, SIV e PP siano in mm.",
+    };
+  }
+  const d = ddvs / 10;
+  const somma = d + siv / 10 + pp / 10;
+  const massa = 0.8 * 1.04 * (Math.pow(somma, 3) - Math.pow(d, 3)) + 0.6;
+  return {
+    ok: true,
+    result: {
+      value: massa,
+      display: fmt(massa, 0),
+      unit: "g",
+      source: "Devereux (ASE/EACVI): 0,8 × 1,04 × [(DTD + SIV + PP)³ − DTD³] + 0,6",
+    },
+  };
+}
+
+/** Massa del ventricolo sinistro indicizzata per la superficie corporea (g/m²). */
+export function calcolaMassaVsIndicizzata(
+  ddvsMm: number | undefined,
+  sivMm: number | undefined,
+  ppMm: number | undefined,
+  pesoKg: number | undefined,
+  altezzaCm: number | undefined,
+): CalcOutcome {
+  const massa = calcolaMassaVs(ddvsMm, sivMm, ppMm);
+  if (!massa.ok) return massa;
+  const bsa = calcolaSuperficieCorporea(pesoKg, altezzaCm);
+  if (!bsa.ok) return bsa;
+  const indice = massa.result.value / bsa.result.value;
+  return {
+    ok: true,
+    result: {
+      value: indice,
+      display: fmt(indice, 0),
+      unit: "g/m²",
+      source: `Massa ${massa.result.display} g / superficie corporea ${bsa.result.display} m² (Mosteller)`,
+    },
+  };
+}
+
+/**
+ * Spessore parietale relativo: 2 × PP / DTD VS. Insieme alla massa indicizzata
+ * dice la geometria del ventricolo (vedi `geometriaVentricoloSinistro`).
+ */
+export function calcolaSpessoreParietaleRelativo(
+  ddvsMm: number | undefined,
+  ppMm: number | undefined,
+): CalcOutcome {
+  const ddvs = num(ddvsMm);
+  const pp = num(ppMm);
+  if (ddvs == null || pp == null) {
+    return { ok: false, reason: "Servono DTD VS e parete posteriore." };
+  }
+  if (!misureEcoPlausibili(ddvs, pp, pp)) {
+    return {
+      ok: false,
+      reason: "Misure fuori scala: controllare che DTD VS e PP siano in mm.",
+    };
+  }
+  const rwt = (2 * pp) / ddvs;
+  return {
+    ok: true,
+    result: {
+      value: rwt,
+      display: fmt(rwt, 2),
+      unit: "",
+      source: "2 × PP / DTD VS — oltre 0,42 la geometria è concentrica",
+    },
+  };
+}
+
 // ─── Esami dinamici ──────────────────────────────────────────────────────────
 
 /**

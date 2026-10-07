@@ -66,6 +66,8 @@ export type ChiaveMisura =
   | "eco.fe"
   | "eco.siv"
   | "eco.pp"
+  | "eco.massaIndicizzata"
+  | "eco.rwt"
   | "eco.atrioSinistro"
   | "eco.aortaAscendente"
   | "eco.tapse"
@@ -203,6 +205,50 @@ export const FASCE_HOMA_IR: readonly {
 ];
 
 /**
+ * Massa del ventricolo sinistro indicizzata per superficie corporea (g/m²),
+ * fasce ASE per le misure lineari: fino a `normale` nella norma, poi aumento
+ * lieve, moderato (da `moderata`) e severo (da `severa`).
+ *
+ * Sono le fasce che il cardiologo ha guardato sul calcolatore MDApp il 7
+ * ottobre 2026; **da far confermare al referente clinico** come le altre.
+ */
+export const SOGLIE_MASSA_VS = {
+  F: { normale: 95, moderata: 109, severa: 122 },
+  M: { normale: 115, moderata: 132, severa: 149 },
+} as const;
+
+/** Spessore parietale relativo oltre il quale la geometria e' concentrica. */
+export const RWT_CONCENTRICO = 0.42;
+
+/**
+ * Geometria del ventricolo sinistro dalla massa indicizzata e dallo spessore
+ * parietale relativo (classificazione ASE/EACVI):
+ *
+ * - massa nella norma, RWT ≤ 0,42: geometria normale
+ * - massa nella norma, RWT > 0,42: rimodellamento concentrico
+ * - massa aumentata,  RWT > 0,42: ipertrofia concentrica
+ * - massa aumentata,  RWT ≤ 0,42: ipertrofia eccentrica
+ *
+ * Senza il sesso del paziente non si sa se la massa e' aumentata, e la
+ * funzione non restituisce nulla.
+ */
+export function geometriaVentricoloSinistro(
+  massaIndicizzata: number | undefined,
+  rwt: number | undefined,
+  sesso: Sesso,
+): string | null {
+  if (massaIndicizzata == null || rwt == null) return null;
+  if (!Number.isFinite(massaIndicizzata) || !Number.isFinite(rwt)) return null;
+  if (sesso !== "M" && sesso !== "F") return null;
+  // Sugli stessi arrotondamenti di `valutaMisura`, se no la geometria e il
+  // colore del riquadro potrebbero dire cose diverse a cavallo della soglia.
+  const aumentata = Number(massaIndicizzata.toFixed(0)) > SOGLIE_MASSA_VS[sesso].normale;
+  const concentrico = Number(rwt.toFixed(2)) > RWT_CONCENTRICO;
+  if (aumentata) return concentrico ? "Ipertrofia concentrica" : "Ipertrofia eccentrica";
+  return concentrico ? "Rimodellamento concentrico" : "Geometria normale";
+}
+
+/**
  * Valuta una misura rispetto ai limiti di riferimento correnti.
  *
  * Restituisce sempre un `Segnale`: quando il valore manca o e' nella norma il
@@ -254,6 +300,39 @@ export function valutaMisura(
       if (n > limite) return attenzione(`> ${limite} mm: spessore aumentato`);
       return norma;
     }
+
+    case "eco.massaIndicizzata": {
+      // Senza il sesso non c'e' una soglia da applicare: il numero si mostra
+      // lo stesso, ma senza giudizio.
+      if (sesso !== "M" && sesso !== "F") return norma;
+      const f = SOGLIE_MASSA_VS[sesso];
+      // Le fasce ASE sono in g/m² interi, come il valore mostrato: si
+      // confronta l'arrotondato, se no un 95,4 si legge "95" e cade nel lieve.
+      const g = Number(n.toFixed(0));
+      if (g >= f.severa) {
+        return alterato(`≥ ${f.severa} g/m²: aumento severo della massa`, "ipertrofia severa");
+      }
+      if (g >= f.moderata) {
+        return alterato(
+          `${f.moderata}-${f.severa - 1} g/m²: aumento moderato della massa`,
+          "ipertrofia moderata",
+        );
+      }
+      if (g > f.normale) {
+        return attenzione(
+          `${f.normale + 1}-${f.moderata - 1} g/m²: aumento lieve della massa`,
+          "ipertrofia lieve",
+        );
+      }
+      return nellaNorma(`≤ ${f.normale} g/m²: massa nella norma`, "nella norma");
+    }
+
+    case "eco.rwt":
+      // Confronto sul valore a due decimali, quello mostrato.
+      if (Number(n.toFixed(2)) > RWT_CONCENTRICO) {
+        return attenzione("> 0,42: geometria concentrica", "concentrico");
+      }
+      return norma;
 
     case "eco.atrioSinistro":
       if (n > 45) return alterato("> 45 mm: dilatazione atriale marcata");

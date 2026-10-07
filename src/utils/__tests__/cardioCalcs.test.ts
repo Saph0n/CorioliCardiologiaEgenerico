@@ -5,6 +5,8 @@ import {
   calcolaEgfrCkdEpi,
   calcolaHomaIr,
   calcolaLdlFriedewald,
+  calcolaMassaVs,
+  calcolaMassaVsIndicizzata,
   calcolaCaloNotturno,
   calcolaFcMaxTeorica,
   calcolaNonHdl,
@@ -12,8 +14,13 @@ import {
   calcolaRapportoCtHdl,
   calcolaRapportoTgHdl,
   calcolaQtcBazett,
+  calcolaQtcFramingham,
+  calcolaQtcFridericia,
+  calcolaQtcHodges,
   calcolaScore2,
   calcolaScore2Op,
+  calcolaSpessoreParietaleRelativo,
+  calcolaSuperficieCorporea,
   categoriaRischioScore2,
   computeScore2,
   stadioKdigo,
@@ -484,5 +491,79 @@ describe("clearance secondo Cockcroft-Gault", () => {
 
   it("non calcola senza peso", () => {
     expect(calcolaClearanceCockcroftGault(1, 70, undefined, "M").ok).toBe(false);
+  });
+});
+
+describe("massa del ventricolo sinistro", () => {
+  it("applica Devereux con le misure in mm", () => {
+    // 0,832 × (6,6³ − 4,8³) + 0,6 = 147,8 g
+    const out = calcolaMassaVs(48, 9, 9);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.result.value).toBeCloseTo(147.78, 1);
+  });
+
+  it("non calcola con misure che sembrano in cm", () => {
+    const out = calcolaMassaVs(4.8, 0.9, 0.9);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toContain("mm");
+  });
+
+  it("non calcola se manca una misura", () => {
+    expect(calcolaMassaVs(48, 9, undefined).ok).toBe(false);
+  });
+
+  it("calcola la superficie corporea con Mosteller", () => {
+    const out = calcolaSuperficieCorporea(70, 175);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.result.value).toBeCloseTo(1.845, 3);
+  });
+
+  it("indicizza la massa per la superficie corporea", () => {
+    const out = calcolaMassaVsIndicizzata(48, 9, 9, 70, 175);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.result.value).toBeCloseTo(147.78 / 1.8447, 0);
+  });
+
+  it("senza peso o altezza dice cosa manca", () => {
+    const out = calcolaMassaVsIndicizzata(48, 9, 9, 0, 175);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toContain("peso");
+  });
+
+  it("calcola lo spessore parietale relativo", () => {
+    const out = calcolaSpessoreParietaleRelativo(48, 12);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.result.value).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe("QT corretto con le altre formule", () => {
+  // QT 400 ms a 75 bpm: RR = 0,8 s.
+  const valore = (out: ReturnType<typeof calcolaQtcFridericia>) =>
+    out.ok ? out.result.value : Number.NaN;
+
+  it("Fridericia divide per la radice cubica di RR", () => {
+    expect(valore(calcolaQtcFridericia(400, 75))).toBeCloseTo(400 / Math.cbrt(0.8), 5);
+    expect(valore(calcolaQtcFridericia(400, 75))).toBeCloseTo(430.9, 1);
+  });
+
+  it("Framingham aggiunge 154 × (1 − RR)", () => {
+    expect(valore(calcolaQtcFramingham(400, 75))).toBeCloseTo(430.8, 5);
+  });
+
+  it("Hodges aggiunge 1,75 × (FC − 60)", () => {
+    expect(valore(calcolaQtcHodges(400, 75))).toBeCloseTo(426.25, 5);
+  });
+
+  it("a 60 bpm tutte le formule restituiscono il QT misurato", () => {
+    for (const f of [calcolaQtcBazett, calcolaQtcFridericia, calcolaQtcFramingham, calcolaQtcHodges]) {
+      expect(valore(f(400, 60))).toBeCloseTo(400, 5);
+    }
+  });
+
+  it("non calcolano senza frequenza", () => {
+    expect(calcolaQtcFridericia(400, undefined).ok).toBe(false);
+    expect(calcolaQtcFramingham(400, undefined).ok).toBe(false);
+    expect(calcolaQtcHodges(400, undefined).ok).toBe(false);
   });
 });

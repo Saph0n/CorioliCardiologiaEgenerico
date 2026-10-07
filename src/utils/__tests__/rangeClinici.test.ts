@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FASCE_HOMA_IR,
+  geometriaVentricoloSinistro,
   ordinaSegnalati,
   scomponiPressione,
   valutaMisura,
@@ -333,5 +334,44 @@ describe("HOMA-IR", () => {
     for (const fascia of FASCE_HOMA_IR) {
       expect(valutaMisura("lab.homa", fascia.da).etichetta).toBe(fascia.etichetta);
     }
+  });
+});
+
+describe("massa del ventricolo sinistro indicizzata", () => {
+  it("usa le fasce ASE diverse per sesso", () => {
+    expect(valutaMisura("eco.massaIndicizzata", 95, "F").livello).toBe("nella-norma");
+    expect(valutaMisura("eco.massaIndicizzata", 96, "F").etichetta).toBe("ipertrofia lieve");
+    expect(valutaMisura("eco.massaIndicizzata", 109, "F").etichetta).toBe("ipertrofia moderata");
+    expect(valutaMisura("eco.massaIndicizzata", 122, "F").etichetta).toBe("ipertrofia severa");
+    expect(valutaMisura("eco.massaIndicizzata", 115, "M").livello).toBe("nella-norma");
+    expect(valutaMisura("eco.massaIndicizzata", 116, "M").livello).toBe("attenzione");
+    expect(valutaMisura("eco.massaIndicizzata", 132, "M").livello).toBe("alterato");
+    expect(valutaMisura("eco.massaIndicizzata", 149, "M").etichetta).toBe("ipertrofia severa");
+  });
+
+  it("senza sesso non applica soglie", () => {
+    expect(valutaMisura("eco.massaIndicizzata", 200).livello).toBe("nella-norma");
+  });
+
+  it("classifica la geometria del ventricolo", () => {
+    expect(geometriaVentricoloSinistro(80, 0.35, "M")).toBe("Geometria normale");
+    expect(geometriaVentricoloSinistro(80, 0.5, "M")).toBe("Rimodellamento concentrico");
+    expect(geometriaVentricoloSinistro(130, 0.5, "M")).toBe("Ipertrofia concentrica");
+    expect(geometriaVentricoloSinistro(130, 0.35, "M")).toBe("Ipertrofia eccentrica");
+    expect(geometriaVentricoloSinistro(100, 0.35, "F")).toBe("Ipertrofia eccentrica");
+    expect(geometriaVentricoloSinistro(100, 0.35, undefined)).toBeNull();
+  });
+});
+
+describe("massa e geometria a cavallo della soglia", () => {
+  it("giudica il valore come viene mostrato, arrotondato", () => {
+    // 95,4 si legge "95": nella norma, non "96-108".
+    expect(valutaMisura("eco.massaIndicizzata", 95.4, "F").livello).toBe("nella-norma");
+    expect(valutaMisura("eco.massaIndicizzata", 95.6, "F").etichetta).toBe("ipertrofia lieve");
+    expect(valutaMisura("eco.massaIndicizzata", 108.6, "F").etichetta).toBe("ipertrofia moderata");
+    // 0,423 si legge "0,42": non concentrico.
+    expect(valutaMisura("eco.rwt", 0.423).livello).toBe("nella-norma");
+    expect(valutaMisura("eco.rwt", 0.43).livello).toBe("attenzione");
+    expect(geometriaVentricoloSinistro(95.4, 0.423, "F")).toBe("Geometria normale");
   });
 });
