@@ -1,9 +1,10 @@
 /**
  * Ritaglio dell'immagine di firma/timbro per i PDF.
  *
- * NON ancora collegato: il caricamento in Impostazioni → Profilo Dottore salva
- * l'immagine così com'è. Il componente è tenuto di proposito, da agganciare in
- * futuro al flusso di caricamento firma — non è codice morto da eliminare.
+ * Si apre da Impostazioni → Firma olografica dopo la scelta del file. Il
+ * ritaglio esce a 3:1 e con la carta portata a bianco (`schiarisciSfondo`):
+ * il referto si stampa in bianco e nero, e una firma fotografata col telefono
+ * sta su un foglio grigio.
  */
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
@@ -19,6 +20,7 @@ import {
   SIGNATURE_STAMP_ASPECT,
   SIGNATURE_STAMP_EXPORT_WIDTH,
   SIGNATURE_STAMP_EXPORT_HEIGHT,
+  schiarisciSfondo,
 } from "../utils/signatureStamp";
 import { AppModal } from "./AppModal";
 
@@ -75,7 +77,7 @@ export function SignatureStampCropModal({
     const vw = viewportSize.w;
     const vh = viewportSize.h;
     if (!vw || !vh || !imgSize.w || !imgSize.h) return null;
-    const cropW = Math.min(vw - 32, 400);
+    const cropW = Math.min(vw - 32, 480);
     const cropH = cropW / SIGNATURE_STAMP_ASPECT;
     const cropX = (vw - cropW) / 2;
     const cropY = (vh - cropH) / 2;
@@ -125,6 +127,11 @@ export function SignatureStampCropModal({
         SIGNATURE_STAMP_EXPORT_WIDTH,
         SIGNATURE_STAMP_EXPORT_HEIGHT,
       );
+      const pixel = ctx.getImageData(
+        0, 0, SIGNATURE_STAMP_EXPORT_WIDTH, SIGNATURE_STAMP_EXPORT_HEIGHT,
+      );
+      schiarisciSfondo(pixel.data);
+      ctx.putImageData(pixel, 0, 0);
       onConfirm(canvas.toDataURL("image/png"));
       onClose();
     };
@@ -165,16 +172,16 @@ export function SignatureStampCropModal({
     >
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1 pb-2">
-          <span>Ritaglia timbro e firma</span>
-          <span className="text-sm font-normal text-default-500">
-            Trascina l&apos;immagine e regola lo zoom. Solo il contenuto nel riquadro
-            verrà usato nei PDF.
+          <span className="text-xl">Ritaglia la firma</span>
+          <span className="text-base font-normal text-default-600">
+            Trascina l&apos;immagine e regola lo zoom. Nei documenti va solo
+            quello che sta dentro il riquadro.
           </span>
         </ModalHeader>
         <ModalBody className="gap-4">
           <div
             ref={viewportRef}
-            className="relative h-[280px] w-full overflow-hidden rounded-xl bg-default-100 touch-none select-none"
+            className="relative h-[320px] w-full overflow-hidden rounded-xl bg-default-100 touch-none select-none"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -195,7 +202,7 @@ export function SignatureStampCropModal({
                 }}
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-default-400 text-sm">
+              <div className="flex h-full items-center justify-center text-default-500 text-base">
                 Caricamento…
               </div>
             )}
@@ -240,10 +247,10 @@ export function SignatureStampCropModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <ZoomOut size={16} className="text-default-400 shrink-0" />
+            <ZoomOut size={22} className="text-default-500 shrink-0" />
             <Slider
               aria-label="Zoom"
-              size="sm"
+              size="md"
               minValue={0.4}
               maxValue={3}
               step={0.05}
@@ -251,20 +258,26 @@ export function SignatureStampCropModal({
               onChange={(v) => setScale(Array.isArray(v) ? v[0] : v)}
               className="flex-1"
             />
-            <ZoomIn size={16} className="text-default-400 shrink-0" />
+            <ZoomIn size={22} className="text-default-500 shrink-0" />
           </div>
 
-          <p className="flex items-center gap-2 text-xs text-default-500">
-            <Move size={14} />
-            Trascina per centrare timbro e firma nel riquadro orizzontale.
+          <p className="flex items-center gap-2 text-sm text-default-600">
+            <Move size={18} className="shrink-0" />
+            Trascina per centrare la firma nel riquadro orizzontale.
           </p>
         </ModalBody>
         <ModalFooter>
-          <Button variant="light" onPress={onClose}>
+          <Button variant="light" size="lg" onPress={onClose}>
             Annulla
           </Button>
-          <Button color="primary" onPress={handleConfirm} isDisabled={!imgSize.w}>
-            Usa ritaglio
+          <Button
+            color="primary"
+            size="lg"
+            className="corioli-cta"
+            onPress={handleConfirm}
+            isDisabled={!imgSize.w}
+          >
+            Usa questa firma
           </Button>
         </ModalFooter>
       </ModalContent>

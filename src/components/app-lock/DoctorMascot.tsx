@@ -7,6 +7,8 @@ export type MascotField =
   | "email"
   | "telefono"
   | "specializzazione"
+  | "titoloReferto"
+  | "partitaIva"
   | "pin"
   | "pin-confirm"
   | null;
@@ -34,6 +36,8 @@ const LOOK: Record<string, { x: number; y: number }> = {
   email: { x: 0, y: -7 },
   telefono: { x: -6, y: 7 },
   specializzazione: { x: 6, y: 7 },
+  titoloReferto: { x: -5, y: 6 },
+  partitaIva: { x: 5, y: 7 },
 };
 
 const BROWS: Record<string, [string, string]> = {
@@ -357,24 +361,30 @@ export default function DoctorMascot({
             style={{ transformOrigin: "100px 92px" }}
             transition={{ duration: 0.1 }}
           >
+            {/* initial={false} su pupille, sopracciglia e ali: senza, al primo
+                disegno cx/cy/d valevano "undefined" (errori in console e
+                occhi che saltavano al centro). */}
             {/* occhio sinistro */}
             <circle cx="78" cy="92" r="25" fill="#9FE1CB" />
             <circle cx="78" cy="92" r="19" fill="#FFFFFF" />
             <motion.circle
               r={wide ? 13 : 11}
               fill="#163A33"
+              initial={false}
               animate={{ cx: lIr.cx, cy: lIr.cy }}
               transition={SPRING}
             />
             <motion.circle
               r={wide ? 6.5 : 5.5}
               fill="#000"
+              initial={false}
               animate={lP}
               transition={SPRING}
             />
             <motion.circle
               r="2.4"
               fill="#fff"
+              initial={false}
               animate={{ cx: lP.cx + 3, cy: lP.cy - 3 }}
               transition={SPRING}
             />
@@ -385,18 +395,21 @@ export default function DoctorMascot({
             <motion.circle
               r={wide ? 13 : 11}
               fill="#163A33"
+              initial={false}
               animate={{ cx: rIr.cx, cy: rIr.cy }}
               transition={SPRING}
             />
             <motion.circle
               r={wide ? 6.5 : 5.5}
               fill="#000"
+              initial={false}
               animate={rP}
               transition={SPRING}
             />
             <motion.circle
               r="2.4"
               fill="#fff"
+              initial={false}
               animate={{ cx: rP.cx + 3, cy: rP.cy - 3 }}
               transition={SPRING}
             />
@@ -409,6 +422,7 @@ export default function DoctorMascot({
           strokeWidth="3.2"
           fill="none"
           strokeLinecap="round"
+          initial={false}
           animate={{ d: brow[0] }}
           transition={SPRING}
         />
@@ -417,6 +431,7 @@ export default function DoctorMascot({
           strokeWidth="3.2"
           fill="none"
           strokeLinecap="round"
+          initial={false}
           animate={{ d: brow[1] }}
           transition={SPRING}
         />
@@ -457,6 +472,7 @@ export default function DoctorMascot({
         >
           <motion.path
             fill={FEATHER}
+            initial={false}
             animate={{ d: wingsCover ? WING_COVER.l : WING_REST.l }}
             transition={wingsCover ? COVER_SPRING : WING_SPRING}
           />
@@ -476,6 +492,7 @@ export default function DoctorMascot({
         >
           <motion.path
             fill={FEATHER}
+            initial={false}
             animate={{ d: wingsCover ? WING_COVER.r : WING_REST.r }}
             transition={wingsCover ? COVER_SPRING : WING_SPRING}
           />

@@ -8,10 +8,19 @@ import {
   Skeleton,
 } from "@nextui-org/react";
 import DesktopShell from "./DesktopShell";
+import { datiPronti } from "../services/seed";
 
 const NAVBAR_MENU_WIDTHS = ["w-20", "w-16", "w-14", "w-20", "w-24", "w-12"];
 
-const STARTUP_MIN_MS = 2500;
+/**
+ * L'avvio aspetta i dati veri (`datiPronti`), non un orologio: prima lo
+ * scheletro restava 2,5 secondi fissi anche con i dati gia' pronti, a ogni
+ * apertura dell'app. Compare solo se l'attesa supera `SCHELETRO_DOPO_MS`
+ * (sotto, il lampo dello scheletro disturba piu' dell'attesa) e non trattiene
+ * mai l'app oltre `AVVIO_MAX_MS`. Come su Corioli Cardiologia.
+ */
+const SCHELETRO_DOPO_MS = 200;
+const AVVIO_MAX_MS = 4000;
 
 export type PageSkeletonVariant =
   | "home"
@@ -28,6 +37,9 @@ export function resolvePageSkeletonVariant(pathname: string): PageSkeletonVarian
   const path = pathname.replace(/\/+$/, "") || "/";
 
   if (path === "/") return "home";
+  // Prima di "/pazienti": l'elenco dei pazienti da seguire e' una lista, non
+  // la griglia delle schede.
+  if (path.startsWith("/pazienti-da-seguire")) return "table";
   if (path.startsWith("/pazienti")) return "grid";
   if (path.startsWith("/visite")) return "table";
   if (path.startsWith("/settings")) return "settings";
@@ -96,10 +108,11 @@ function SkeletonPageHeader({
     <div className="flex flex-col gap-6 w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4 min-w-0">
-          <Skeleton className="h-14 w-14 rounded-xl shrink-0" />
+          {/* Il riquadro dell'icona: ce l'ha la testata di ogni pagina. */}
+          <Skeleton className="h-12 w-12 md:h-14 md:w-14 rounded-xl shrink-0" />
           <div className="space-y-2 min-w-0">
-            <Skeleton className="h-8 w-48 md:w-64 max-w-full rounded-lg" />
-            <Skeleton className="h-4 w-56 max-w-full rounded-md" />
+            <Skeleton className="h-9 w-48 md:w-64 max-w-full rounded-lg" />
+            <Skeleton className="h-5 w-56 max-w-full rounded-md" />
           </div>
         </div>
         {withActions && (
@@ -220,7 +233,10 @@ function HomePageSkeleton() {
           <SkeletonKpiCard key={i} />
         ))}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Tre colonne come la dashboard: pazienti, visite e "Da seguire". Lo
+          scheletro deve avere la forma della pagina che sta per arrivare, se
+          no al caricamento il contenuto salta. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <SkeletonDashboardListCard
           titleWidth="w-32"
           rowVariant="patient"
@@ -229,6 +245,11 @@ function HomePageSkeleton() {
         <SkeletonDashboardListCard
           titleWidth="w-28"
           rowVariant="visit"
+          rowCount={6}
+        />
+        <SkeletonDashboardListCard
+          titleWidth="w-36"
+          rowVariant="patient"
           rowCount={5}
         />
       </div>
@@ -729,17 +750,31 @@ export function AppStartupSkeleton() {
 
 export function AppStartupGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
+  const [mostraScheletro, setMostraScheletro] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setReady(true), STARTUP_MIN_MS);
-    return () => window.clearTimeout(timer);
+    let attivo = true;
+    const pronto = () => {
+      if (attivo) setReady(true);
+    };
+    const scheletro = window.setTimeout(() => {
+      if (attivo) setMostraScheletro(true);
+    }, SCHELETRO_DOPO_MS);
+    const limite = window.setTimeout(pronto, AVVIO_MAX_MS);
+    void datiPronti().then(pronto, pronto);
+    return () => {
+      attivo = false;
+      window.clearTimeout(scheletro);
+      window.clearTimeout(limite);
+    };
   }, []);
 
   if (!ready) {
+    if (!mostraScheletro) return null;
     if (location.pathname === "/blocked") {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50 flex items-center justify-center p-6">
+        <div className="min-h-finestra bg-gradient-to-br from-brand-50 via-white to-slate-50 flex items-center justify-center p-6">
           <Skeleton className="h-48 w-full max-w-md rounded-2xl" />
         </div>
       );

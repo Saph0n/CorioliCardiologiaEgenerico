@@ -1,12 +1,16 @@
 /**
  * Calcola l'età in anni a partire dalla data di nascita (stringa ISO o YYYY-MM-DD).
  * Restituisce null se la data non è valida.
+ *
+ * `alla`: la data a cui calcolarla (per esempio quella della visita, per i
+ * giudizi che cambiano a 18 anni); senza, oggi.
  */
-export function calculateAge(dataNascita: string): number | null {
+export function calculateAge(dataNascita: string, alla?: string | Date): number | null {
   if (!dataNascita || typeof dataNascita !== "string") return null;
   const birth = new Date(dataNascita);
   if (isNaN(birth.getTime())) return null;
-  const today = new Date();
+  const today = alla ? new Date(alla) : new Date();
+  if (isNaN(today.getTime())) return null;
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;

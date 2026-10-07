@@ -16,7 +16,6 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  Chip,
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 
@@ -74,7 +73,6 @@ import {
   Ruler,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
-import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
 import {
@@ -82,15 +80,64 @@ import {
   isDoctorProfileComplete,
 } from "../../utils/doctorProfile";
 import { AppModal } from "../../components/AppModal";
+import {
+  ParametriPressione,
+  type ValoriPressione,
+} from "../../components/generale/ParametriPressione";
+import { IndiciCorporei } from "../../components/generale/IndiciCorporei";
+import { normalizzaPressione, type PosizionePa } from "../../utils/parametriVitali";
+import { formatPatientDisplayName } from "../../utils/patientDisplay";
 
 function getAltezzaCmForBmi(patient: Patient | null): number | null {
   if (patient?.altezza == null || patient.altezza <= 0) return null;
   return parseOptionalHeight(String(patient.altezza)) ?? null;
 }
 
-function computeBmi(weightKg: number, heightCm: number): string {
-  const h = heightCm / 100;
-  return (weightKg / (h * h)).toFixed(1);
+/** Circonferenza vita accettata dal campo (cm). */
+const MIN_VITA_CM = 40;
+const MAX_VITA_CM = 250;
+
+function validateCirconferenzaVita(cm?: number): string | null {
+  if (!cm) return null;
+  if (cm < MIN_VITA_CM || cm > MAX_VITA_CM) {
+    return `Circonferenza vita fuori range (${MIN_VITA_CM}–${MAX_VITA_CM} cm)`;
+  }
+  return null;
+}
+
+/** "Seconda misurazione: pressione sistolica fuori range": quale campo, nel messaggio. */
+function conCampo(campo: string, errore: string | null): string | null {
+  return errore ? `${campo}: ${errore.charAt(0).toLowerCase()}${errore.slice(1)}` : null;
+}
+
+type VisitaData = ReturnType<typeof createDefaultVisitaData>;
+
+/**
+ * Il contenuto della visita come si salva: pressioni con la barra, posizioni
+ * solo se c'e' la misura (senza valgono clino la prima e orto la seconda),
+ * seconda misurazione e circonferenza vita vuote tolte.
+ */
+function visitaDaSalvare(v: VisitaData): NonNullable<Visit["visita"]> {
+  const {
+    posizionePa,
+    pressioneArteriosa2,
+    posizionePa2,
+    frequenzaCardiaca2,
+    circonferenzaVita,
+    ...resto
+  } = v;
+  const pa = normalizzaPressione(v.pressioneArteriosa ?? "");
+  const pa2 = normalizzaPressione(pressioneArteriosa2 ?? "");
+  const fc2 = (frequenzaCardiaca2 ?? "").trim();
+  return {
+    ...resto,
+    pressioneArteriosa: pa,
+    ...(pa && posizionePa ? { posizionePa } : {}),
+    ...(pa2 ? { pressioneArteriosa2: pa2 } : {}),
+    ...((pa2 || fc2) && posizionePa2 ? { posizionePa2 } : {}),
+    ...(fc2 ? { frequenzaCardiaca2: fc2 } : {}),
+    ...(circonferenzaVita > 0 ? { circonferenzaVita } : {}),
+  };
 }
 
 const TemplateSelector = ({
@@ -164,7 +211,12 @@ const createDefaultVisitaData = () => ({
   terapiaSpecifica: "",
   pesoCorporeo: 0,
   pressioneArteriosa: "",
+  posizionePa: "" as "" | PosizionePa,
   frequenzaCardiaca: "",
+  pressioneArteriosa2: "",
+  posizionePa2: "" as "" | PosizionePa,
+  frequenzaCardiaca2: "",
+  circonferenzaVita: 0,
   immagini: [] as string[],
 });
 
@@ -312,7 +364,12 @@ export default function AddVisit() {
                 ...visit.visita,
                 pesoCorporeo: visit.visita?.pesoCorporeo ?? 0,
                 pressioneArteriosa: visit.visita?.pressioneArteriosa ?? "",
+                posizionePa: visit.visita?.posizionePa ?? "",
                 frequenzaCardiaca: visit.visita?.frequenzaCardiaca ?? "",
+                pressioneArteriosa2: visit.visita?.pressioneArteriosa2 ?? "",
+                posizionePa2: visit.visita?.posizionePa2 ?? "",
+                frequenzaCardiaca2: visit.visita?.frequenzaCardiaca2 ?? "",
+                circonferenzaVita: visit.visita?.circonferenzaVita ?? 0,
                 immagini: visit.visita?.immagini ?? [],
               }));
             } else {
@@ -453,8 +510,14 @@ export default function AddVisit() {
 
       const paramErr =
         validateBodyWeight(visitaForSave.pesoCorporeo) ??
-        validatePressioneArteriosa(visitaForSave.pressioneArteriosa) ??
-        validateFrequenzaCardiaca(visitaForSave.frequenzaCardiaca);
+        validatePressioneArteriosa(normalizzaPressione(visitaForSave.pressioneArteriosa)) ??
+        validateFrequenzaCardiaca(visitaForSave.frequenzaCardiaca) ??
+        conCampo(
+          "Seconda misurazione",
+          validatePressioneArteriosa(normalizzaPressione(visitaForSave.pressioneArteriosa2)),
+        ) ??
+        conCampo("Seconda misurazione", validateFrequenzaCardiaca(visitaForSave.frequenzaCardiaca2)) ??
+        validateCirconferenzaVita(visitaForSave.circonferenzaVita);
       if (paramErr) {
         setError(paramErr);
         showToast(paramErr, "error");
@@ -490,7 +553,7 @@ export default function AddVisit() {
         terapie: visitData.terapie,
         tipo: "generale" as const,
         anamnesiStrutturata: anamnesiStrutturataForSave,
-        visita: visitaForSave,
+        visita: visitaDaSalvare(visitaForSave),
       };
 
       if (isEditMode && existingVisit) {
@@ -498,7 +561,13 @@ export default function AddVisit() {
         setHasUnsavedChanges(false);
         showToast("Visita aggiornata con successo!");
       } else {
-        await VisitService.addVisit(visitToSave);
+        const salvata = await VisitService.addVisit(visitToSave);
+        // Da qui la visita esiste: il salvataggio dopo la aggiorna. Senza,
+        // "Stampa" (che salva e resta nella pagina) seguito da "Stampa" o da
+        // "Salva" ne creava una seconda identica, come su Corioli Cardiologia
+        // prima della stessa correzione.
+        setExistingVisit(salvata);
+        setIsEditMode(true);
         setHasUnsavedChanges(false);
         showToast("Visita salvata con successo!");
       }
@@ -567,7 +636,12 @@ export default function AddVisit() {
         // I parametri rilevati nella singola visita vanno reinseriti.
         pesoCorporeo: 0,
         pressioneArteriosa: "",
+        posizionePa: "",
         frequenzaCardiaca: "",
+        pressioneArteriosa2: "",
+        posizionePa2: "",
+        frequenzaCardiaca2: "",
+        circonferenzaVita: 0,
       }));
     } else {
       setVisitaData((prev) => ({
@@ -758,7 +832,7 @@ export default function AddVisit() {
             pickCampiAttivi(anamnesiStrutturata, anamnesiConfig, "generale"),
           )
         : undefined,
-      visita: visitaData,
+      visita: visitaDaSalvare(visitaData),
       createdAt: existingVisit?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -897,6 +971,30 @@ export default function AddVisit() {
     }
   };
 
+  /**
+   * Ctrl+S salva restando nella visita, Ctrl+P stampa il referto, come su
+   * Corioli Cardiologia. I ref tengono sempre l'ultima versione delle due
+   * funzioni, che leggono lo stato della visita.
+   */
+  const salvaERestaRef = useRef<() => void>(() => {});
+  const stampaRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const tasto = e.key.toLowerCase();
+      if (tasto === "s") {
+        e.preventDefault();
+        salvaERestaRef.current();
+      } else if (tasto === "p") {
+        // Senza il preventDefault il browser stamperebbe la pagina.
+        e.preventDefault();
+        stampaRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const handleNavigateCronologia = () => {
     guardAction(() => navigate(`/patient-history/${patient?.id}`));
   };
@@ -973,7 +1071,7 @@ export default function AddVisit() {
       <Card className="max-w-2xl mx-auto mt-12 shadow-medium">
         <CardBody className="text-center py-12">
           <div className="w-20 h-20 bg-default-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User size={40} className="text-default-400" />
+            <User size={40} className="text-default-500" />
           </div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
             Nessun paziente selezionato
@@ -993,82 +1091,126 @@ export default function AddVisit() {
     );
   }
 
-  const breadcrumbItems = [
-    { label: "Dashboard", path: "/" },
-    { label: "Pazienti", path: "/pazienti" },
-    {
-      label: `${patient.nome} ${patient.cognome}`,
-      path: `/patient-history/${patient.id}`,
-    },
-    { label: isEditMode ? "Modifica" : "Nuova visita" },
-  ];
-
   const canCopyOrClear = Boolean(getPreviousVisit()) || copiedPrevious;
+  salvaERestaRef.current = () => {
+    if (!loading && !pdfLoading) void handleSubmit(undefined, { skipRedirect: true });
+  };
+  stampaRef.current = () => {
+    if (!loading && !pdfLoading) void handlePrintPdf();
+  };
+  const etaPaziente = calculateAge(patient.dataNascita);
   const altezzaCm = getAltezzaCmForBmi(patient);
   const immagini = visitaData.immagini ?? [];
 
   return (
-    <div className="corioli-page space-y-6 pb-32">
-      {/* 1. Header Navigation */}
-      <Breadcrumb items={breadcrumbItems} />
-
-      {/* 2. Patient Banner & Main Info */}
-      <Card className="shadow-md border-t-4 border-primary">
-        <CardBody className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl shrink-0">
-              {patient.nome[0]}
-              {patient.cognome[0]}
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                {patient.nome} {patient.cognome}
-                {hasUnsavedChanges && (
-                  <Chip size="sm" color="warning" variant="flat">
-                    Non salvato
-                  </Chip>
-                )}
-              </h1>
-              <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
-                <span className="text-gray-500">
-                  <CodiceFiscaleValue
-                    value={patient.codiceFiscale}
-                    generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
-                  />
-                </span>
-                {calculateAge(patient.dataNascita) && (
+    <div className="corioli-page space-y-6 pb-12">
+      {/* Barra della visita, come su Corioli Cardiologia. Sostituisce navbar,
+          briciole, riquadro del paziente e la pillola in basso con
+          Annulla/Stampa/Salva: una sola striscia sempre in vista, con su chi si
+          sta scrivendo e le azioni. In basso la pillola copriva i campi, e in
+          alto il nome usciva di schermo appena si scorreva il referto. La
+          navbar qui non c'e' (`DesktopShell`). */}
+      <div className="sfondo-corioli sticky top-barra z-40 -mx-6 px-6 pt-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-default-200 bg-white px-4 py-3 shadow-sm">
+          <Button
+            isIconOnly
+            variant="light"
+            aria-label="Torna alla scheda del paziente"
+            title="Torna alla scheda del paziente"
+            onPress={handleNavigateCronologia}
+          >
+            <ArrowLeft size={20} />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-default-600">
+              {isEditMode ? "Modifica visita" : "Nuova visita"}
+              {hasUnsavedChanges && (
+                <span className="ml-1 font-medium text-warning-700">· modifiche non salvate</span>
+              )}
+            </p>
+            <h1 className="flex min-w-0 items-baseline gap-2 text-lg font-semibold text-gray-900">
+              <span className="truncate">
+                {formatPatientDisplayName(patient) ?? "Paziente senza nome"}
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-sm font-normal text-default-600">
+                {[
+                  etaPaziente != null ? `${etaPaziente} anni` : null,
+                  patient.sesso === "M" ? "M" : patient.sesso === "F" ? "F" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                {patient.codiceFiscale && (
                   <>
-                    <span className="hidden md:inline text-gray-300">|</span>
-                    <span className="text-gray-500">
-                      {calculateAge(patient.dataNascita)} anni
-                    </span>
+                    {" · "}
+                    <CodiceFiscaleValue
+                      value={patient.codiceFiscale}
+                      generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
+                    />
                   </>
                 )}
+              </span>
+            </h1>
+            {/* Le allergie in vista mentre si scrive la terapia: prima
+                stavano solo nella scheda del paziente. */}
+            {patient.allergie?.trim() && (
+              <p className="mt-0.5 truncate text-xs font-medium text-danger-700" title={patient.allergie}>
+                Allergie: {patient.allergie}
               </p>
-            </div>
+            )}
           </div>
-
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <Input
-              type="date"
-              label="Data Visita"
-              value={visitData.dataVisita}
-              onValueChange={(value) => handleInputChange("dataVisita", value)}
-              max={todayIsoDate()}
+          <Input
+            type="date"
+            label="Data"
+            value={visitData.dataVisita}
+            onValueChange={(value) => handleInputChange("dataVisita", value)}
+            max={todayIsoDate()}
+            variant="bordered"
+            size="sm"
+            labelPlacement="outside-left"
+            className="w-auto"
+            classNames={{
+              label: "text-default-600 font-medium whitespace-nowrap",
+              input: "bg-transparent",
+              inputWrapper:
+                "border-default-300 hover:border-primary focus-within:border-primary min-w-[140px]",
+            }}
+          />
+          <div className="flex items-center gap-2">
+            <Button variant="light" onPress={handleNavigateCronologia} className="text-default-700">
+              Annulla
+            </Button>
+            {/* Col bordo: in grigio pieno accanto a "Salva visita" sembrava
+                un pulsante disattivato. */}
+            <Button
+              color="primary"
               variant="bordered"
-              size="sm"
-              labelPlacement="outside-left"
-              className="w-full md:w-auto"
-              classNames={{
-                label: "text-gray-500 font-medium whitespace-nowrap pt-2",
-                input: "bg-transparent",
-                inputWrapper:
-                  "border-default-300 hover:border-primary focus-within:border-primary min-w-[140px]",
-              }}
-            />
+              title="Stampa il referto (Ctrl+P)"
+              onPress={() => void handlePrintPdf()}
+              isLoading={pdfLoading}
+              isDisabled={loading || pdfLoading}
+              startContent={!pdfLoading ? <Printer size={18} /> : undefined}
+            >
+              {pdfLoading ? "Preparazione..." : "Stampa"}
+            </Button>
+            <Button
+              onPress={() => handleSubmit()}
+              color="primary"
+              className="corioli-cta font-semibold"
+              isLoading={loading}
+              isDisabled={loading}
+              startContent={!loading ? <Save size={18} /> : undefined}
+              title="Salva la visita (Ctrl+S)"
+            >
+              {loading ? "Salvataggio..." : "Salva visita"}
+            </Button>
           </div>
-        </CardBody>
-      </Card>
+        </div>
+        {/* Il referto che scorre sparisce sfumando sotto la barra. */}
+        <div
+          aria-hidden="true"
+          className="sfondo-corioli pointer-events-none absolute inset-x-0 top-full h-4 [mask-image:linear-gradient(to_bottom,black,transparent)]"
+        />
+      </div>
 
       {error && (
         <Card className="border-l-4 border-l-danger bg-danger-50">
@@ -1083,20 +1225,6 @@ export default function AddVisit() {
 
       {/* 3. Main Form Content */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {!isEditMode && (
-          <div className="flex justify-end">
-            <Button
-              color="primary"
-              variant="flat"
-              size="sm"
-              onPress={handleCopyPreviousVisit}
-              isDisabled={!canCopyOrClear}
-              startContent={<Copy size={16} />}
-            >
-              {copiedPrevious ? "Svuota campi" : "Copia visita precedente"}
-            </Button>
-          </div>
-        )}
 
         <div className="flex flex-col lg:flex-row gap-6">
           {/* LEFT COLUMN: Parametri & Immagini */}
@@ -1106,35 +1234,14 @@ export default function AddVisit() {
                 <span>Parametri</span>
               </CardHeader>
               <CardBody className="px-4 py-6 space-y-6">
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="P.A. (mmHg)"
-                    type="text"
-                    inputMode="numeric"
-                    size="sm"
-                    variant="bordered"
-                    labelPlacement="outside"
-                    placeholder="Es. 120/80"
-                    value={visitaData.pressioneArteriosa ?? ""}
-                    onValueChange={(v) =>
-                      handleVisitaChange("pressioneArteriosa", v)
-                    }
-                  />
-                  <Input
-                    label="F.C. (bpm)"
-                    type="text"
-                    inputMode="numeric"
-                    size="sm"
-                    variant="bordered"
-                    labelPlacement="outside"
-                    placeholder="Es. 72"
-                    value={visitaData.frequenzaCardiaca ?? ""}
-                    onValueChange={(v) => {
-                      if (v !== "" && !/^\d{0,3}$/.test(v)) return;
-                      handleVisitaChange("frequenzaCardiaca", v);
-                    }}
-                  />
-                </div>
+                {/* `key`: passando a un'altra visita (Ctrl+N) il riquadro della
+                    prova ortostatica e gli errori ripartono da zero. */}
+                <ParametriPressione
+                  key={`${patient.id}-${visitId ?? "nuova"}`}
+                  valori={visitaData as ValoriPressione}
+                  eta={calculateAge(patient.dataNascita, visitData.dataVisita)}
+                  onChange={(campo, valore) => handleVisitaChange(campo, valore)}
+                />
 
                 <Divider className="my-2" />
 
@@ -1178,9 +1285,9 @@ export default function AddVisit() {
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
+                <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="Peso corporeo (kg)"
+                    label="Peso (kg)"
                     type="text"
                     inputMode="decimal"
                     size="sm"
@@ -1211,27 +1318,40 @@ export default function AddVisit() {
                       liveBodyWeight(v);
                     }}
                     placeholder="Es. 75"
-                    className="flex-1"
-                    classNames={{ label: "pb-1" }}
                   />
-
-                  {/* Indicatore BMI (compatto e discreto) */}
-                  {visitaData.pesoCorporeo > 0 &&
-                    altezzaCm != null && (
-                      <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
-                        <div
-                          className="flex flex-col items-center gap-0 rounded-md border px-2 py-1 text-primary-600 bg-primary-50/80 border-primary-200"
-                          title="Indice di massa corporea"
-                        >
-                          <div className="flex items-center gap-1 text-xs font-semibold">
-                            <span>
-                              BMI {computeBmi(visitaData.pesoCorporeo, altezzaCm)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                  <Input
+                    label="Vita (cm)"
+                    aria-label="Circonferenza vita in cm"
+                    type="text"
+                    inputMode="numeric"
+                    size="sm"
+                    variant="bordered"
+                    labelPlacement="outside"
+                    placeholder="Es. 92"
+                    value={visitaData.circonferenzaVita ? String(visitaData.circonferenzaVita) : ""}
+                    onValueChange={(v) => {
+                      if (!/^\d{0,3}$/.test(v)) return;
+                      handleVisitaChange("circonferenzaVita", v === "" ? 0 : parseInt(v, 10));
+                    }}
+                    isInvalid={Boolean(
+                      visitaData.circonferenzaVita >= 10 &&
+                        validateCirconferenzaVita(visitaData.circonferenzaVita),
                     )}
+                    errorMessage={
+                      visitaData.circonferenzaVita >= 10
+                        ? validateCirconferenzaVita(visitaData.circonferenzaVita) ?? undefined
+                        : undefined
+                    }
+                  />
                 </div>
+
+                <IndiciCorporei
+                  pesoKg={visitaData.pesoCorporeo}
+                  altezzaCm={altezzaCm}
+                  vitaCm={visitaData.circonferenzaVita}
+                  sesso={patient.sesso}
+                  eta={calculateAge(patient.dataNascita, visitData.dataVisita)}
+                />
               </CardBody>
             </Card>
 
@@ -1297,14 +1417,31 @@ export default function AddVisit() {
           {/* RIGHT COLUMN: Referto Testuale */}
           <div className="w-full lg:flex-1 space-y-6">
             <Card className="shadow-sm border border-default-200 bg-white">
-              <CardHeader className="pb-0 pt-4 px-6 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                Referto Medico
+              {/* "Copia visita precedente" sta qui e non su una riga sua in
+                  cima al form, come su Corioli Cardiologia: lasciava spazio
+                  vuoto sopra le colonne, e solo nelle visite nuove. */}
+              <CardHeader className="flex items-center justify-between gap-3 pb-0 pt-4 px-6">
+                <span className="font-semibold text-gray-700 uppercase text-xs tracking-wider">
+                  Referto medico
+                </span>
+                {!isEditMode && (
+                  <Button
+                    color="primary"
+                    variant="flat"
+                    size="sm"
+                    onPress={handleCopyPreviousVisit}
+                    isDisabled={!canCopyOrClear}
+                    startContent={<Copy size={16} />}
+                  >
+                    {copiedPrevious ? "Svuota campi" : "Copia visita precedente"}
+                  </Button>
+                )}
               </CardHeader>
               <CardBody className="p-6 space-y-8">
                 {/* Sezione 1: Descrizione */}
                 <div className="space-y-2 group">
                   <label className="text-sm font-bold text-gray-700 block mb-1">
-                    1. Descrizione Problema / Dati Clinici
+                    1. Descrizione del problema / dati clinici
                   </label>
                   <RefertoTextarea
                     value={visitaData.problemaClinico}
@@ -1324,7 +1461,7 @@ export default function AddVisit() {
                 <div className="space-y-2 relative group">
                   <div className="flex justify-between items-end mb-1">
                     <label className="text-sm font-bold text-gray-700">
-                      3. Esame Obiettivo
+                      3. Esame obiettivo
                     </label>
                     <TemplateSelector
                       templates={allTemplates.filter(
@@ -1366,7 +1503,7 @@ export default function AddVisit() {
                 <div className="space-y-2 relative group">
                   <div className="flex justify-between items-end mb-1">
                     <label className="text-sm font-bold text-gray-700">
-                      5. Conclusioni e Terapia
+                      5. Conclusioni e terapia
                     </label>
                     <TemplateSelector
                       templates={allTemplates.filter(
@@ -1396,58 +1533,9 @@ export default function AddVisit() {
         </div>
       </form>
 
-      {/* 4. Floating Action Bar (Pill) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex justify-center w-full pointer-events-none">
-        <div className="bg-white/90 backdrop-blur-md border border-gray-200 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 pointer-events-auto transition-all hover:shadow-xl hover:scale-[1.01]">
-          <Button
-            variant="light"
-            color="danger"
-            size="sm"
-            onPress={handleNavigateCronologia}
-            startContent={<ArrowLeft size={16} />}
-            className="text-gray-600 hover:text-danger font-medium"
-          >
-            Annulla
-          </Button>
-
-          <div className="h-6 w-px bg-gray-300" />
-
-          <div className="flex gap-3">
-            <Button
-              color="primary"
-              variant="flat"
-              size="md"
-              onPress={handlePrintPdf}
-              isLoading={loading || pdfLoading}
-              isDisabled={loading || pdfLoading}
-              startContent={<Printer size={18} />}
-              className="rounded-full"
-            >
-              {loading
-                ? "Salvataggio..."
-                : pdfLoading
-                  ? "Preparazione stampa..."
-                  : "Stampa"}
-            </Button>
-
-            <Button
-              onPress={() => handleSubmit()}
-              color="primary"
-              size="md"
-              className="px-6 font-bold shadow-lg shadow-primary/20 rounded-full"
-              isLoading={loading}
-              isDisabled={loading}
-              startContent={<Save size={18} />}
-            >
-              {loading ? "Salvando..." : "Salva Visita"}
-            </Button>
-          </div>
-        </div>
-      </div>
-
       {fullscreenImage && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+          className="fixed inset-x-0 bottom-0 top-barra z-[200] flex items-center justify-center p-6"
           onClick={() => setFullscreenImage(null)}
         >
           <div className="relative" onClick={(e) => e.stopPropagation()}>

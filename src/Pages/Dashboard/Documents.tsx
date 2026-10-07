@@ -269,10 +269,9 @@ export default function Documents() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title="Gestione Documenti"
-        subtitle="Archivia e consulta corsi ECM, certificati e documenti professionali."
+        title="Documenti personali"
+        subtitle="Corsi ECM, attestati e documenti professionali tuoi: le carte dei pazienti stanno nella loro scheda."
         icon={FileText}
-        iconColor="primary"
         actions={HeaderActions}
       />
 
@@ -280,15 +279,17 @@ export default function Documents() {
         <CardBody className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
             <Input
+              aria-label="Cerca nei documenti"
               placeholder="Cerca per titolo, descrizione o nome file..."
               value={searchTerm}
               onValueChange={setSearchTerm}
-              startContent={<Search size={18} className="text-default-400" />}
+              startContent={<Search size={18} className="text-default-500" />}
               className="flex-1"
               variant="bordered"
               isClearable
             />
             <Select
+              aria-label="Categoria dei documenti"
               placeholder="Categoria"
               selectedKeys={[selectedCategory]}
               onSelectionChange={(keys) => setSelectedCategory(getSelectionValue(keys as "all" | Set<Key>, "all"))}
@@ -332,23 +333,28 @@ export default function Documents() {
             <Card className="shadow-md border border-gray-100">
               <CardBody className="text-center py-12">
                 <FileText size={48} className="mx-auto mb-4 text-gray-300" />
+                {/* "Nessun documento caricato" solo se l'archivio e' vuoto:
+                    con ricerca o categoria che non trovano niente si diceva
+                    lo stesso, con "Carica Primo Documento" a tutta larghezza. */}
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  {searchTerm ? "Nessun documento trovato" : "Nessun documento caricato"}
+                  {documents.length > 0 ? "Nessun documento trovato" : "Nessun documento caricato"}
                 </h3>
                 <p className="text-gray-500 mb-4">
-                  {searchTerm 
-                    ? "Prova a modificare i termini di ricerca."
+                  {documents.length > 0
+                    ? "Prova a cambiare la ricerca o la categoria."
                     : "Inizia caricando i tuoi primi documenti di aggiornamento professionale."
                   }
                 </p>
-                <Button
-                  variant="bordered"
-                  onPress={onUploadOpen}
-                  startContent={<FileText size={18} />}
-                  className="font-medium border-default-300 text-default-700 bg-white"
-                >
-                  Carica Primo Documento
-                </Button>
+                {documents.length === 0 && (
+                  <Button
+                    variant="bordered"
+                    onPress={onUploadOpen}
+                    startContent={<FileText size={18} />}
+                    className="self-center font-medium border-default-300 text-default-700 bg-white"
+                  >
+                    Carica il primo documento
+                  </Button>
+                )}
               </CardBody>
             </Card>
           ) : (
@@ -560,7 +566,7 @@ export default function Documents() {
                 />
                 <label htmlFor="file-upload" className="cursor-pointer">
                   <div className="space-y-2">
-                    <Upload className="mx-auto w-8 h-8 text-gray-400" />
+                    <Upload className="mx-auto w-8 h-8 text-gray-500" />
                     <p className="text-sm text-gray-600">
                       {selectedFile ? selectedFile.name : "Clicca per selezionare un file PDF"}
                     </p>

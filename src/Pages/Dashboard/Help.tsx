@@ -20,6 +20,7 @@ import {
   Search,
   Paperclip,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { PageHeader } from "../../components/PageHeader";
@@ -66,8 +67,7 @@ const ACCEPTED_FILES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,vide
 /** Schema: dove finisce ogni categoria di modello. */
 function ModelliMapSchema() {
   const rows = [
-    { cat: "Visita", dest: "Campi del referto di visita", hot: false },
-    { cat: "Terapie", dest: "Visita → “Conclusioni e Terapia” (testo discorsivo)", hot: true },
+    { cat: "Visita", dest: "Campi del referto, terapie comprese (in “Conclusioni e terapia”)", hot: true },
     { cat: "Ricette", dest: "Nuova ricetta → testo libero", hot: true },
     { cat: "Esami", dest: "Nuova richiesta esame", hot: false },
     { cat: "Certificati", dest: "Nuovo certificato", hot: false },
@@ -87,7 +87,7 @@ function ModelliMapSchema() {
             >
               {r.cat}
             </span>
-            <span className="text-default-400" aria-hidden>→</span>
+            <span className="text-default-500" aria-hidden>→</span>
             <span className="text-xs leading-snug text-default-700">{r.dest}</span>
           </div>
         ))}
@@ -96,13 +96,13 @@ function ModelliMapSchema() {
   );
 }
 
-/** Schema: differenza Terapie (discorsivo) vs Ricette (elenco). */
+/** Schema: differenza fra la terapia nel referto (discorsiva) e la ricetta (elenco). */
 function TerapieVsRicetteSchema() {
   return (
     <div className="my-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
       <div className="rounded-xl border border-default-200 bg-default-50/60 p-3">
-        <p className="text-sm font-semibold text-gray-900">Terapie</p>
-        <p className="mt-0.5 text-[11px] text-default-500">Visita · Conclusioni e Terapie</p>
+        <p className="text-sm font-semibold text-gray-900">Terapia nel referto</p>
+        <p className="mt-0.5 text-[11px] text-default-500">Visita · Conclusioni e terapia</p>
         <div className="mt-2 rounded-md border border-default-200 bg-white p-2 text-[11px] leading-relaxed text-default-700">
           Si consiglia di proseguire i controlli di routine e mantenere uno stile di vita sano…
         </div>
@@ -143,7 +143,7 @@ function CreaModelloSteps() {
             {i + 1}. {s}
           </span>
           {i < steps.length - 1 && (
-            <span className="text-default-400" aria-hidden>→</span>
+            <span className="text-default-500" aria-hidden>→</span>
           )}
         </span>
       ))}
@@ -401,9 +401,9 @@ export default function HelpAndFeedback() {
         },
         {
           id: "modelli-referti-terapie-ricette",
-          title: "Che differenza c'è tra Terapie e Ricette?",
+          title: "Dove sono i modelli di terapia? E che differenza c'è con le Ricette?",
           content:
-            "Terapie = testo discorsivo che finisce nella sezione Conclusioni e Terapie della visita. Ricette = testo libero che compila la ricetta (farmaci, posologie e indicazioni insieme). Sono due categorie separate.",
+            "I modelli di terapia stanno nella scheda Visita, sezione Conclusioni e terapia: si inseriscono dal pulsante Modello di quel campo, con testo discorsivo. Le Ricette sono un'altra cosa: testo libero che compila la ricetta (farmaci, posologie e indicazioni insieme).",
           node: <TerapieVsRicetteSchema />,
         },
         {
@@ -517,7 +517,7 @@ export default function HelpAndFeedback() {
         {
           title: "PIN, profilo, biometria e recupero",
           content:
-            "Alla prima configurazione (o dopo un aggiornamento) Corioli Generale chiede i dati del profilo medico (nome, cognome, email, telefono, specializzazione) e un PIN. L'uso quotidiano funziona senza internet. Se dimentichi il PIN puoi usare il codice CORI-… salvato alla configurazione oppure, con connessione, il recupero via email all'indirizzo del profilo. Il riconoscimento biometrico (impronta o volto) è opzionale in Impostazioni → Sicurezza.",
+            "Alla prima configurazione (o dopo un aggiornamento) Corioli Generale chiede i dati del profilo medico (titolo, nome, cognome, email, telefono, specializzazione), come intestare il referto (titolo del referto e partita IVA, facoltativa) e un PIN. L'uso quotidiano funziona senza internet. Se dimentichi il PIN puoi usare il codice CORI-… salvato alla configurazione oppure, con connessione, il recupero via email all'indirizzo del profilo. Il riconoscimento biometrico (impronta o volto) è opzionale in Impostazioni → Sicurezza.",
         },
       ],
     },
@@ -632,7 +632,7 @@ export default function HelpAndFeedback() {
             <div key={`${msg.id}-att-${i}`}>{renderAttachment(att, isUser)}</div>
           ))}
         </div>
-        <span className="text-[10px] text-gray-400 mt-1 px-1">{msg.time}</span>
+        <span className="text-[10px] text-gray-500 mt-1 px-1">{msg.time}</span>
       </div>
     );
   };
@@ -646,10 +646,21 @@ export default function HelpAndFeedback() {
   return (
     <div className="corioli-page space-y-6 animate-in fade-in duration-500 flex flex-col min-h-0">
       <PageHeader
-        title="Assistenza e Feedback"
-        subtitle="Siamo qui per aiutarti. Trova risposte o contattaci direttamente."
+        title="Aiuto"
         icon={LifeBuoy}
-        iconColor="primary"
+        actions={
+          // Era un pulsante fisso nella navbar, come su Corioli Cardiologia:
+          // dopo un import di backup l'app si ricarica da sola, qui resta come
+          // rimedio quando qualcosa non si aggiorna.
+          <Button
+            variant="light"
+            startContent={<RefreshCw size={16} />}
+            onPress={() => window.location.reload()}
+            className="text-default-600"
+          >
+            Ricarica l&apos;app
+          </Button>
+        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 lg:h-[calc(100vh-220px)] lg:max-h-[720px]">
@@ -668,7 +679,7 @@ export default function HelpAndFeedback() {
                 placeholder="Cerca nelle FAQ..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                startContent={<Search size={18} className="text-default-400" />}
+                startContent={<Search size={18} className="text-default-500" />}
                 variant="flat"
                 radius="lg"
                 classNames={{
@@ -702,7 +713,7 @@ export default function HelpAndFeedback() {
                           <span className="text-xs font-bold text-primary uppercase tracking-wider">
                             {group.category}
                           </span>
-                          <span className="text-[10px] font-medium text-default-400 normal-case tracking-normal shrink-0">
+                          <span className="text-[10px] font-medium text-default-500 normal-case tracking-normal shrink-0">
                             {group.items.length}{" "}
                             {group.items.length === 1 ? "domanda" : "domande"}
                           </span>
@@ -737,7 +748,7 @@ export default function HelpAndFeedback() {
                 <div className="py-12 text-center flex flex-col items-center justify-center animate-in fade-in">
                   <Search className="w-12 h-12 text-default-200 mb-4" />
                   <p className="text-default-600 font-medium">Nessun risultato trovato</p>
-                  <p className="text-default-400 text-sm mt-1">
+                  <p className="text-default-500 text-sm mt-1">
                     Nessuna risposta per &quot;{searchQuery}&quot;
                   </p>
                   <Button variant="light" color="primary" className="mt-4" onPress={() => setSearchQuery("")}>
@@ -798,7 +809,7 @@ export default function HelpAndFeedback() {
                 className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4"
               >
                 {chatLoading && (
-                  <p className="text-center text-sm text-default-400 py-8">Caricamento chat…</p>
+                  <p className="text-center text-sm text-default-500 py-8">Caricamento chat…</p>
                 )}
                 {!chatLoading && chatError && (
                   <p className="text-center text-sm text-warning-600 py-2 px-2">{chatError}</p>
@@ -807,7 +818,7 @@ export default function HelpAndFeedback() {
                   <div className="flex flex-1 flex-col items-center justify-center text-center px-4">
                     <LifeBuoy className="w-10 h-10 text-default-300 mb-3" />
                     <p className="text-sm font-medium text-default-600">Nessun messaggio ancora</p>
-                    <p className="text-xs text-default-400 mt-1 max-w-[260px]">
+                    <p className="text-xs text-default-500 mt-1 max-w-[260px]">
                       Scrivi per primo per contattare il team assistenza Corioli.
                     </p>
                   </div>
@@ -842,7 +853,7 @@ export default function HelpAndFeedback() {
                         <button
                           type="button"
                           onClick={() => removePendingAttachment(i)}
-                          className="text-gray-400 hover:text-danger ml-1"
+                          className="text-gray-500 hover:text-danger ml-1"
                           aria-label="Rimuovi allegato"
                         >
                           ×
@@ -902,7 +913,7 @@ export default function HelpAndFeedback() {
                     <Send size={18} className="ml-0.5" />
                   </Button>
                 </form>
-                <p className="text-[10px] text-center text-gray-400 mt-2">
+                <p className="text-[10px] text-center text-gray-500 mt-2">
                   Immagini fino a {MAX_IMAGE_MB} MB · video fino a {MAX_VIDEO_MB} MB
                 </p>
               </div>

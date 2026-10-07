@@ -161,3 +161,44 @@ export function validateFrequenzaCardiaca(value?: string): string | null {
   if (n < 20 || n > 250) return "Frequenza cardiaca fuori range (20–250 bpm)";
   return null;
 }
+
+/**
+ * Partita IVA come si conserva: solo le 11 cifre. Toglie spazi, punti e il
+ * prefisso "IT" con cui spesso viene copiata dalle fatture.
+ */
+export function normalizzaPartitaIva(value?: string): string {
+  return (value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/^IT/, "")
+    .replace(/[\s.\-/]/g, "");
+}
+
+/**
+ * Partita IVA italiana (facoltativa): 11 cifre, l'ultima di controllo.
+ *
+ * La cifra di controllo si calcola come quella del codice fiscale numerico:
+ * le cifre in posizione dispari si sommano, quelle in posizione pari si
+ * raddoppiano (togliendo 9 se superano 9), e l'ultima porta la somma al
+ * multiplo di 10. Basta a fermare una cifra scritta male, che sul referto
+ * resterebbe stampata su ogni foglio.
+ */
+export function validatePartitaIva(value?: string): string | null {
+  const piva = normalizzaPartitaIva(value);
+  if (piva === "") return null;
+  if (!/^\d{11}$/.test(piva)) return "Partita IVA: servono 11 cifre";
+  let somma = 0;
+  for (let i = 0; i < 10; i++) {
+    let c = Number(piva[i]);
+    if (i % 2 === 1) {
+      c *= 2;
+      if (c > 9) c -= 9;
+    }
+    somma += c;
+  }
+  const controllo = (10 - (somma % 10)) % 10;
+  if (controllo !== Number(piva[10])) {
+    return "Partita IVA non valida: controllare le cifre";
+  }
+  return null;
+}

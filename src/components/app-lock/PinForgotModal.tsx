@@ -467,7 +467,7 @@ function RecoveryCodeField({
           placeholder="CORI-XXXX-XXXX-XXXX"
           autoComplete="off"
           spellCheck={false}
-          className="w-full bg-transparent text-center font-mono text-base sm:text-lg font-bold tracking-wider text-primary-900 placeholder:text-default-400 placeholder:font-normal placeholder:tracking-normal outline-none"
+          className="w-full bg-transparent text-center font-mono text-base sm:text-lg font-bold tracking-wider text-primary-900 placeholder:text-default-500 placeholder:font-normal placeholder:tracking-normal outline-none"
         />
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
   Eye,
   FileImage,
   FileText,
+  FolderOpen,
   Plus,
   Search,
   Trash2,
@@ -331,14 +332,13 @@ export default function PatientFiles() {
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       <PageHeader
-        title="File Paziente"
+        title="File del paziente"
         subtitle={
           patient
             ? `Archivio documenti di ${patient.nome} ${patient.cognome}.`
             : "Archivio documenti paziente."
         }
-        icon={FileText}
-        iconColor="primary"
+        icon={FolderOpen}
         actions={HeaderActions}
       />
 
@@ -348,7 +348,7 @@ export default function PatientFiles() {
             placeholder="Cerca per titolo, descrizione o nome file..."
             value={searchTerm}
             onValueChange={setSearchTerm}
-            startContent={<Search size={18} className="text-default-400" />}
+            startContent={<Search size={18} className="text-default-500" />}
             variant="bordered"
             isClearable
           />
@@ -427,7 +427,7 @@ export default function PatientFiles() {
                         <div className="h-full w-full flex flex-col items-center justify-center text-default-500 min-h-[9rem]">
                           <FileText size={28} />
                           <span className="text-xs mt-2 font-medium">{typeLabel}</span>
-                          <span className="text-[11px] text-default-400">
+                          <span className="text-[11px] text-default-500">
                             Anteprima non disponibile
                           </span>
                         </div>
@@ -620,7 +620,7 @@ export default function PatientFiles() {
                 />
                 <label htmlFor="patient-file-upload" className="cursor-pointer">
                   <div className="space-y-2">
-                    <Upload className="mx-auto w-8 h-8 text-gray-400" />
+                    <Upload className="mx-auto w-8 h-8 text-gray-500" />
                     <p className="text-sm text-gray-600">
                       {selectedFile
                         ? selectedFile.name
@@ -632,7 +632,7 @@ export default function PatientFiles() {
                       </p>
                     )}
                     {!selectedFile && (
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-500">
                         Supportati: PDF, immagini, Word, Excel e altri (max 25MB)
                       </p>
                     )}

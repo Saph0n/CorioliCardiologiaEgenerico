@@ -59,6 +59,75 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        /**
+         * Due caratteri con due mestieri diversi: l'interfaccia prende quello
+         * di sistema, il referto resta su quello della stampa.
+         *
+         * L'Arial che l'interfaccia aveva prima non era una scelta
+         * tipografica ma un riflesso del PDF. Nel referto ha una ragione — il
+         * testo e' in Helvetica, uno dei caratteri standard del formato, che
+         * non viene incorporato nel file: a disegnarla e' il lettore, e su
+         * Windows la sostituisce con Arial, quindi scrivendo si vede quello
+         * che esce dalla stampante. Come carattere di interfaccia invece
+         * Arial e' fuori posto: a 12-14px in una maschera fitta di campi
+         * stretti sta largo, e le sue cifre sono il punto debole proprio in
+         * un'applicazione che e' quasi tutta numeri.
+         *
+         * `Segoe UI Variable Text` sta **prima** di `system-ui` di proposito:
+         * misurato in Chromium su Windows 11, `system-ui` risolve al Segoe UI
+         * normale e non alla variabile (306,79px contro 302,31px sulla stessa
+         * stringa a 14px). La variabile e' disegnata per i corpi piccoli ed e'
+         * quella che serve qui. Su Mac quel nome non esiste, la riga scivola
+         * su `system-ui` e prende San Francisco.
+         *
+         * Nessun carattere scaricato dalla rete: l'applicazione deve
+         * funzionare offline — e' la stessa ragione per cui le icone Tabler
+         * sono in `node_modules` e non su un CDN. Se un domani serve la stessa
+         * identita' su Mac e Windows si impacchetta un carattere vero (Inter,
+         * IBM Plex Sans) come dipendenza, non come link.
+         */
+        sans: [
+          "Segoe UI Variable Text",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        /**
+         * I titoli delle pagine (`PageHeader`). Segoe UI Variable ha tre tagli
+         * dello stesso disegno: Small, Text e Display. Il Text, quello
+         * dell'interfaccia, ha aste piu' grosse e lettere piu' larghe per
+         * reggere a 12-14px, e a 24px diventa pesante. Il titolo prima lo
+         * stringeva con `tracking-tight` e accanto al sottotitolo sembrava un
+         * altro carattere ("non e' armonico come carattere e grandezza", 25
+         * settembre 2026). Il Display e' tagliato per i corpi grandi: nella
+         * scala di Windows 11 il titolo e' Display semibold a 28px.
+         *
+         * Senza Windows 11 la riga scivola su `system-ui`, come `sans`: su Mac
+         * San Francisco passa da solo al suo taglio Display sopra i 20 punti.
+         */
+        titolo: [
+          "Segoe UI Variable Display",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        /**
+         * Solo i campi in cui si scrive il referto (`RefertoTextarea`): devono
+         * seguire la stampa, non l'interfaccia. Se cambia questa riga cambia
+         * anche quello che il medico vede mentre scrive rispetto a quello che
+         * stampa.
+         */
+        referto: ["Arial", "Helvetica", "sans-serif"],
+      },
       colors: {
         brand,
         surface: {
@@ -66,6 +135,24 @@ export default {
           muted: "#F1F5F9",
           page: "#F8FAFC",
         },
+      },
+      /**
+       * Spazio della barra del titolo (`--barra-finestra` in index.css, 0 nel
+       * browser). `top-barra` per cio' che resta attaccato in alto,
+       * `min-h-finestra` per cio' che riempie la finestra: con `min-h-screen`
+       * la pagina sarebbe sempre piu' alta della finestra quanto la barra.
+       */
+      spacing: {
+        barra: "var(--barra-finestra)",
+      },
+      height: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
+      minHeight: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
+      maxHeight: {
+        finestra: "calc(100vh - var(--barra-finestra))",
       },
     },
   },

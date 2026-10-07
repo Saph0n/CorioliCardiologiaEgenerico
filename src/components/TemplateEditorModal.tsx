@@ -36,7 +36,7 @@ const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   certificato: "Certificati",
 };
 
-/** Sotto-sezioni dell'anamnesi strutturata (tutte mappano sul campo "1. Anamnesi"). */
+/** Sotto-sezioni dell'anamnesi strutturata (tutte mappano sul campo "Anamnesi"). */
 const ANAMNESI_SUBSECTIONS: TemplateSection[] = [
   "anamnesiFamiliare",
   "anamnesiFisiologica",
@@ -58,16 +58,16 @@ const SECTION_TO_CAMPO = Object.fromEntries(
 ) as Partial<Record<TemplateSection, AnamnesiCampoKey>>;
 
 const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
-  prestazione: "1. Anamnesi (campo unico)",
-  esameObiettivo: "3. Esame Obiettivo",
-  conclusioni: "4. Conclusioni e Terapia",
-  anamnesiFamiliare: "1. Anamnesi · Familiare",
-  anamnesiFisiologica: "1. Anamnesi · Fisiologica",
-  anamnesiPatologica: "1. Anamnesi · Patologica",
-  anamnesiChirurgica: "1. Anamnesi · Chirurgica",
-  anamnesiFarmacologica: "1. Anamnesi · Farmacologica",
-  anamnesiAllergica: "1. Anamnesi · Allergica",
-  anamnesiAbitudini: "1. Anamnesi · Abitudini di vita",
+  prestazione: "Anamnesi (campo unico)",
+  esameObiettivo: "Esame obiettivo",
+  conclusioni: "Conclusioni e terapia",
+  anamnesiFamiliare: "Anamnesi · Familiare",
+  anamnesiFisiologica: "Anamnesi · Fisiologica",
+  anamnesiPatologica: "Anamnesi · Patologica",
+  anamnesiChirurgica: "Anamnesi · Chirurgica",
+  anamnesiFarmacologica: "Anamnesi · Farmacologica",
+  anamnesiAllergica: "Anamnesi · Allergica",
+  anamnesiAbitudini: "Anamnesi · Abitudini di vita",
 };
 
 const SECTIONS_BY_CATEGORY: Record<TemplateCategory, TemplateSection[]> = {
@@ -86,7 +86,7 @@ const DEFAULT_SECTION: Record<TemplateCategory, TemplateSection> = {
   certificato: "generale",
 };
 
-/** Per le terapie la sezione DB è "generale" ma in UI compare in Conclusioni e Terapie */
+/** Per le terapie la sezione DB è "generale" ma in UI compare in Conclusioni e terapia */
 function getPreviewSection(category: TemplateCategory, section: TemplateSection): TemplateSection {
   if (category === "terapie") return "conclusioni";
   return section;
@@ -99,10 +99,10 @@ type VisitFieldMock = {
 };
 
 const VISITA_FIELDS: VisitFieldMock[] = [
-  { section: "prestazione", label: "1. Anamnesi", hasModello: true },
-  { label: "2. Descrizione Problema", hasModello: false },
-  { section: "esameObiettivo", label: "3. Esame Obiettivo", hasModello: true },
-  { section: "conclusioni", label: "4. Conclusioni e Terapia", hasModello: true },
+  { section: "prestazione", label: "Anamnesi", hasModello: true },
+  { label: "Descrizione del problema", hasModello: false },
+  { section: "esameObiettivo", label: "Esame obiettivo", hasModello: true },
+  { section: "conclusioni", label: "Conclusioni e terapia", hasModello: true },
 ];
 
 type LivePreviewContent = {
@@ -129,7 +129,7 @@ function getContentPlaceholder(category: TemplateCategory): string {
     return "Scrivi l'intera ricetta in testo libero: farmaci, posologie, durata e indicazioni. Comparirà già compilata quando emetti una ricetta.";
   }
   if (category === "terapie") {
-    return "Scrivi le indicazioni in forma discorsiva. Comparirà nella sezione Conclusioni e Terapie della visita.";
+    return "Scrivi le indicazioni in forma discorsiva. Comparirà nella sezione Conclusioni e terapia della visita.";
   }
   return "Scrivi il testo completo che verrà inserito quando selezioni questo modello...";
 }
@@ -153,7 +153,7 @@ function MockModelloControl({
         className={`inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[10px] font-semibold transition-colors ${
           open
             ? "bg-primary text-white shadow-sm"
-            : "bg-default-100 text-default-400"
+            : "bg-default-100 text-default-500"
         }`}
       >
         <ClipboardList size={10} />
@@ -212,7 +212,7 @@ function MockLiveField({
       } ${
         active
           ? isEmpty
-            ? "border-primary/30 bg-white text-default-400 italic"
+            ? "border-primary/30 bg-white text-default-500 italic"
             : "border-primary/50 bg-white text-gray-800 shadow-inner"
           : "border-dashed border-default-200 bg-white/50 text-default-300"
       }`}
@@ -455,7 +455,7 @@ function TemplatePlacementMap({
   isAnamnesiSection: (section: TemplateSection) => boolean;
 }) {
   const previewSection = getPreviewSection(category, section);
-  // Le sezioni dell'anamnesi (predefinite o personalizzate) si evidenziano sul campo "1. Anamnesi".
+  // Le sezioni dell'anamnesi (predefinite o personalizzate) si evidenziano sul campo "Anamnesi".
   const activeSection = isAnamnesiSection(previewSection)
     ? "prestazione"
     : previewSection;
@@ -688,7 +688,7 @@ export function TemplateEditorModal({
                 <p className="text-xs text-default-500">Sezione</p>
                 <p className="text-sm font-medium text-default-800">
                   {category === "terapie"
-                    ? "4. Conclusioni e Terapie"
+                    ? "Conclusioni e terapia"
                     : category === "ricette"
                       ? "Nuova ricetta"
                       : category === "esame_complementare"
@@ -707,7 +707,7 @@ export function TemplateEditorModal({
                   Modello di Terapia (visita)
                 </p>
                 <p className="text-xs leading-relaxed text-default-600">
-                  Comparirà nella sezione <strong>Conclusioni e Terapie</strong> della
+                  Comparirà nella sezione <strong>Conclusioni e terapia</strong> della
                   visita. Scrivilo in forma <strong>discorsiva</strong> (indicazioni e
                   raccomandazioni). Per l&apos;elenco dei farmaci da stampare in ricetta
                   usa invece la categoria <strong>Ricette</strong>.

@@ -189,6 +189,7 @@ export class DoctorService {
   }
 
   static async updateDoctor(doctorData: {
+    titolo?: Doctor["titolo"];
     nome?: string;
     cognome?: string;
     email?: string;
@@ -197,6 +198,7 @@ export class DoctorService {
     ambulatori?: any[];
     profileImage?: string;
     signatureStampImage?: string;
+    partitaIva?: string;
   }): Promise<Doctor> {
     return await storageService.updateDoctor(doctorData);
   }

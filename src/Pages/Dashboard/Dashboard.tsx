@@ -350,10 +350,13 @@ export default function Dashboard() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title="Lista Pazienti"
-        subtitle="Cerca e gestisci i tuoi pazienti"
+        title="Pazienti"
+        subtitle={
+          loading
+            ? undefined
+            : `${patients.length} ${patients.length === 1 ? "paziente" : "pazienti"} in archivio`
+        }
         icon={Users}
-        iconColor="primary"
         actions={HeaderActions}
       >
         {/* Search Bar embedded in header area */}
@@ -363,7 +366,7 @@ export default function Dashboard() {
               placeholder="Cerca per nome, cognome o codice fiscale (ricerca automatica)"
               size="lg"
               startContent={
-                <SearchIcon size={20} className="text-default-400" />
+                <SearchIcon size={20} className="text-default-500" />
               }
               value={searchTerm}
               onValueChange={setSearchTerm}
@@ -607,7 +610,7 @@ export default function Dashboard() {
       {!loading && filteredPatients.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-            <Users size={48} className="text-gray-400" />
+            <Users size={48} className="text-gray-500" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
             {searchTerm
@@ -634,7 +637,8 @@ export default function Dashboard() {
         open={toast.open}
         autoHideDuration={5000}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        // In basso a destra come gli altri messaggi (`ToastContext`).
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
           onClose={() => setToast((t) => ({ ...t, open: false }))}

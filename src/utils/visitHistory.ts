@@ -41,7 +41,12 @@ const VISITA_LABELS: Record<string, string> = {
   terapiaSpecifica: "Conclusioni e terapia",
   pesoCorporeo: "Peso corporeo",
   pressioneArteriosa: "Pressione arteriosa",
+  posizionePa: "Posizione della P.A.",
   frequenzaCardiaca: "Frequenza cardiaca",
+  pressioneArteriosa2: "Pressione arteriosa (2ª misurazione)",
+  posizionePa2: "Posizione della 2ª P.A.",
+  frequenzaCardiaca2: "Frequenza cardiaca (2ª misurazione)",
+  circonferenzaVita: "Circonferenza vita",
   immagini: "Immagini allegate",
 };
 

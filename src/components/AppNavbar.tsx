@@ -8,7 +8,6 @@ import {
   NavbarMenuItem,
   NavbarMenuToggle,
   Tooltip,
-  Button,
   Spinner,
   Badge,
   Dropdown,
@@ -20,14 +19,19 @@ import {
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { DoctorService } from "../services/OfflineServices";
 import type { Ambulatorio } from "../types/Storage";
-import { RefreshCw } from "lucide-react";
+import { Search } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
 import { fetchClientUnreadCount } from "../services/SupportChatService";
 import { useUnsavedChanges } from "../contexts/UnsavedChangesContext";
+import { useCheckPatientModal } from "../contexts/CheckPatientModalContext";
 
 const SUPPORT_UNREAD_POLL_MS = 45_000;
 
+/**
+ * Voci principali. "Documenti" (corsi ECM e carte personali del medico) resta
+ * nella barra: nell'edizione generale non c'e' un altro punto da cui aprirlo.
+ */
 const menuItems = [
   { label: "Dashboard", href: "/" },
   { label: "Pazienti", href: "/pazienti" },
@@ -37,10 +41,13 @@ const menuItems = [
   { label: "Aiuto", href: "/help" },
 ];
 
+const SU_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { requestNavigation } = useUnsavedChanges();
+  const { openPatientSearch } = useCheckPatientModal();
 
   const goTo = (href: string) => {
     if (requestNavigation(href)) navigate(href);
@@ -175,12 +182,13 @@ export default function AppNavbar() {
     };
   }, [location.pathname]);
 
-  const handleReloadApp = () => {
-    window.location.reload();
-  };
-
   return (
+    // `maxWidth="xl"`: di suo NextUI ferma la navbar a 1024 px anche quando
+    // la pagina e' larga 1280. Con un nome lungo dell'ambulatorio il
+    // contenuto superava la pillola e, essendo centrato, ne usciva da tutte e
+    // due le parti: il logo sporgeva a sinistra (Pablo, 8 ottobre 2026).
     <Navbar
+      maxWidth="xl"
       classNames={{
         base: "py-4 backdrop-filter-none bg-transparent",
         wrapper: "px-0 w-full justify-center bg-transparent",
@@ -189,14 +197,19 @@ export default function AppNavbar() {
       height="64px"
     >
       <NavbarContent
-        className="border-small border-default-200 bg-white/90 shadow-medium gap-4 rounded-full px-4 backdrop-blur-md backdrop-saturate-150"
+        className="max-w-full border-small border-default-200 bg-white/90 shadow-medium gap-4 rounded-full px-5 backdrop-blur-md backdrop-saturate-150"
         justify="center"
       >
         {/* Toggle */}
-        <NavbarMenuToggle className="text-default-400 ml-2 md:hidden" />
+        <NavbarMenuToggle className="text-default-500 ml-2 md:hidden" />
 
         {/* Logo brand */}
-        <NavbarBrand className="mr-4 min-w-0 max-w-[min(56vw,260px)] shrink md:max-w-[220px] lg:max-w-[260px]">
+        {/* Il logo tiene la sua larghezza: prima, con la finestra sotto i
+            1050 px, era la prima cosa a cedere spazio e usciva schiacciato.
+            Cede invece la scritta della ricerca, che resta icona e Ctrl K.
+            `basis-auto` serve: NavbarBrand parte da `basis-0` e si allarga
+            solo crescendo, e senza crescita il logo sparirebbe. */}
+        <NavbarBrand className="mr-4 basis-auto shrink-0 grow-0">
           <Link
             to="/"
             onClick={(e) => onGuardedNavClick(e, "/")}
@@ -204,11 +217,11 @@ export default function AppNavbar() {
             aria-label="Corioli Generale — vai alla dashboard"
           >
             <img
-              src={`${import.meta.env.BASE_URL}corioli-logo-navbar.png`}
+              src={`${import.meta.env.BASE_URL}corioli-logo.svg`}
               alt="Corioli Generale"
-              width={220}
-              height={40}
-              className="h-7 w-auto max-h-8 object-contain object-left md:h-8 md:max-h-9"
+              width={158}
+              height={48}
+              className="h-8 w-auto max-h-9 object-contain object-left md:h-9 md:max-h-10"
               decoding="async"
             />
           </Link>
@@ -216,12 +229,16 @@ export default function AppNavbar() {
 
         {/* Navigation Items */}
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.href;
+          const isActive =
+            item.href === "/"
+              ? location.pathname === "/"
+              : location.pathname.startsWith(item.href);
           const link = (
             <Link
               to={item.href}
               onClick={(e) => onGuardedNavClick(e, item.href)}
-              className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-500"} hover:text-foreground transition-colors`}
+              aria-current={isActive ? "page" : undefined}
+              className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-600"} hover:text-foreground transition-colors`}
             >
               {item.label}
             </Link>
@@ -239,6 +256,21 @@ export default function AppNavbar() {
           );
         })}
 
+        {/* Ricerca del paziente da qualunque pagina (Ctrl+K). Prima per
+            trovare un paziente bisognava passare dall'elenco. */}
+        <NavbarItem className="hidden md:flex ml-2">
+          <button
+            type="button"
+            onClick={openPatientSearch}
+            className="navbar-search"
+            aria-label="Cerca paziente"
+          >
+            <Search size={15} aria-hidden />
+            <span className="hidden xl:inline">Cerca paziente</span>
+            <kbd className="corioli-kbd">{SU_MAC ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
+        </NavbarItem>
+
         {/* Ambulatorio in uso - menu a tendina per cambiarlo al volo (senza perdere dati) */}
         <NavbarItem className="hidden sm:flex ml-2 pl-2 border-l border-default-200">
           {activeAmbulatorio ? (
@@ -247,8 +279,8 @@ export default function AppNavbar() {
                 <button
                   type="button"
                   className="navbar-ambulatorio-set"
-                  aria-label="Cambia ambulatorio in uso"
-                  title="Cambia la sede in uso senza perdere la visita in corso"
+                  aria-label={`Sede in uso: ${activeAmbulatorio.nome}. Cambia ambulatorio`}
+                  title={`${activeAmbulatorio.nome} — cambia la sede senza perdere la visita in corso`}
                   disabled={switchingAmbulatorio}
                 >
                   {switchingAmbulatorio ? (
@@ -256,7 +288,12 @@ export default function AppNavbar() {
                   ) : (
                     <i className="ti ti-map-pin" aria-hidden />
                   )}
-                  {activeAmbulatorio.nome}
+                  {/* Troncato: un nome lungo ("Studio Bertot pablo ernesto
+                      columbie") allargava la navbar oltre la pillola. Il nome
+                      intero sta nel suggerimento e nel menu. */}
+                  <span className="max-w-[9rem] truncate xl:max-w-[15rem]">
+                    {activeAmbulatorio.nome}
+                  </span>
                   <i
                     className="ti ti-chevron-down"
                     aria-hidden
@@ -314,25 +351,11 @@ export default function AppNavbar() {
           )}
         </NavbarItem>
 
-        <NavbarItem className="hidden md:flex">
-          <Tooltip content="Ricarica l'app (utile dopo import/backup)">
-            <Button
-              isIconOnly
-              size="sm"
-              variant="flat"
-              color="default"
-              aria-label="Ricarica app"
-              onPress={handleReloadApp}
-            >
-              <RefreshCw size={14} />
-            </Button>
-          </Tooltip>
-        </NavbarItem>
       </NavbarContent>
 
       {/* Mobile Menu */}
       <NavbarMenu
-        className="rounded-large border-small border-default-200 bg-white/95 shadow-medium top-[calc(var(--navbar-height)/2)] mx-auto mt-16 max-h-[40vh] max-w-[80vw] py-6 backdrop-blur-md backdrop-saturate-150"
+        className="rounded-large border-small border-default-200 bg-white/95 shadow-medium top-[calc(var(--navbar-height)_/_2_+_var(--barra-finestra))] mx-auto mt-16 max-h-[40vh] max-w-[80vw] py-6 backdrop-blur-md backdrop-saturate-150"
         motionProps={{
           initial: { opacity: 0, y: -20 },
           animate: { opacity: 1, y: 0 },
@@ -346,7 +369,7 @@ export default function AppNavbar() {
         <NavbarMenuItem className="pt-2 pb-3 border-b border-default-100">
           {activeAmbulatorio ? (
             <div className="flex w-full flex-col gap-1">
-              <span className="text-default-400 text-xs font-medium uppercase tracking-wide">
+              <span className="text-default-500 text-xs font-medium uppercase tracking-wide">
                 Sede in uso
               </span>
               {ambulatori.map((amb) => {
@@ -394,11 +417,11 @@ export default function AppNavbar() {
         <NavbarMenuItem className="pb-3 border-b border-default-100">
           <button
             type="button"
-            className="flex items-center gap-2 text-default-500 text-sm w-full text-left hover:text-foreground"
-            onClick={handleReloadApp}
+            className="flex items-center gap-2 text-default-600 text-sm w-full text-left hover:text-foreground"
+            onClick={openPatientSearch}
           >
-            <RefreshCw size={16} className="flex-shrink-0" />
-            <span>Ricarica app</span>
+            <Search size={16} className="flex-shrink-0" />
+            <span>Cerca paziente</span>
           </button>
         </NavbarMenuItem>
         {menuItems.map((item, index) => (

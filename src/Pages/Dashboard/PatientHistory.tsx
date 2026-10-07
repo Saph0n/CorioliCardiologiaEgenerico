@@ -83,7 +83,8 @@ import {
   todayIsoDate,
   validateBirthDate,
 } from "../../utils/formValidation";
-import { AppModal } from "../../components/AppModal";
+import { AppModal, MODAL_SCHERMO_INTERO } from "../../components/AppModal";
+import { EtichetteParametriVisita } from "../../components/generale/EtichetteParametriVisita";
 
 function calculateAge(birthDateString: string): string {
   if (!birthDateString) return "";
@@ -1207,7 +1208,7 @@ export default function PatientHistory() {
     return `${patient.nome[0]}${patient.cognome[0]}`.toUpperCase();
   };
 
-  const getGenderColor = (_gender: string): "primary" => {
+  const getGenderColor = (_gender?: string): "primary" => {
     return "primary";
   };
 
@@ -1423,30 +1424,40 @@ export default function PatientHistory() {
                   {patient.nome} {patient.cognome}
                 </h1>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
-                  <CodiceFiscaleValue
-                    value={patient.codiceFiscale}
-                    generatedFromImport={Boolean(
-                      patient.codiceFiscaleGenerato,
-                    )}
-                  />
-                  <span className="text-default-300">·</span>
+                  {/* Senza codice fiscale restava "— · 12 aprile 1958": il
+                      trattino e il punto non dicevano niente. */}
+                  {patient.codiceFiscale?.trim() && (
+                    <>
+                      <CodiceFiscaleValue
+                        value={patient.codiceFiscale}
+                        generatedFromImport={Boolean(
+                          patient.codiceFiscaleGenerato,
+                        )}
+                      />
+                      <span className="text-default-300">·</span>
+                    </>
+                  )}
                   <span>
                     {formatVisitDate(patient.dataNascita)}
-                    <span className="text-default-400 ml-1">
+                    <span className="text-default-500 ml-1">
                       ({calculateAge(patient.dataNascita)} anni)
                     </span>
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                  <span className="patient-clinical-badge">
-                    Gruppo {patient.gruppoSanguigno || "—"}
-                  </span>
-                  <span className="patient-clinical-badge">
-                    {patient.altezza != null && patient.altezza > 0
-                      ? `${patient.altezza} cm`
-                      : "—"}
-                  </span>
-                </div>
+                {/* Solo i dati che ci sono, come in Cardiologia. "Gruppo —"
+                    era il gruppo sanguigno vuoto. */}
+                {(patient.gruppoSanguigno || (patient.altezza != null && patient.altezza > 0)) && (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {patient.gruppoSanguigno && (
+                      <span className="patient-clinical-badge">
+                        Gr. sanguigno {patient.gruppoSanguigno}
+                      </span>
+                    )}
+                    {patient.altezza != null && patient.altezza > 0 && (
+                      <span className="patient-clinical-badge">{patient.altezza} cm</span>
+                    )}
+                  </div>
+                )}
                 {(patient.telefono ||
                   patient.email ||
                   patient.luogoNascita) && (
@@ -1533,7 +1544,7 @@ export default function PatientHistory() {
           onClick={() => setIsNotaBeneOpen((prev) => !prev)}
           className="flex items-center gap-2 w-full min-w-0 py-2 px-3 text-left"
         >
-          <StickyNote size={14} className="text-default-400 shrink-0" />
+          <StickyNote size={14} className="text-default-500 shrink-0" />
           {isNotaBeneOpen ? (
             <span className="text-xs font-medium text-default-600 flex-1 min-w-0">
               Nota bene
@@ -1545,7 +1556,7 @@ export default function PatientHistory() {
                 : "Nota bene (amica, prezzi, familiarità…)"}
             </span>
           )}
-          <span className="text-default-400 shrink-0">
+          <span className="text-default-500 shrink-0">
             {isNotaBeneOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </span>
         </button>
@@ -1637,12 +1648,21 @@ export default function PatientHistory() {
               {visits.map((visit) => (
                 <Card
                   key={visit.id}
-                  isPressable
-                  onPress={() => handleVisitClick(visit)}
-                  className="w-full hover:shadow-md transition-all border-transparent hover:border-primary-100 group cursor-pointer"
+                  className="w-full hover:shadow-md transition-all border-transparent hover:border-primary-100 group"
                 >
                   <CardBody className="p-5">
                     <div className="flex flex-col md:flex-row gap-5">
+                      {/* Data e testo sono il pulsante che apre l'anteprima; le
+                          azioni gli stanno accanto e non dentro, come in
+                          Cardiologia. Prima la scheda intera era un <button>
+                          con dentro altri pulsanti: HTML non valido e
+                          tabulazione confusa. */}
+                      <button
+                        type="button"
+                        onClick={() => handleVisitClick(visit)}
+                        title="Apri l'anteprima del referto"
+                        className="flex flex-1 min-w-0 flex-col md:flex-row gap-5 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                      >
                       {/* Data e Icona (Colonna sinistra fissa) */}
                       <div className="flex md:flex-col items-center md:items-start gap-3 min-w-[100px] border-b md:border-b-0 md:border-r border-default-100 pb-3 md:pb-0 md:pr-4">
                         <div className="flex flex-col items-center md:items-start">
@@ -1695,6 +1715,12 @@ export default function PatientHistory() {
                             </p>
                           </div>
 
+                          <EtichetteParametriVisita
+                            visita={visit}
+                            paziente={patient}
+                            className="mb-2"
+                          />
+
                           {/* Estratto note/conclusioni (cosa è stato fatto/trovato) */}
                           {(visit.visita?.terapiaSpecifica ||
                             visit.conclusioniDiagnostiche) && (
@@ -1705,6 +1731,7 @@ export default function PatientHistory() {
                           )}
                         </div>
                       </div>
+                      </button>
 
                       {/* Azioni (a destra su desktop) */}
                       <div
@@ -1771,9 +1798,8 @@ export default function PatientHistory() {
             </div>
             {rightColumnTab === "ricette" ? (
               <Button
-                color="primary"
                 size="sm"
-                variant="flat"
+                variant="bordered"
                 className="patient-doc-panel-cta"
                 onPress={handleOpenNuovaRicetta}
                 startContent={<PlusIcon size={16} />}
@@ -1782,9 +1808,8 @@ export default function PatientHistory() {
               </Button>
             ) : rightColumnTab === "esami" ? (
               <Button
-                color="primary"
                 size="sm"
-                variant="flat"
+                variant="bordered"
                 className="patient-doc-panel-cta"
                 onPress={handleOpenNuovaRichiestaEsame}
                 startContent={<PlusIcon size={16} />}
@@ -1793,9 +1818,8 @@ export default function PatientHistory() {
               </Button>
             ) : (
               <Button
-                color="primary"
                 size="sm"
-                variant="flat"
+                variant="bordered"
                 className="patient-doc-panel-cta"
                 onPress={handleOpenNuovoCertificato}
                 startContent={<PlusIcon size={16} />}
@@ -1813,19 +1837,17 @@ export default function PatientHistory() {
                   <PatientDocEmptyState
                     icon={Pill}
                     title="Nessuna ricetta emessa"
-                    hint="Le ricette create per questa paziente appariranno qui"
+                    hint="Le ricette create per questo paziente compariranno qui"
                   />
                 ) : (
                   ricette.map((r) => (
                     <Card
                       key={r.id}
-                      isPressable
-                      onPress={() => handleOpenRicettaPreview(r)}
-                      className="border border-default-200 shadow-sm hover:border-primary/40 group cursor-pointer w-full min-h-[5rem]"
+                      className="border border-default-200 shadow-sm hover:border-primary/40 group w-full min-h-[5rem]"
                     >
                       <CardBody className="p-3 min-h-[5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex-1 min-w-0">
+                          <button type="button" onClick={() => handleOpenRicettaPreview(r)} className="flex-1 min-w-0 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="right-col-card-title break-words">
                                 {getRicettaSummary(r)}
@@ -1837,7 +1859,7 @@ export default function PatientHistory() {
                             <p className="right-col-card-date">
                               {formatCardDateSubtle(r.dataRicetta)}
                             </p>
-                          </div>
+                          </button>
                           <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRicetta(r)} title="Modifica">
                               <EditIcon size={14} />
@@ -1862,26 +1884,24 @@ export default function PatientHistory() {
                   <PatientDocEmptyState
                     icon={FlaskConical}
                     title="Nessuna richiesta esame"
-                    hint="Le prescrizioni di esami per questa paziente appariranno qui"
+                    hint="Le prescrizioni di esami per questo paziente compariranno qui"
                   />
                 ) : (
                   richiesteEsami.map((r) => (
                     <Card
                       key={r.id}
-                      isPressable
-                      onPress={() => handleOpenEsamePreview(r)}
-                      className="border border-default-200 shadow-sm hover:border-primary-300 group cursor-pointer w-full min-h-[7.5rem]"
+                      className="border border-default-200 shadow-sm hover:border-primary-300 group w-full min-h-[7.5rem]"
                     >
                       <CardBody className="p-3 min-h-[7.5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex-1 min-w-0">
+                          <button type="button" onClick={() => handleOpenEsamePreview(r)} className="flex-1 min-w-0 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
                             <h4 className="right-col-card-title break-words">
                               {r.nome}
                             </h4>
                             <p className="right-col-card-date">
                               {formatCardDateSubtle(r.dataRichiesta)}
                             </p>
-                          </div>
+                          </button>
                           <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRichiestaEsame(r)} title="Modifica">
                               <EditIcon size={14} />
@@ -1908,26 +1928,24 @@ export default function PatientHistory() {
                   <PatientDocEmptyState
                     icon={Award}
                     title="Nessun certificato emesso"
-                    hint="I certificati rilasciati a questa paziente appariranno qui"
+                    hint="I certificati rilasciati a questo paziente compariranno qui"
                   />
                 ) : (
                   certificati.map((c) => (
                     <Card
                       key={c.id}
-                      isPressable
-                      onPress={() => handleOpenCertificatoPreview(c)}
-                      className="border border-default-200 shadow-sm hover:border-warning-300 group cursor-pointer w-full min-h-[5rem]"
+                      className="border border-default-200 shadow-sm hover:border-warning-300 group w-full min-h-[5rem]"
                     >
                       <CardBody className="p-3 min-h-[5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex-1 min-w-0">
+                          <button type="button" onClick={() => handleOpenCertificatoPreview(c)} className="flex-1 min-w-0 rounded-lg text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
                             <h4 className="right-col-card-title break-words">
                               {getCertificatoTipoLabel(c.tipo)}
                             </h4>
                             <p className="right-col-card-date">
                               {formatCardDateSubtle(c.dataCertificato)}
                             </p>
-                          </div>
+                          </button>
                           <div
                             className="flex gap-1 flex-shrink-0"
                             onClick={(e) => e.stopPropagation()}
@@ -1976,12 +1994,12 @@ export default function PatientHistory() {
         scrollBehavior="inside"
         classNames={
           previewFullscreen
-            ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" }
+            ? { base: MODAL_SCHERMO_INTERO }
             : undefined
         }
       >
         <ModalContent
-          className={previewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}
+          className={previewFullscreen ? "flex flex-col" : undefined}
         >
           {selectedVisit && (
             <>
@@ -2170,14 +2188,19 @@ export default function PatientHistory() {
               />
               <Select
                 label="Sesso"
-                selectedKeys={editData.sesso ? [editData.sesso] : []}
+                selectedKeys={editData.sesso ? [editData.sesso] : ["-"]}
                 onSelectionChange={(keys) => {
-                  const val = Array.from(keys)[0] as "M" | "F";
-                  setEditData((prev) => ({ ...prev, sesso: val }));
+                  // "Non indicato" toglie un sesso messo per sbaglio: il
+                  // sesso e' facoltativo, come nel form del nuovo paziente.
+                  const val = Array.from(keys)[0];
+                  setEditData((prev) => ({
+                    ...prev,
+                    sesso: val === "M" || val === "F" ? val : undefined,
+                  }));
                 }}
                 variant="bordered"
-                isRequired
               >
+                <SelectItem key="-">Non indicato</SelectItem>
                 <SelectItem key="M">Maschio</SelectItem>
                 <SelectItem key="F">Femmina</SelectItem>
               </Select>
@@ -2337,11 +2360,11 @@ export default function PatientHistory() {
         scrollBehavior="inside"
         classNames={
           esamePreviewFullscreen
-            ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" }
+            ? { base: MODAL_SCHERMO_INTERO }
             : undefined
         }
       >
-        <ModalContent className={esamePreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+        <ModalContent className={esamePreviewFullscreen ? "flex flex-col" : undefined}>
           {selectedRichiestaEsamePreview && patient && (
             <>
               <ModalHeader className="flex flex-col gap-1">
@@ -2392,9 +2415,9 @@ export default function PatientHistory() {
         }}
         size={certificatoPreviewFullscreen ? "full" : "5xl"}
         scrollBehavior="inside"
-        classNames={certificatoPreviewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" } : undefined}
+        classNames={certificatoPreviewFullscreen ? { base: MODAL_SCHERMO_INTERO } : undefined}
       >
-        <ModalContent className={certificatoPreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+        <ModalContent className={certificatoPreviewFullscreen ? "flex flex-col" : undefined}>
           {selectedCertificatoPreview && patient && (
             <>
               <ModalHeader className="flex flex-col gap-1">
@@ -2670,9 +2693,9 @@ export default function PatientHistory() {
         }}
         size={ricettaPreviewFullscreen ? "full" : "5xl"}
         scrollBehavior="inside"
-        classNames={ricettaPreviewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" } : undefined}
+        classNames={ricettaPreviewFullscreen ? { base: MODAL_SCHERMO_INTERO } : undefined}
       >
-        <ModalContent className={ricettaPreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+        <ModalContent className={ricettaPreviewFullscreen ? "flex flex-col" : undefined}>
           {selectedRicettaPreview && patient && (
             <>
               <ModalHeader className="flex flex-col gap-1">

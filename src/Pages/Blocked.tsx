@@ -74,7 +74,7 @@ export default function Blocked() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-finestra flex items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-transparent to-transparent" />
       <Card className="relative w-full max-w-lg shadow-2xl border border-amber-500/30 bg-slate-800/90 backdrop-blur-sm">
         <CardHeader className="flex flex-col gap-2 pb-2">

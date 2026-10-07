@@ -6,7 +6,6 @@ import {
   SelectItem,
   Card,
   CardBody,
-  CardHeader,
   Divider,
   Spinner,
   Chip,
@@ -24,7 +23,7 @@ import dayjs from "dayjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { PatientService } from "../../services/OfflineServices";
 import { PageHeader } from "../../components/PageHeader";
-import { UserPlus, Pencil, ExternalLink, Check, ChevronDown } from "lucide-react";
+import { UserPlus, Pencil, ExternalLink, Check, ChevronDown, CalendarPlus } from "lucide-react";
 import { parseDate } from "@internationalized/date";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -174,6 +173,18 @@ export default function AddPatient() {
       loadPatientDataByCf(cf);
     } else if (cf) {
       setRegisterData((prevData) => ({ ...prevData, cf }));
+    } else {
+      // Dal pannello di ricerca (Ctrl+K / Ctrl+N): "Nuovo paziente" porta con
+      // se' quello che si era gia' scritto, la prima parola come cognome.
+      const cognome = searchParams.get("cognome");
+      const nome = searchParams.get("nome");
+      if (cognome || nome) {
+        setRegisterData((prevData) => ({
+          ...prevData,
+          lastName: cognome ?? prevData.lastName,
+          firstName: nome ?? prevData.firstName,
+        }));
+      }
     }
   }, [searchParams]);
 
@@ -192,7 +203,7 @@ export default function AddPatient() {
           birthday: patient.dataNascita,
           birthplace: patient.luogoNascita,
           cf: patient.codiceFiscale || "",
-          gender: patient.sesso,
+          gender: patient.sesso ?? "",
           address: patient.indirizzo || "",
           bloodType: patient.gruppoSanguigno || "",
           allergies: patient.allergie || "",
@@ -225,7 +236,7 @@ export default function AddPatient() {
           birthday: patient.dataNascita,
           birthplace: patient.luogoNascita,
           cf: patient.codiceFiscale || "",
-          gender: patient.sesso,
+          gender: patient.sesso ?? "",
           address: patient.indirizzo || "",
           bloodType: patient.gruppoSanguigno || "",
           allergies: patient.allergie || "",
@@ -391,6 +402,16 @@ export default function AddPatient() {
     e.preventDefault();
     setError(null);
 
+    /**
+     * Dove si va dopo il salvataggio, come su Corioli Cardiologia: lo dice il
+     * pulsante premuto. "Salva e inizia visita" e' il caso comune (il paziente
+     * nuovo e' seduto davanti al medico) ed e' anche quello dell'Invio, primo
+     * pulsante di invio del form. "Salva" apre la scheda del paziente appena
+     * creato; prima si tornava all'elenco e bisognava ritrovarlo.
+     */
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const dopo: "visita" | "scheda" = submitter?.value === "scheda" ? "scheda" : "visita";
+
     const cfNorm = registerData.cf.trim().toUpperCase();
     if (
       cfNorm &&
@@ -431,13 +452,20 @@ export default function AddPatient() {
 
     try {
       const cfVal = registerData.cf.trim();
+      // Senza scelta (o con "Non indicato") il sesso resta non indicato, come
+      // in Cardiologia: prima veniva salvato "M", che poi si stampava nel
+      // referto e decideva le soglie della circonferenza vita.
+      const sessoScelto: Patient["sesso"] =
+        registerData.gender === "M" || registerData.gender === "F"
+          ? registerData.gender
+          : undefined;
       const payload = {
         ...(cfVal ? { codiceFiscale: cfVal.toUpperCase(), codiceFiscaleGenerato: false as const } : {}),
         nome: registerData.firstName.trim(),
         cognome: registerData.lastName.trim(),
         dataNascita: registerData.birthday || "",
         luogoNascita: registerData.birthplace.trim(),
-        sesso: (registerData.gender === "M" || registerData.gender === "F" ? registerData.gender : "M") as "M" | "F",
+        sesso: sessoScelto,
         email: registerData.email.trim() || undefined,
         telefono: registerData.phone.trim() || undefined,
         indirizzo: registerData.address.trim() || undefined,
@@ -451,12 +479,17 @@ export default function AddPatient() {
         await PatientService.updatePatient(patientId, payload);
         setHasUnsavedChanges(false);
         showToast("Paziente aggiornato con successo");
+        navigate("/pazienti");
       } else {
-        await PatientService.addPatient(payload);
+        const nuovo = await PatientService.addPatient(payload);
         setHasUnsavedChanges(false);
         showToast("Paziente aggiunto con successo");
+        navigate(
+          dopo === "visita"
+            ? `/add-visit?patientId=${encodeURIComponent(nuovo.id)}`
+            : `/patient-history/${nuovo.id}`,
+        );
       }
-      navigate("/pazienti");
     } catch (error: any) {
       console.error("Error saving patient:", error);
       setError(error?.message || "Errore durante il salvataggio del paziente.");
@@ -499,35 +532,36 @@ export default function AddPatient() {
   }
 
   return (
-    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-6 animate-in fade-in duration-500">
+      {/* Come in Cardiologia: il percorso sopra la testata, non dentro la
+          scheda sotto un secondo titolo ("Informazioni Paziente"). */}
+      <Breadcrumb
+        items={[
+          { label: "Dashboard", path: "/" },
+          { label: "Pazienti", path: "/pazienti" },
+          { label: isEditMode ? "Modifica paziente" : "Nuovo paziente" },
+        ]}
+      />
       <PageHeader
-        title={isEditMode ? "Modifica Paziente" : "Aggiungi Nuovo Paziente"}
-        subtitle={isEditMode ? "Modifica i dati del paziente selezionato" : "Inserisci i dati del paziente per aggiungerlo al sistema"}
+        title={isEditMode ? "Modifica paziente" : "Nuovo paziente"}
         icon={isEditMode ? Pencil : UserPlus}
-        iconColor={isEditMode ? "warning" : "primary"}
+        subtitle={
+          isEditMode
+            ? undefined
+            : "Tutti i campi sono facoltativi: il resto si può aggiungere dopo."
+        }
       />
 
-      <Card className="shadow-lg border border-gray-100">
-        <CardHeader className="pb-0 pt-6 px-6">
-          <h2 className="text-xl font-semibold">Informazioni Paziente</h2>
-        </CardHeader>
+      <Card className="shadow-sm border border-default-200">
         <CardBody className="gap-6 p-6">
           {error && (
-            <Card className="border-l-4 border-l-danger">
-              <CardBody className="py-3">
-                <p className="text-danger text-sm">{error}</p>
-              </CardBody>
-            </Card>
+            <div
+              role="alert"
+              className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700"
+            >
+              {error}
+            </div>
           )}
-
-          {(() => {
-            const items = [
-              { label: "Dashboard", path: "/" },
-              { label: "Pazienti", path: "/pazienti" },
-              { label: isEditMode ? "Modifica paziente" : "Nuovo paziente" }
-            ];
-            return <Breadcrumb items={items} />;
-          })()}
 
           <form onSubmit={handleRegistration} className="space-y-6">
             {hasUnsavedChanges && (
@@ -746,6 +780,9 @@ export default function AddPatient() {
                     }}
                     classNames={baseLabelClassNames}
                   >
+                    {/* "Non indicato" serve anche a togliere un sesso messo per
+                        sbaglio: una tendina a due voci non torna piu' vuota. */}
+                    <SelectItem key="-" value="-">Non indicato</SelectItem>
                     <SelectItem key="M" value="M">Maschio</SelectItem>
                     <SelectItem key="F" value="F">Femmina</SelectItem>
                   </Select>
@@ -925,11 +962,42 @@ export default function AddPatient() {
               I campi in verde sono compilati automaticamente dal codice fiscale
             </p>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col-reverse gap-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+            {/* Il primo pulsante di invio e' quello dell'Invio: per questo
+                "Salva e inizia visita" viene prima nel DOM e la riga e'
+                invertita a schermo. */}
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row-reverse sm:items-center">
+              <Button
+                ref={refSubmit}
+                type="submit"
+                value={isEditMode ? "scheda" : "visita"}
+                color="primary"
+                className="corioli-cta w-full sm:w-auto sm:min-w-[220px] shadow-md shadow-primary/20"
+                isLoading={isLoading}
+                isDisabled={isSubmitDisabled}
+                startContent={
+                  !isLoading && !isEditMode ? <CalendarPlus size={16} /> : undefined
+                }
+              >
+                {isLoading
+                  ? "Salvataggio..."
+                  : isEditMode
+                    ? "Aggiorna paziente"
+                    : "Salva e inizia visita"}
+              </Button>
+              {!isEditMode && (
+                <Button
+                  type="submit"
+                  value="scheda"
+                  variant="bordered"
+                  className="w-full sm:w-auto border-default-300 bg-white"
+                  isDisabled={isLoading || isSubmitDisabled}
+                >
+                  Salva
+                </Button>
+              )}
               <button
                 type="button"
-                className="add-patient-cancel-btn"
+                className="add-patient-cancel-btn sm:mr-auto"
                 onClick={() =>
                   guardAction(() =>
                     navigate(isEditMode ? "/pazienti" : "/"),
@@ -938,20 +1006,6 @@ export default function AddPatient() {
               >
                 ← Annulla
               </button>
-              <Button
-                ref={refSubmit}
-                type="submit"
-                color="primary"
-                className="corioli-cta w-full sm:w-auto sm:min-w-[220px] shadow-md shadow-primary/20"
-                isLoading={isLoading}
-                isDisabled={isSubmitDisabled}
-              >
-                {isLoading
-                  ? "Salvando..."
-                  : isEditMode
-                    ? "Aggiorna Paziente"
-                    : "Salva Paziente"}
-              </Button>
             </div>
           </form>
         </CardBody>

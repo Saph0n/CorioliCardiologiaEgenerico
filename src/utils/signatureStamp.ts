@@ -93,6 +93,53 @@ export function normalizeSignatureStampImage(
   });
 }
 
+/**
+ * Porta a bianco la carta di una firma fotografata.
+ *
+ * Una firma fotografata col telefono arriva su un foglio grigio, non bianco, e
+ * il referto si stampa in bianco e nero: senza questo passaggio sotto la firma
+ * si stamperebbe un rettangolo grigio. La carta si riconosce come la
+ * luminosita' mediana del ritaglio, perche' inchiostro e timbro ne coprono
+ * sempre meno della meta'; ogni canale viene riscalato in modo che la carta
+ * vada a 255, e quello che resta quasi bianco diventa bianco pieno. Il colore
+ * dell'inchiostro si conserva in proporzione: un timbro blu resta blu.
+ *
+ * Lavora sui pixel RGBA di un canvas e li modifica sul posto.
+ */
+export function schiarisciSfondo(pixel: Uint8ClampedArray): void {
+  const istogramma = new Array<number>(256).fill(0);
+  for (let i = 0; i < pixel.length; i += 4) {
+    istogramma[luminanza(pixel[i], pixel[i + 1], pixel[i + 2])]++;
+  }
+  const meta = pixel.length / 8;
+  let carta = 0;
+  for (let somma = 0; carta < 255; carta++) {
+    somma += istogramma[carta];
+    if (somma >= meta) break;
+  }
+  // Una mediana scura non e' un foglio: meglio lasciare l'immagine com'e'
+  // che sbiancare una foto sbagliata.
+  if (carta < 96) return;
+
+  const k = 255 / carta;
+  for (let i = 0; i < pixel.length; i += 4) {
+    const r = Math.min(255, pixel[i] * k);
+    const g = Math.min(255, pixel[i + 1] * k);
+    const b = Math.min(255, pixel[i + 2] * k);
+    if (luminanza(r, g, b) >= 235) {
+      pixel[i] = pixel[i + 1] = pixel[i + 2] = 255;
+    } else {
+      pixel[i] = r;
+      pixel[i + 1] = g;
+      pixel[i + 2] = b;
+    }
+  }
+}
+
+function luminanza(r: number, g: number, b: number): number {
+  return Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+}
+
 export function signatureStampPdfFormat(dataUrl: string): "PNG" | "JPEG" {
   return dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
 }

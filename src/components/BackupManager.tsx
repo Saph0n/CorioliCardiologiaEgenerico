@@ -442,7 +442,7 @@ const BackupManager: React.FC = () => {
             <TableCell>
               <div className="flex gap-2">
                 <Tooltip content="Modifica">
-                  <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
+                  <span className="text-lg text-default-500 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
                     <Edit size={18} />
                   </span>
                 </Tooltip>
@@ -478,7 +478,7 @@ const BackupManager: React.FC = () => {
             <TableCell>
               <div className="flex gap-2">
                 <Tooltip content="Modifica">
-                  <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
+                  <span className="text-lg text-default-500 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
                     <Edit size={18} />
                   </span>
                 </Tooltip>
@@ -519,7 +519,7 @@ const BackupManager: React.FC = () => {
                   </span>
                 </Tooltip>
                 <Tooltip content="Modifica">
-                  <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
+                  <span className="text-lg text-default-500 cursor-pointer active:opacity-50" onClick={() => handleEdit(item)}>
                     <Edit size={18} />
                   </span>
                 </Tooltip>
@@ -601,7 +601,7 @@ const BackupManager: React.FC = () => {
                       </span>
                       <ArrowRight
                         size={14}
-                        className="text-default-400 mt-0.5 shrink-0"
+                        className="text-default-500 mt-0.5 shrink-0"
                       />
                       <span className="flex-1 text-success-700 whitespace-pre-wrap break-words">
                         {change.newValue}

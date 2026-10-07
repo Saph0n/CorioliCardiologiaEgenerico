@@ -26,6 +26,8 @@ import {
   useDisclosure,
   Progress,
   Tooltip,
+  Autocomplete,
+  AutocompleteItem,
 } from "@nextui-org/react";
 import {
   User,
@@ -59,6 +61,7 @@ import BackupManager from "../../components/BackupManager";
 import { TemplateEditorModal } from "../../components/TemplateEditorModal";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
+import { FirmaTimbroCard } from "../../components/FirmaTimbroCard";
 import {
   DoctorService,
   TemplateService,
@@ -67,8 +70,14 @@ import {
   DocumentService,
   PreferenceService,
 } from "../../services/OfflineServices";
-import { MedicalTemplate } from "../../types/Storage";
-import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
+import { MedicalTemplate, type TitoloMedico } from "../../types/Storage";
+import { getMissingDoctorProfileFields, TITOLI_MEDICO } from "../../utils/doctorProfile";
+import { normalizzaPartitaIva, validatePartitaIva } from "../../utils/formValidation";
+import {
+  titoloDaSpecializzazione,
+  titoloReferto,
+  TITOLI_REFERTO_PROPOSTI,
+} from "../../utils/titoloReferto";
 import {
   AnamnesiConfig,
   AnamnesiVisitType,
@@ -83,6 +92,7 @@ import {
   MAX_ANAMNESI_ETICHETTA_LEN,
   MAX_ANAMNESI_SEZIONI,
   genAnamnesiCustomKey,
+  ANAMNESI_STRUTTURATA_FIELDS,
 } from "../../utils/anamnesiStrutturata";
 import { AppModal } from "../../components/AppModal";
 
@@ -145,8 +155,50 @@ function SettingsSectionNotice({
   );
 }
 
+/** "anamnesiFamiliare" → "Anamnesi familiare", per la tabella dei modelli. */
+function etichettaSezioneAnamnesi(section: string): string {
+  const campo = ANAMNESI_STRUTTURATA_FIELDS.find((f) => f.templateSection === section);
+  return campo ? `Anamnesi ${campo.label.toLowerCase()}` : section;
+}
+
+/** Le voci dell'indice a sinistra, nell'ordine della pagina. */
+const VOCI_INDICE_IMPOSTAZIONI: { id: string; label: string }[] = [
+  { id: "impostazioni-sicurezza", label: "Sicurezza" },
+  { id: "impostazioni-profilo", label: "Profilo" },
+  { id: "impostazioni-firma", label: "Firma olografica" },
+  { id: "impostazioni-ambulatori", label: "Ambulatori" },
+  { id: "impostazioni-dati", label: "Dati e backup" },
+  { id: "impostazioni-visita", label: "Visita e referto" },
+  { id: "impostazioni-doppioni", label: "Pazienti doppi" },
+  { id: "impostazioni-modelli", label: "Modelli dei referti" },
+  { id: "impostazioni-info", label: "Informazioni" },
+];
+
 const SettingsScreen = () => {
   const navigate = useNavigate();
+  const mostraSicurezza =
+    isAppLockAvailable() ||
+    typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined";
+
+  /**
+   * La sezione che si sta leggendo, evidenziata nell'indice, come su Corioli
+   * Cardiologia: senza, in una pagina lunga non si capiva a che punto si era.
+   */
+  const [sezioneAttiva, setSezioneAttiva] = useState<string | null>(null);
+  useEffect(() => {
+    const aggiorna = () => {
+      let attiva: string | null = null;
+      for (const v of VOCI_INDICE_IMPOSTAZIONI) {
+        const el = document.getElementById(v.id);
+        // Attiva e' la sezione che occupa la parte alta dello schermo.
+        if (el && el.getBoundingClientRect().top <= window.innerHeight * 0.4) attiva = v.id;
+      }
+      setSezioneAttiva(attiva ?? VOCI_INDICE_IMPOSTAZIONI[0].id);
+    };
+    aggiorna();
+    window.addEventListener("scroll", aggiorna, { passive: true });
+    return () => window.removeEventListener("scroll", aggiorna);
+  }, []);
   // ... state declarations ...
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pdfTheme, setPdfTheme] = useState("light");
@@ -190,12 +242,16 @@ const SettingsScreen = () => {
   }, []);
 
   const [doctorInfo, setDoctorInfo] = useState({
+    titolo: "Dott." as TitoloMedico,
     nome: "",
     cognome: "",
     email: "",
     telefono: "",
     specializzazione: "",
+    partitaIva: "",
   });
+  /** Errore della partita IVA, mostrato uscendo dal campo o al salvataggio. */
+  const [errorePartitaIva, setErrorePartitaIva] = useState<string | null>(null);
 
   // Template State
   const [templates, setTemplates] = useState<MedicalTemplate[]>([]);
@@ -286,6 +342,9 @@ const SettingsScreen = () => {
     anamnesiConfig: createDefaultAnamnesiConfig() as AnamnesiConfig,
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
+    firmaSulReferto: true,
+    /** Vuoto: il titolo si ricava dalla specializzazione (`titoloReferto`). */
+    titoloReferto: "",
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -459,11 +518,13 @@ const SettingsScreen = () => {
       const doctor = await DoctorService.getDoctor();
       if (doctor) {
         setDoctorInfo({
+          titolo: doctor.titolo ?? "Dott.",
           nome: doctor.nome,
           cognome: doctor.cognome,
           email: doctor.email,
           telefono: doctor.telefono || "",
           specializzazione: doctor.specializzazione || "",
+          partitaIva: doctor.partitaIva || "",
         });
         setAmbulatori(doctor.ambulatori || []);
         const sig = (doctor as any).signatureStampImage;
@@ -1375,9 +1436,19 @@ const SettingsScreen = () => {
       setIsLoading(false);
       return;
     }
+    const erroreIva = validatePartitaIva(doctorInfo.partitaIva);
+    if (erroreIva) {
+      setErrorePartitaIva(erroreIva);
+      showNotice("profilo", "error", erroreIva, 5000);
+      setIsLoading(false);
+      return;
+    }
+    const partitaIva = normalizzaPartitaIva(doctorInfo.partitaIva);
 
     try {
       await DoctorService.updateDoctor({
+        titolo: doctorInfo.titolo,
+        partitaIva: partitaIva || undefined,
         nome: doctorInfo.nome.trim(),
         cognome: doctorInfo.cognome.trim(),
         email: doctorInfo.email.trim(),
@@ -1387,9 +1458,10 @@ const SettingsScreen = () => {
         signatureStampImage: signatureStampImage || undefined,
       });
 
+      setDoctorInfo((prev) => ({ ...prev, partitaIva }));
       savePreferences();
       window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
-      showNotice("profilo", "success", "Profilo salvato con successo.");
+      showNotice("profilo", "success", "Profilo salvato.");
     } catch (error) {
       console.error("Errore nel salvataggio:", error);
       showNotice(
@@ -1404,18 +1476,50 @@ const SettingsScreen = () => {
   };
 
   return (
-    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
-      {/* Header */}
+    <div className="corioli-page space-y-6 animate-in fade-in duration-500">
       <PageHeader
         title="Impostazioni"
-        subtitle="Personalizza la tua esperienza dell'applicazione"
         icon={SettingsIcon}
-        iconColor="primary"
       />
 
+      {/* Indice a sinistra e una colonna sola, come su Corioli Cardiologia.
+          Prima erano due colonne di card affiancate: le altezze non
+          coincidevano mai e lasciavano grandi vuoti, e per trovare una voce
+          bisognava scorrere tutta la pagina. */}
+      <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+        <nav aria-label="Sezioni delle impostazioni" className="hidden lg:block">
+          <ul className="sticky top-[calc(8rem_+_var(--barra-finestra))] space-y-0.5 text-sm">
+            {VOCI_INDICE_IMPOSTAZIONI.filter(
+              (v) => v.id !== "impostazioni-sicurezza" || mostraSicurezza,
+            ).map((v) => (
+              <li key={v.id}>
+                <a
+                  href={`#${v.id}`}
+                  onClick={(e) => {
+                    // L'app usa l'hash per le rotte: l'ancora si fa a mano.
+                    e.preventDefault();
+                    document
+                      .getElementById(v.id)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  aria-current={sezioneAttiva === v.id ? "location" : undefined}
+                  className={`block rounded-lg px-3 py-1.5 transition-colors hover:bg-default-100 hover:text-foreground ${
+                    sezioneAttiva === v.id
+                      ? "bg-default-100 font-medium text-foreground"
+                      : "text-default-600"
+                  }`}
+                >
+                  {v.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="min-w-0 space-y-8">
+
       {/* ── Sicurezza & Aggiornamenti ── */}
-      {(isAppLockAvailable() || typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined") ? (
-        <div>
+      {mostraSicurezza ? (
+        <div id="impostazioni-sicurezza" className="scroll-mt-32">
           <p className="section-label">Sicurezza</p>
           <Card className="shadow-sm border border-default-200 overflow-hidden">
             <CardBody className="p-0">
@@ -1425,12 +1529,12 @@ const SettingsScreen = () => {
                 <div className="settings-row">
                   <div
                     className="flex items-center justify-center shrink-0 rounded-lg"
-                    style={{ width: 30, height: 30, background: "#e1f5ee" }}
+                    style={{ width: 36, height: 36, background: "#e1f5ee" }}
                   >
-                    <ArrowUpCircle size={16} color="#0f6e56" />
+                    <ArrowUpCircle size={18} color="#0f6e56" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-[500] text-foreground leading-snug">
+                    <p className="text-[14px] font-[500] text-foreground leading-snug">
                       Controlla aggiornamenti
                     </p>
                     <p className="text-[12px] leading-snug mt-0.5">
@@ -1457,27 +1561,34 @@ const SettingsScreen = () => {
         </div>
       ) : null}
 
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-stretch [&>*]:h-full [&>*]:min-h-0">
-          {/* Profilo Dottore */}
-          <Card
-            className="shadow-lg w-full"
-            classNames={{
-              base: "h-full flex flex-col min-h-0",
-              body: "flex flex-1 flex-col gap-6 min-h-0",
-            }}
-          >
-            <CardHeader className="pb-2 flex-shrink-0">
+          {/* Profilo del medico */}
+          <Card id="impostazioni-profilo" className="shadow-lg w-full scroll-mt-32">
+            <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <User className="w-5 h-5 text-primary" />
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Profilo Dottore
+                  Profilo del medico
                 </h2>
               </div>
             </CardHeader>
-            <CardBody>
+            <CardBody className="gap-5">
               <SettingsSectionNotice scope="profilo" notice={notice} />
-              <div className="flex flex-1 flex-col justify-between gap-5 py-1 min-h-0">
+              <div className="grid grid-cols-1 gap-4 py-1 md:grid-cols-2">
+                <Select
+                  label="Titolo"
+                  description="Nel saluto e nell'intestazione di referti e documenti."
+                  selectedKeys={[doctorInfo.titolo]}
+                  onSelectionChange={(keys) => {
+                    const t = Array.from(keys)[0] as TitoloMedico | undefined;
+                    if (t) handleDoctorInfoChange("titolo", t);
+                  }}
+                  variant="bordered"
+                  disallowEmptySelection
+                >
+                  {TITOLI_MEDICO.map((t) => (
+                    <SelectItem key={t}>{t}</SelectItem>
+                  ))}
+                </Select>
                 <Input
                   label="Nome"
                   value={doctorInfo.nome}
@@ -1517,6 +1628,24 @@ const SettingsScreen = () => {
                   placeholder="3331234567"
                 />
                 <Input
+                  label="Partita IVA"
+                  value={doctorInfo.partitaIva}
+                  onValueChange={(value) => {
+                    handleDoctorInfoChange("partitaIva", value);
+                    setErrorePartitaIva(null);
+                  }}
+                  onBlur={() =>
+                    setErrorePartitaIva(validatePartitaIva(doctorInfo.partitaIva))
+                  }
+                  isInvalid={!!errorePartitaIva}
+                  errorMessage={errorePartitaIva ?? undefined}
+                  description="Facoltativa. Se compilata, compare nell'intestazione di referti e documenti."
+                  variant="bordered"
+                  inputMode="numeric"
+                  maxLength={16}
+                  placeholder="11 cifre"
+                />
+                <Input
                   label="Specializzazione"
                   value={doctorInfo.specializzazione}
                   isRequired
@@ -1524,29 +1653,69 @@ const SettingsScreen = () => {
                     handleDoctorInfoChange("specializzazione", value)
                   }
                   variant="bordered"
-                  placeholder="Es. Cardiologia"
+                  placeholder="Es. Medicina generale"
                 />
+                {/* Il titolo del referto accanto alla specializzazione, da cui
+                    nasce: vuoto e' automatico ("Cardiologia" da'
+                    "Visita cardiologica"), oppure si sceglie dall'elenco o si
+                    scrive. Stava in "Visita e referto", lontano dalla
+                    specializzazione, e non si trovava (Pablo, 8 ottobre 2026).
+                    Si salva subito, come le altre preferenze. */}
+                <Autocomplete
+                  label="Titolo del referto"
+                  placeholder={`Automatico: ${titoloDaSpecializzazione(doctorInfo.specializzazione)}`}
+                  description={
+                    <span>
+                      Sul referto:{" "}
+                      <strong className="font-semibold tracking-wide text-foreground">
+                        {titoloReferto(
+                          preferences.titoloReferto,
+                          doctorInfo.specializzazione,
+                        ).toUpperCase()}
+                      </strong>
+                      {!preferences.titoloReferto?.trim() && " (dalla specializzazione)"}
+                    </span>
+                  }
+                  allowsCustomValue
+                  inputValue={preferences.titoloReferto ?? ""}
+                  onInputChange={(value) => handlePreferenceChange("titoloReferto", value)}
+                  onSelectionChange={(key) => {
+                    if (key != null) handlePreferenceChange("titoloReferto", String(key));
+                  }}
+                  variant="bordered"
+                  maxLength={40}
+                  listboxProps={{ emptyContent: "Nessun titolo nell'elenco: si usa quello scritto." }}
+                >
+                  {TITOLI_REFERTO_PROPOSTI.map((t) => (
+                    <AutocompleteItem key={t}>{t}</AutocompleteItem>
+                  ))}
+                </Autocomplete>
               </div>
 
-              <Button
-                color="primary"
-                className="corioli-cta w-full mt-auto"
-                onPress={saveDoctorInfo}
-                isLoading={isLoading}
-              >
-                {isLoading ? "Salvando..." : "Salva Modifiche"}
-              </Button>
+              <div className="flex justify-end">
+                <Button
+                  color="primary"
+                  className="corioli-cta min-w-[160px]"
+                  onPress={saveDoctorInfo}
+                  isLoading={isLoading}
+                >
+                  {isLoading ? "Salvataggio..." : "Salva profilo"}
+                </Button>
+              </div>
             </CardBody>
           </Card>
 
+          <FirmaTimbroCard
+            immagine={signatureStampImage}
+            onImmagineChange={setSignatureStampImage}
+            firmaSulReferto={preferences.firmaSulReferto !== false}
+            onFirmaSulRefertoChange={(value) =>
+              handlePreferenceChange("firmaSulReferto", value)
+            }
+          />
+
           {/* Ambulatori */}
-          <Card
-            className="shadow-lg w-full"
-            classNames={{
-              base: "h-full flex flex-col min-h-0",
-              body: "flex flex-1 flex-col gap-3 min-h-0",
-            }}
-          >
+          <Card id="impostazioni-ambulatori" className="shadow-lg w-full scroll-mt-32">
             <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <Building2 className="w-5 h-5 text-primary shrink-0" />
@@ -1555,14 +1724,14 @@ const SettingsScreen = () => {
                 </h2>
               </div>
             </CardHeader>
-            <CardBody>
+            <CardBody className="gap-3">
               <SettingsSectionNotice scope="ambulatori" notice={notice} />
               {/* Lista ambulatori — scroll solo se > 2 sedi */}
               <div className="rounded-lg border border-default-200 bg-default-50/50 p-3 flex-shrink-0">
                 {ambulatori.length > 0 ? (
                   <>
                     <h3 className="font-medium text-gray-900 text-sm mb-2 px-0.5">
-                      Ambulatori Configurati
+                      Ambulatori configurati
                     </h3>
                     <div
                       className={`corioli-scroll space-y-2 pr-1 ${
@@ -1709,10 +1878,10 @@ const SettingsScreen = () => {
 
               <Divider className="flex-shrink-0" />
 
-              {/* Form nuovo ambulatorio — ancorato in basso */}
-              <div className="flex flex-col gap-2 flex-shrink-0 mt-auto">
+              {/* Form nuovo ambulatorio */}
+              <div className="flex flex-col gap-2 flex-shrink-0">
                 <h3 className="font-medium text-gray-900 text-sm">
-                  Aggiungi Nuovo Ambulatorio
+                  Aggiungi un ambulatorio
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   <Input
@@ -1782,28 +1951,28 @@ const SettingsScreen = () => {
                     placeholder="Opzionale"
                   />
                 </div>
-                <Button
-                  color="primary"
-                  className="corioli-cta w-full"
-                  onPress={addAmbulatorio}
-                  isLoading={savingAmbulatori}
-                  isDisabled={savingAmbulatori}
-                >
-                  {savingAmbulatori ? "Salvataggio..." : "Aggiungi Ambulatorio"}
-                </Button>
+                <div className="flex justify-end">
+                  <Button
+                    color="primary"
+                    className="corioli-cta min-w-[160px]"
+                    onPress={addAmbulatorio}
+                    isLoading={savingAmbulatori}
+                    isDisabled={savingAmbulatori}
+                  >
+                    {savingAmbulatori ? "Salvataggio..." : "Aggiungi ambulatorio"}
+                  </Button>
+                </div>
               </div>
             </CardBody>
           </Card>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Backup e Dati */}
-          <Card className="shadow-lg h-full">
+          {/* Backup e dati */}
+          <Card id="impostazioni-dati" className="shadow-lg scroll-mt-32">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <Database className="w-5 h-5 text-primary shrink-0" />
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Backup e Dati
+                  Backup e dati
                 </h2>
               </div>
             </CardHeader>
@@ -1899,24 +2068,24 @@ const SettingsScreen = () => {
                   <BackupManager />
                 </div>
 
-                <p className="text-xs text-center text-default-400 px-4">
+                <p className="text-xs text-center text-default-500 px-4">
                   Gestione avanzata permette importazioni, cancellazioni e reset.
                 </p>
               </div>
             </CardBody>
           </Card>
 
-          {/* Funzionalita Visite */}
-          <Card className="shadow-lg h-full">
+          {/* Visita e referto */}
+          <Card id="impostazioni-visita" className="shadow-lg scroll-mt-32">
             <CardHeader className="pb-1">
               <div className="flex items-center gap-3">
                 <SettingsIcon className="w-5 h-5 text-primary" />
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Funzionalita Visite
+                    Visita e referto
                   </h2>
-                  <p className="text-xs text-default-500">
-                    Configura comportamento visite e contenuto PDF
+                  <p className="text-sm text-default-600">
+                    Struttura dell&apos;anamnesi e dati del medico nel PDF
                   </p>
                 </div>
               </div>
@@ -1976,7 +2145,7 @@ const SettingsScreen = () => {
 
               <div className="rounded-lg border border-default-200 p-4 space-y-3">
                 <p className="text-sm font-medium text-gray-800">
-                  Dati dottore nel PDF
+                  Dati del medico nel PDF
                 </p>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-default-700">Mostra telefono</p>
@@ -2002,17 +2171,15 @@ const SettingsScreen = () => {
               </div>
             </CardBody>
           </Card>
-        </div>
-      </div>
 
-      {/* Sezione dedicata: Qualità Dati Pazienti */}
-      <div className="space-y-3">
+      {/* Pazienti doppi */}
+      <div id="impostazioni-doppioni" className="space-y-3 scroll-mt-32">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">
-            Qualità Dati Pazienti
+            Pazienti doppi
           </h2>
           <p className="text-sm text-gray-600">
-            Area dedicata al controllo dei possibili pazienti duplicati.
+            Controllo dei pazienti registrati più di una volta, da unire o eliminare.
           </p>
         </div>
 
@@ -2022,7 +2189,7 @@ const SettingsScreen = () => {
               <div className="flex items-center gap-3">
                 <Users className="w-5 h-5 text-warning" />
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Controllo Doppioni
+                  Controllo doppioni
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -2073,7 +2240,7 @@ const SettingsScreen = () => {
                 variant="bordered"
                 value={duplicateSearch}
                 onValueChange={setDuplicateSearch}
-                startContent={<Search size={16} className="text-default-400" />}
+                startContent={<Search size={16} className="text-default-500" />}
               />
               {duplicateSearch && (
                 <Button
@@ -2144,7 +2311,7 @@ const SettingsScreen = () => {
                           <TableColumn>PAZIENTE</TableColumn>
                           <TableColumn>CF / NASCITA</TableColumn>
                           <TableColumn>CONTATTI</TableColumn>
-                          <TableColumn>AZIONI</TableColumn>
+                          <TableColumn>Azioni</TableColumn>
                         </TableHeader>
                         <TableBody>
                           {group.patients.map((p) => (
@@ -2210,13 +2377,13 @@ const SettingsScreen = () => {
         </Card>
       </div>
 
-      {/* Gestione Modelli */}
-      <Card className="shadow-lg">
+      {/* Modelli dei referti */}
+      <Card id="impostazioni-modelli" className="shadow-lg scroll-mt-32">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-3">
             <FileText className="w-5 h-5 text-primary shrink-0" />
             <h2 className="text-xl font-semibold text-gray-900">
-              Gestione Modelli Referti
+              Modelli dei referti
             </h2>
           </div>
         </CardHeader>
@@ -2251,25 +2418,14 @@ const SettingsScreen = () => {
               setSelectedCategory(key as MedicalTemplate["category"])
             }
           >
+            {/* Niente scheda "Terapie": i suoi modelli finivano gia' nel menu
+                di "Conclusioni e terapia" della visita, ed e' li' che stanno
+                (vedi `TemplateService`). */}
             <Tab key="visita" title="Visita" />
-            <Tab key="terapie" title="Terapie" />
             <Tab key="ricette" title="Ricette" />
             <Tab key="esame_complementare" title="Esami" />
             <Tab key="certificato" title="Certificati" />
           </Tabs>
-
-          {selectedCategory === "terapie" && (
-            <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4">
-              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <p className="text-xs leading-relaxed text-default-600">
-                I modelli <strong>Terapie</strong> compaiono nella sezione{" "}
-                <strong>Conclusioni e Terapie</strong> della visita. Scrivili in forma{" "}
-                <strong>discorsiva</strong> (indicazioni e raccomandazioni). Per
-                l&apos;elenco dei farmaci da stampare in ricetta usa la scheda{" "}
-                <strong>Ricette</strong>.
-              </p>
-            </div>
-          )}
 
           {selectedCategory === "ricette" && (
             <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4">
@@ -2291,7 +2447,7 @@ const SettingsScreen = () => {
               <p className="text-xs leading-relaxed text-default-500">
                 <span className="font-semibold text-default-700">Nome in menu</span>{" "}
                 → titolo nel menu{" "}
-                <span className="text-default-400">·</span>{" "}
+                <span className="text-default-500">·</span>{" "}
                 <span className="font-semibold text-default-700">Contenuto</span>{" "}
                 → testo inserito nel referto
               </p>
@@ -2311,7 +2467,7 @@ const SettingsScreen = () => {
               <TableColumn>Nome in menu</TableColumn>
               <TableColumn>Sezione</TableColumn>
               <TableColumn>Contenuto inserito</TableColumn>
-              <TableColumn>AZIONI</TableColumn>
+              <TableColumn>Azioni</TableColumn>
             </TableHeader>
             <TableBody
               emptyContent={"Nessun modello trovato per questa categoria."}
@@ -2324,27 +2480,25 @@ const SettingsScreen = () => {
                       {template.label}
                     </TableCell>
                     <TableCell>
-                      <Chip size="sm" variant="flat" className="capitalize">
+                      <Chip size="sm" variant="flat">
                         {template.section === "esameObiettivo"
-                          ? "Visita / Eco Office"
+                          ? "Esame obiettivo"
                           : template.section === "prestazione"
                             ? "Anamnesi"
                             : template.section === "conclusioni"
-                              ? "Conclusioni"
+                              ? "Conclusioni e terapia"
                               : template.category === "ricette"
                                 ? "Farmaci"
-                                : template.category === "terapie"
-                                  ? "Terapia"
-                                  : template.section === "generale" && template.category === "certificato"
-                                    ? "Testo"
-                                    : template.section}
+                                : template.section === "generale" && template.category === "certificato"
+                                  ? "Testo"
+                                  : etichettaSezioneAnamnesi(template.section)}
                       </Chip>
                     </TableCell>
                     <TableCell>
                       <div className="max-w-xs truncate text-default-500">
                         {template.text}
                         {template.note && (
-                          <span className="block text-xs italic text-default-400">
+                          <span className="block text-xs italic text-default-500">
                             {template.note}
                           </span>
                         )}
@@ -2379,10 +2533,10 @@ const SettingsScreen = () => {
       </Card>
 
       {/* Info App */}
-      <Card className="shadow-lg">
+      <Card id="impostazioni-info" className="shadow-lg scroll-mt-32">
         <CardBody>
           <div className="text-center space-y-2">
-            <h3 className="font-semibold text-gray-900">Corioli Generale Desktop</h3>
+            <h3 className="font-semibold text-gray-900">Corioli Generale</h3>
             <div className="flex justify-center gap-4 text-sm text-gray-600 flex-wrap">
               <span>Versione {appVersion || "—"}</span>
               <span>•</span>
@@ -2393,6 +2547,8 @@ const SettingsScreen = () => {
           </div>
         </CardBody>
       </Card>
+        </div>
+      </div>
 
       <AppModal
         isOpen={mergeConflictOpen}
@@ -2555,7 +2711,7 @@ const SettingsScreen = () => {
                                   aria-label={`Sposta su ${meta.label}`}
                                   disabled={idx === 0}
                                   onClick={() => moveAnamnesiCampo(tipo, key, -1)}
-                                  className="text-default-400 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  className="text-default-500 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                 >
                                   <ChevronUp size={14} />
                                 </button>
@@ -2564,12 +2720,12 @@ const SettingsScreen = () => {
                                   aria-label={`Sposta giù ${meta.label}`}
                                   disabled={idx === enabled.length - 1}
                                   onClick={() => moveAnamnesiCampo(tipo, key, 1)}
-                                  className="text-default-400 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  className="text-default-500 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                 >
                                   <ChevronDown size={14} />
                                 </button>
                               </div>
-                              <span className="text-[11px] font-semibold text-default-400 w-7 shrink-0 tabular-nums">
+                              <span className="text-[11px] font-semibold text-default-500 w-7 shrink-0 tabular-nums">
                                 1.{idx + 1}
                               </span>
                               <Input
@@ -2593,7 +2749,7 @@ const SettingsScreen = () => {
                                 aria-label={`Elimina ${meta.label}`}
                                 title="Elimina sezione"
                                 onClick={() => removeAnamnesiSezione(tipo, key)}
-                                className="text-default-400 hover:text-danger"
+                                className="text-default-500 hover:text-danger"
                               >
                                 <Trash2 size={15} />
                               </button>

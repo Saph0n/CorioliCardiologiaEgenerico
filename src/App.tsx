@@ -12,6 +12,7 @@ import { storageService } from "./services/StorageServiceFallback";
 // Lazy loaded routes per ottimizzare il bundle iniziale
 const Home = lazy(() => import("./Pages/Dashboard/Home"));
 const PatientList = lazy(() => import("./Pages/Dashboard/Dashboard"));
+const PazientiDaSeguire = lazy(() => import("./Pages/Dashboard/PazientiDaSeguire"));
 const AboutUs = lazy(() => import("./Pages/About/About"));
 const AddPatient = lazy(() => import("./Pages/Dashboard/AddPatient"));
 import { CheckPatientOpener } from "./contexts/CheckPatientModalContext";
@@ -59,14 +60,19 @@ const App: React.FC = () => {
 
       const hasCmdOrCtrl = e.ctrlKey || e.metaKey;
       const noExtraModifiers = !e.altKey && !e.shiftKey;
-      if (hasCmdOrCtrl && noExtraModifiers && e.key.toLowerCase() === "p") {
+      // Nella visita Ctrl+P stampa il referto (`AddVisit`). Senza questa
+      // eccezione partivano insieme la stampa e il nuovo paziente.
+      const nellaVisita =
+        location.pathname.startsWith("/add-visit") ||
+        location.pathname.startsWith("/edit-visit");
+      if (hasCmdOrCtrl && noExtraModifiers && e.key.toLowerCase() === "p" && !nellaVisita) {
         e.preventDefault();
         navigate("/add-patient");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   return (
     <ContextMenu>
@@ -81,6 +87,7 @@ const App: React.FC = () => {
                   <Routes>
                     <Route element={<Home />} path="/" />
                     <Route element={<PatientList />} path="/pazienti" />
+                    <Route element={<PazientiDaSeguire />} path="/pazienti-da-seguire" />
                     <Route element={<AboutUs />} path="/about-us" />
                     <Route element={<AddPatient />} path="/add-patient" />
                     <Route element={<CheckPatientOpener />} path="/check-patient" />

@@ -513,8 +513,19 @@ class LocalStorageFallbackService implements StorageService {
 
   // Template
   async getTemplates(): Promise<MedicalTemplate[]> {
-    const templates = await this.getFromStorage<MedicalTemplate>('templates');
+    const letti = await this.getFromStorage<MedicalTemplate>('templates');
     const generateId = () => this.generateId();
+
+    // I modelli "Terapie" stanno fra le conclusioni della visita: avevano una
+    // scheda loro nelle impostazioni ma finivano gia' nel menu di
+    // "Conclusioni e terapia" (7 ottobre 2026, come su Corioli Cardiologia).
+    // Si spostano una volta, quelli predefiniti e quelli scritti dal medico.
+    const templates = letti.map((t) =>
+      t.category === 'terapie' ? { ...t, category: 'visita' as const, section: 'conclusioni' as const } : t,
+    );
+    if (templates.some((t, i) => t !== letti[i])) {
+      await this.saveToStorage('templates', templates);
+    }
 
     if (templates.length === 0) {
       // Initialize with defaults if empty
@@ -525,8 +536,8 @@ class LocalStorageFallbackService implements StorageService {
       MedicalTemplates.visita.esameObiettivo.forEach(t => defaultTemplates.push({ id: generateId(), category: 'visita', section: 'esameObiettivo', label: t.label, text: t.text, isDefault: true }));
       MedicalTemplates.visita.conclusioni.forEach(t => defaultTemplates.push({ id: generateId(), category: 'visita', section: 'conclusioni', label: t.label, text: t.text, isDefault: true }));
 
-      // Terapie (discorsive — sezione Conclusioni e Terapie della visita)
-      MedicalTemplates.terapie.forEach(t => defaultTemplates.push({ id: generateId(), category: 'terapie', section: 'generale', label: t.label, text: t.text, isDefault: true }));
+      // Terapie discorsive: fra i modelli delle conclusioni della visita
+      MedicalTemplates.terapie.forEach(t => defaultTemplates.push({ id: generateId(), category: 'visita', section: 'conclusioni', label: t.label, text: t.text, isDefault: true }));
 
       // Ricette (testo libero — modal Nuova ricetta)
       MedicalTemplates.ricette.forEach(t => defaultTemplates.push({ id: generateId(), category: 'ricette', section: 'generale', label: t.label, text: t.text, note: t.note, isDefault: true }));
@@ -959,6 +970,8 @@ class LocalStorageFallbackService implements StorageService {
           specializzazione: currentDoctor.specializzazione || incomingDoctor.specializzazione,
           profileImage: currentDoctor.profileImage || incomingDoctor.profileImage,
           signatureStampImage: currentDoctor.signatureStampImage || incomingDoctor.signatureStampImage,
+          titolo: currentDoctor.titolo || incomingDoctor.titolo,
+          partitaIva: currentDoctor.partitaIva || incomingDoctor.partitaIva,
           ambulatori: mergedAmbulatori,
           updatedAt: this.getCurrentTimestamp(),
         };

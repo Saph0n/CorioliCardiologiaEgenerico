@@ -2,6 +2,7 @@ import { PatientService, VisitService, DoctorService } from './OfflineServices';
 import { Patient, Visit, Doctor } from '../types/Storage';
 import jsPDF from 'jspdf';
 import { todayIsoDate } from "../utils/dateUtils";
+import { titoloMedico } from "../utils/doctorProfile";
 
 export interface ExportData {
   doctor: Doctor | null;
@@ -140,7 +141,7 @@ export class ExportService {
 
       const csvContent = [
         csvHeaders.join(','),
-        ...csvRows.map(row => row.map(field => `"${field}"`).join(','))
+        ...csvRows.map(row => row.map(field => `"${field ?? ''}"`).join(','))
       ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -191,7 +192,7 @@ export class ExportService {
 
       const csvContent = [
         csvHeaders.join(','),
-        ...csvRows.map(row => row.map(field => `"${field}"`).join(','))
+        ...csvRows.map(row => row.map(field => `"${field ?? ''}"`).join(','))
       ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -233,7 +234,7 @@ export class ExportService {
       
       if (doctor) {
         doc.setFontSize(12);
-        doc.text(`Dott. ${doctor.nome} ${doctor.cognome}`, 105, 24, { align: "center" });
+        doc.text(`${titoloMedico(doctor)} ${doctor.nome} ${doctor.cognome}`, 105, 24, { align: "center" });
       }
 
       // Reset colori
@@ -276,7 +277,7 @@ export class ExportService {
 
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.text(`CF: ${patient.codiceFiscale} | Nato: ${new Date(patient.dataNascita).toLocaleDateString('it-IT')} | ${patient.sesso}`, 20, yPos);
+        doc.text(`CF: ${patient.codiceFiscale ?? '-'} | Nato: ${new Date(patient.dataNascita).toLocaleDateString('it-IT')} | ${patient.sesso ?? '-'}`, 20, yPos);
         yPos += 8;
 
         // Visite del paziente

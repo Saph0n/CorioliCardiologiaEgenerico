@@ -93,7 +93,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
 
   if (phase === "loading") {
     return (
-      <div className="min-h-screen corioli-auth-bg flex flex-col items-center justify-center gap-3">
+      <div className="min-h-finestra corioli-auth-bg flex flex-col items-center justify-center gap-3">
         <Spinner color="primary" size="lg" />
         <span className="text-default-500 text-sm font-medium">Caricamento…</span>
       </div>

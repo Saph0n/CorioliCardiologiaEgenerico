@@ -29,7 +29,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         open={open}
         autoHideDuration={5000}
         onClose={() => setOpen(false)}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        // In basso a destra, come su Corioli Cardiologia. In alto copriva per
+        // cinque secondi la sede in uso nella navbar e, nell'app per Windows,
+        // finiva sotto il pulsante che chiude la finestra.
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
           onClose={() => setOpen(false)}

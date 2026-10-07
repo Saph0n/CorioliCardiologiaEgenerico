@@ -27,7 +27,8 @@ import {
   DownloadIcon,
   Trash2Icon,
   Stethoscope,
-  ArrowRight,
+  Pencil,
+  ClipboardList,
 } from "lucide-react";
 import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService } from "../../services/OfflineServices";
@@ -39,7 +40,7 @@ import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
-import { AppModal } from "../../components/AppModal";
+import { AppModal, MODAL_SCHERMO_INTERO } from "../../components/AppModal";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -353,10 +354,8 @@ export default function Visite() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title="Gestione Visite"
-        subtitle="Cerca e gestisci le tue visite"
-        icon={FileText}
-        iconColor="primary"
+        title="Visite"
+        icon={ClipboardList}
         actions={HeaderActions}
       />
 
@@ -384,7 +383,7 @@ export default function Visite() {
                 isClearable
                 placeholder="Cerca per nome, CF o descrizione..."
                 startContent={
-                  <SearchIcon size={20} className="text-default-400" />
+                  <SearchIcon size={20} className="text-default-500" />
                 }
                 value={searchTerm}
                 onValueChange={(v) => {
@@ -470,46 +469,44 @@ export default function Visite() {
                         </span>
                       </div>
                       {visit.patientCf && (
-                        <p className="text-xs text-default-400 font-mono truncate mt-0.5">
+                        <p className="text-xs text-default-500 font-mono truncate mt-0.5">
                           <CodiceFiscaleValue value={visit.patientCf} />
                         </p>
                       )}
-                      <p className="text-xs text-default-400 truncate mt-1">
+                      <p className="text-xs text-default-500 truncate mt-1">
                         {getVisitDescription(visit)}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                  {/* Anteprima e modifica, con l'icona di quello che fanno: la
+                      modifica era una freccia ">" seguita da un'altra freccia
+                      decorativa, e non si capiva quale delle due aprisse cosa. */}
+                  <div
+                    className="flex items-center gap-1 flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Button
                       isIconOnly
                       size="sm"
                       variant="light"
                       className="opacity-70 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPreview(visit);
-                      }}
+                      onPress={() => openPreview(visit)}
                       aria-label="Anteprima referto"
+                      title="Anteprima referto"
                     >
-                      <Eye size={16} className="text-default-500" />
+                      <Eye size={17} className="text-default-600" />
                     </Button>
                     <Button
                       isIconOnly
                       size="sm"
                       variant="light"
                       className="opacity-70 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/edit-visit/${visit.id}`);
-                      }}
+                      onPress={() => navigate(`/edit-visit/${visit.id}`)}
                       aria-label="Modifica visita"
+                      title="Modifica visita"
                     >
-                      <ChevronRight size={18} className="text-default-400" />
+                      <Pencil size={16} className="text-default-600" />
                     </Button>
-                    <ArrowRight
-                      size={14}
-                      className="text-default-300 group-hover:text-[var(--brand-cta)] transition-colors hidden sm:block ml-0.5"
-                    />
                   </div>
                 </div>
               ))}
@@ -588,7 +585,7 @@ export default function Visite() {
         onClose={onClose}
         size={previewFullscreen ? "full" : "5xl"}
         scrollBehavior="inside"
-        classNames={previewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] rounded-none" } : undefined}
+        classNames={previewFullscreen ? { base: MODAL_SCHERMO_INTERO } : undefined}
       >
         <ModalContent>
           {selectedVisit && (

@@ -7,12 +7,15 @@ import {
   getAppLockStatus,
   revealRecoveryCode,
 } from "../../services/AppLockService";
-import { DoctorService } from "../../services/OfflineServices";
+import { DoctorService, PreferenceService } from "../../services/OfflineServices";
 import { sendHeartbeat } from "../../services/HeartbeatService";
 import {
   isDoctorProfileComplete,
   getMissingDoctorProfileFields,
+  titoloMedico,
 } from "../../utils/doctorProfile";
+import { normalizzaPartitaIva, validatePartitaIva } from "../../utils/formValidation";
+import type { TitoloMedico } from "../../types/Storage";
 import AppLockShell from "./AppLockShell";
 import RecoveryCodePanel from "./RecoveryCodePanel";
 import PinDigitInput from "./PinDigitInput";
@@ -23,6 +26,7 @@ import DoctorProfileSetupFields, {
   getMissingProfileFieldKeys,
   type DoctorProfileFormValues,
 } from "./DoctorProfileSetupFields";
+import { SetupReferto, TitoloSelettore } from "./SetupReferto";
 
 const PIN_LENGTH = 4;
 // Altezza comune del corpo card per i passi profilo/PIN → niente "scatto" tra uno e l'altro
@@ -32,7 +36,12 @@ type Props = {
   onComplete: () => void;
 };
 
-type Step = "profile" | "pin" | "recovery";
+/**
+ * "referto" sta fra il profilo e il PIN: partita IVA e titolo del referto,
+ * chiesti subito perche' finiscono sul primo foglio stampato (Pablo, 8 ottobre
+ * 2026). Prima si trovavano solo nelle impostazioni.
+ */
+type Step = "profile" | "referto" | "pin" | "recovery";
 
 export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [step, setStep] = useState<Step>("profile");
@@ -47,6 +56,13 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [profileFieldsToShow, setProfileFieldsToShow] = useState<
     Array<keyof DoctorProfileFormValues>
   >(["nome", "cognome", "email", "telefono", "specializzazione"]);
+  const [titolo, setTitolo] = useState<TitoloMedico>("Dott.");
+  const [partitaIva, setPartitaIva] = useState("");
+  const [errorePartitaIva, setErrorePartitaIva] = useState<string | null>(null);
+  const [titoloRefertoScelto, setTitoloRefertoScelto] = useState("");
+  // I passi davvero mostrati: chi aggiorna con il profilo gia' completo va
+  // dritto al PIN, senza profilo ne' referto.
+  const [passi, setPassi] = useState<Step[]>(["profile", "referto", "pin", "recovery"]);
 
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -74,6 +90,12 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         // Edizione generale: nessuna specializzazione precompilata, la sceglie il medico.
         const values = doctorValuesFromProfile(doctor);
         setProfileValues(values);
+        setTitolo(titoloMedico(doctor));
+        setPartitaIva(doctor?.partitaIva ?? "");
+        const prefs = await PreferenceService.getPreferences().catch(() => null);
+        if (typeof prefs?.titoloReferto === "string") {
+          setTitoloRefertoScelto(prefs.titoloReferto);
+        }
 
         if (mode === "first-run") {
           setProfileFieldsToShow([
@@ -93,6 +115,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
           );
           setStep("profile");
         } else {
+          setPassi(["pin", "recovery"]);
           setStep("pin");
         }
       } catch {
@@ -107,6 +130,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     if (step === "profile") {
       return mode === "first-run" ? "Configurazione profilo medico" : "Completamento profilo";
     }
+    if (step === "referto") return "Il tuo referto";
     if (step === "pin") {
       return mode === "migration" ? "Configurazione accesso sicuro" : "Accesso sicuro";
     }
@@ -119,6 +143,9 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         ? "Inserisci i tuoi dati professionali per personalizzare l'app."
         : "Completa i dati del profilo medico prima di procedere.";
     }
+    if (step === "referto") {
+      return "Si può cambiare anche dopo, in Impostazioni.";
+    }
     if (step === "pin") {
       return mode === "migration"
         ? "Scegli un PIN a 4 cifre per proteggere i dati clinici."
@@ -128,13 +155,9 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   }, [step, mode]);
 
   const stepProgress = useMemo(() => {
-    const order: Step[] =
-      step === "profile" || profileFieldsToShow.length > 0
-        ? ["profile", "pin", "recovery"]
-        : ["pin", "recovery"];
-    const idx = order.indexOf(step);
-    return { current: idx + 1, total: order.length };
-  }, [step, profileFieldsToShow.length]);
+    const idx = passi.indexOf(step);
+    return { current: idx + 1, total: passi.length };
+  }, [step, passi]);
 
   const handleProfileContinue = async () => {
     setError(null);
@@ -149,6 +172,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     setLoading(true);
     try {
       const doctor = await DoctorService.updateDoctor({
+        titolo,
         nome: profileValues.nome.trim(),
         cognome: profileValues.cognome.trim(),
         email: profileValues.email.trim().toLowerCase(),
@@ -158,9 +182,38 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       if (navigator.onLine) {
         void sendHeartbeat(doctor, "corioli-generale").catch(() => {});
       }
-      setStep("pin");
+      setActiveField(null);
+      setStep("referto");
     } catch {
       setError("Impossibile salvare il profilo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefertoContinue = async () => {
+    setError(null);
+    const erroreIva = validatePartitaIva(partitaIva);
+    if (erroreIva) {
+      setErrorePartitaIva(erroreIva);
+      return;
+    }
+    setLoading(true);
+    try {
+      const iva = normalizzaPartitaIva(partitaIva);
+      await DoctorService.updateDoctor({ partitaIva: iva || undefined });
+      setPartitaIva(iva);
+      // Si scrive solo il titolo, sopra le preferenze che ci sono gia':
+      // vuoto = automatico dalla specializzazione.
+      const prefs = (await PreferenceService.getPreferences()) ?? {};
+      await PreferenceService.savePreferences({
+        ...prefs,
+        titoloReferto: titoloRefertoScelto.trim(),
+      });
+      setActiveField(null);
+      setStep("pin");
+    } catch {
+      setError("Impossibile salvare i dati del referto.");
     } finally {
       setLoading(false);
     }
@@ -229,17 +282,18 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const pinsMatch =
     bothFilled && pin.replace(/\D/g, "") === pinConfirm.replace(/\D/g, "");
 
-  const canGoBackToProfile = profileFieldsToShow.length > 0;
+  // Dal PIN si torna al passo prima, se c'e' (il referto, al primo avvio).
+  const passoPrimaDelPin: Step | undefined = passi[passi.indexOf("pin") - 1];
 
   // Felice SOLO quando entrambi i PIN sono inseriti e coincidono
   const pinMascotComplete = pinsMatch;
   // Dispiaciuto quando entrambi sono inseriti ma NON coincidono
   const pinMascotMismatch = bothFilled && !pinsMatch;
 
-  const handleBackToProfile = () => {
+  const tornaA = (passo: Step) => {
     setError(null);
     setActiveField(null);
-    setStep("profile");
+    setStep(passo);
   };
 
   // Ogni spunta dei consensi → il gufo fa un cenno; tutti dati → resta sorridente
@@ -330,6 +384,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
               Campi mancanti: {missingLabels.join(", ")}.
             </p>
           ) : null}
+          <TitoloSelettore valore={titolo} onChange={setTitolo} />
           <DoctorProfileSetupFields
             values={profileValues}
             onChange={(field, value) =>
@@ -349,6 +404,69 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
             isLoading={loading}
             isDisabled={!profileFilled}
             onPress={() => void handleProfileContinue()}
+            endContent={!loading ? <ArrowRight size={18} /> : null}
+          >
+            Continua
+          </Button>
+        </div>
+      </AppLockShell>
+    );
+  }
+
+  if (step === "referto") {
+    return (
+      <AppLockShell
+        title={title}
+        subtitle={subtitle}
+        icon="user"
+        mascot={<DoctorMascot activeField={activeField} />}
+        stepProgress={stepProgress}
+        bodyMinHeight={STEP_BODY_MIN_HEIGHT}
+      >
+        <div
+          className="space-y-4"
+          onFocusCapture={(e) => {
+            const campo = (e.target as HTMLElement).closest("[data-campo]");
+            setActiveField(
+              (campo?.getAttribute("data-campo") as MascotField | null) ?? null,
+            );
+          }}
+          onBlurCapture={() => setActiveField(null)}
+        >
+          <SetupReferto
+            titolo={titolo}
+            nome={profileValues.nome.trim()}
+            cognome={profileValues.cognome.trim()}
+            specializzazione={profileValues.specializzazione.trim()}
+            partitaIva={partitaIva}
+            erroreIva={errorePartitaIva}
+            titoloRefertoScelto={titoloRefertoScelto}
+            onPartitaIva={(v) => {
+              setPartitaIva(v);
+              setErrorePartitaIva(null);
+            }}
+            onBlurIva={() => setErrorePartitaIva(validatePartitaIva(partitaIva))}
+            onTitoloReferto={setTitoloRefertoScelto}
+          />
+          {error ? (
+            <p className="text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <Button
+            variant="light"
+            className="onboarding-back-btn w-full"
+            isDisabled={loading}
+            onPress={() => tornaA("profile")}
+            startContent={<ArrowLeft size={16} />}
+          >
+            Indietro
+          </Button>
+          <Button
+            color="primary"
+            className="onboarding-cta-btn w-full"
+            isLoading={loading}
+            onPress={() => void handleRefertoContinue()}
             endContent={!loading ? <ArrowRight size={18} /> : null}
           >
             Continua
@@ -409,12 +527,12 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
             I PIN non coincidono.
           </p>
         ) : null}
-        {canGoBackToProfile ? (
+        {passoPrimaDelPin ? (
           <Button
             variant="light"
             className="onboarding-back-btn w-full"
             isDisabled={loading}
-            onPress={handleBackToProfile}
+            onPress={() => tornaA(passoPrimaDelPin)}
             startContent={<ArrowLeft size={16} />}
           >
             Indietro

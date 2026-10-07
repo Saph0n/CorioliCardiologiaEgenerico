@@ -19,7 +19,7 @@ pazienti sul server.
 | Tre tipi di visita (ginecologica, ginecologica pediatrica, ostetrica) | Un solo tipo di visita, uguale per ogni specialista |
 | Anamnesi ginecologica, GPA, ultima mestruazione, HPV, menarca | Parametri vitali (P.A., F.C.), peso corporeo con BMI |
 | Biometria fetale, centili di crescita, flussimetria Doppler, pagina Gravidanze | Rimossi |
-| Referto ginecologico e referto ostetrico | Referto unico "Visita specialistica" |
+| Referto ginecologico e referto ostetrico | Referto unico, titolo "Visita specialistica" modificabile nelle impostazioni |
 | Modelli per categoria Ginecologia / Ostetricia | Categoria unica "Visita" con modelli di medicina generale |
 
 Restano invariati: anagrafica pazienti, import CSV, cronologia visite e
@@ -37,9 +37,40 @@ esportazione dati.
 4. Accertamenti
 5. Conclusioni e terapia
 
-Nella colonna di sinistra: parametri vitali (pressione arteriosa, frequenza
-cardiaca), peso corporeo con calcolo automatico del BMI (l'altezza si può
-salvare in anagrafica direttamente dalla visita) e immagini da allegare al PDF.
+Nella colonna di sinistra: parametri vitali e immagini da allegare al PDF.
+
+- **Pressione arteriosa** disposta come su Corioli Cardiologia: P.A. e F.C.,
+  posizione Clino/Orto e "Seconda misurazione" (con la sua posizione, di
+  default Orto, e la sua F.C.). Sotto il campo: categoria ESH 2023, come la
+  Cardiologia (ottimale, normale, normale-alta, ipertensione di grado 1-3;
+  120/80 e' normale), pressione media e differenziale. Scritta senza barra ("12080") diventa "120/80".
+- **Prova ortostatica**: con una misura in clino e una in orto compare il
+  confronto, con ipotensione ortostatica (calo ≥ 20/10 mmHg), tachicardia in
+  ortostatismo (FC +30, +40 fra 12 e 19 anni) e rapporto ΔFC/ΔPAS. Nel
+  referto vanno le due misure con la posizione, la variazione e l'esito.
+- **Peso e circonferenza vita**, con BMI e classe OMS, superficie corporea
+  (Mosteller), rischio legato alla vita (OMS, soglie per sesso) e rapporto
+  vita/altezza. L'altezza si può salvare in anagrafica direttamente dalla
+  visita.
+
+Classi e soglie (BMI, categoria della pressione, circonferenza vita) sono
+quelle dell'adulto: sotto i 18 anni, all'età della visita, i valori si
+mostrano senza giudizio, perché vanno letti sui percentili. I calcoli stanno
+in `src/utils/parametriVitali.ts`, con i test.
+
+### Scheda del paziente
+
+Ogni visita dello storico mostra i parametri misurati quel giorno come
+etichette colorate (pressione, frequenza, peso, BMI, vita, prova ortostatica).
+
+### Dashboard
+
+Tre colonne come su Corioli Cardiologia: pazienti recenti, visite recenti e
+**Pazienti da seguire**, cioè chi all'ultima misura ha la pressione da 140/90
+in su, un BMI da 30 in su o un'ipotensione ortostatica (`utils/pazientiDaSeguire.ts`).
+"Vedi tutti" apre l'elenco completo, filtrabile per motivo. La ricerca del
+paziente si apre da qualunque pagina con Ctrl+K (scheda) o Ctrl+N (nuova visita);
+"Salva e inizia visita" nel form del paziente nuovo apre subito la visita.
 
 ## Requisiti
 

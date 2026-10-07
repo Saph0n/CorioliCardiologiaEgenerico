@@ -26,6 +26,17 @@ function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
   return <Lock className={className} style={style} />;
 }
 
+/**
+ * Classi scritte per intero: Tailwind tiene nel CSS solo le classi che trova
+ * nel sorgente, e `onboarding-step-pill--${state}` non ne nomina nessuna. Le
+ * pillole uscivano senza colore, cioe' invisibili.
+ */
+export const CLASSE_PILLOLA = {
+  done: "onboarding-step-pill--done",
+  active: "onboarding-step-pill--active",
+  future: "onboarding-step-pill--future",
+} as const;
+
 function StepPills({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex flex-col items-center gap-2">
@@ -43,7 +54,7 @@ function StepPills({ current, total }: { current: number; total: number }) {
           return (
             <div
               key={i}
-              className={`onboarding-step-pill onboarding-step-pill--${state}`}
+              className={`onboarding-step-pill ${CLASSE_PILLOLA[state]}`}
             />
           );
         })}
@@ -112,7 +123,7 @@ export default function AppLockShell({
       className={
         overlay
           ? "min-h-full flex items-center justify-center p-6"
-          : "min-h-screen corioli-auth-bg flex items-center justify-center p-6"
+          : "min-h-finestra corioli-auth-bg flex items-center justify-center p-6"
       }
     >
       {card}
@@ -121,7 +132,7 @@ export default function AppLockShell({
 
   if (overlay) {
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto corioli-auth-bg">{centered}</div>
+      <div className="fixed inset-x-0 bottom-0 top-barra z-50 overflow-y-auto corioli-auth-bg">{centered}</div>
     );
   }
 

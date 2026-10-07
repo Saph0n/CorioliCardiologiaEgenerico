@@ -57,3 +57,11 @@ describe("età del paziente", () => {
     expect(calculateAge("2099-01-01")).toBeNull();
   });
 });
+
+describe("eta' a una data", () => {
+  it("calcola l'eta' alla data indicata", () => {
+    expect(calculateAge("2008-06-15", "2026-06-14")).toBe(17);
+    expect(calculateAge("2008-06-15", "2026-06-15")).toBe(18);
+    expect(calculateAge("2008-06-15", "data sbagliata")).toBeNull();
+  });
+});

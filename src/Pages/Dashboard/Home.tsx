@@ -14,13 +14,14 @@ import {
   FileText,
   ChevronRight,
   Calendar,
-  LayoutDashboard,
-  TrendingUp,
-  Cake,
   Stethoscope,
-  Clock,
   ArrowRight,
+  Activity,
+  TrendingUp,
   ClipboardList,
+  Cake,
+  Clock,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   DoctorService,
@@ -35,7 +36,16 @@ import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
-import { toLocalIsoDate } from "../../utils/dateUtils";
+import {
+  pazientiDaSeguire,
+  type VoceDaSeguire,
+} from "../../utils/pazientiDaSeguire";
+import { RigaPazienteDaSeguire } from "../../components/generale/RigaPazienteDaSeguire";
+import { formatPatientDisplayName, patientInitials } from "../../utils/patientDisplay";
+import { titoloMedico } from "../../utils/doctorProfile";
+import { TagPressione } from "../../components/generale/EtichetteParametriVisita";
+import { eAdulto, parsePressione, type Pressione } from "../../utils/parametriVitali";
+import { calculateAge as etaAllaData } from "../../utils/dateUtils";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -45,12 +55,23 @@ interface GroupedRecentVisit {
   count: number;
   tipo?: Visit["tipo"];
   mixedTypes: boolean;
+  /** Pressione dell'ultima visita del giorno, se misurata. */
+  pressione?: Pressione;
+  /** Adulto alla data della visita: decide il colore della pressione. */
+  adulto: boolean;
+}
+
+/** Una riga della colonna "Da seguire", con nome e iniziali gia' risolti. */
+interface VoceDaSeguireConNome extends VoceDaSeguire {
+  patientName: string;
+  iniziali: string;
 }
 
 interface DashboardStats {
   totalPatients: number;
   totalVisits: number;
   recentPatients: Patient[];
+  pazientiDaSeguire: VoceDaSeguireConNome[];
   groupedRecentVisits: GroupedRecentVisit[];
   averageAge: number;
   visitsThisMonth: number;
@@ -82,10 +103,6 @@ const calculateAge = (birthDateString: string): number => {
   return Math.max(0, age);
 };
 
-const getVisitTypeLabel = (_tipo?: Visit["tipo"]) => "Visita";
-
-const getVisitTypeColor = (_tipo?: Visit["tipo"]): "primary" => "primary";
-
 const getVisitDateKey = (dataVisita: string): string => {
   const d = new Date(dataVisita);
   if (isNaN(d.getTime())) return dataVisita.slice(0, 10);
@@ -95,22 +112,9 @@ const getVisitDateKey = (dataVisita: string): string => {
   return `${y}-${m}-${day}`;
 };
 
-const getVisitTypePluralPhrase = (
-  tipo: Visit["tipo"] | undefined,
-  count: number,
-): string => {
-  if (count <= 1) return getVisitTypeLabel(tipo);
-  return `${count} visite`;
-};
-
-const formatPatientDisplayName = (patient: Patient): string | null => {
-  const name = `${patient.nome ?? ""} ${patient.cognome ?? ""}`.trim();
-  return name || null;
-};
-
 const groupRecentVisits = (
-  visits: (Visit & { patientName: string })[],
-  maxItems = 5,
+  visits: (Visit & { patientName: string; eta: number | null })[],
+  maxItems = 6,
 ): GroupedRecentVisit[] => {
   const groups = new Map<string, GroupedRecentVisit>();
 
@@ -128,6 +132,8 @@ const groupRecentVisits = (
         count: 1,
         tipo: visit.tipo,
         mixedTypes: false,
+        pressione: parsePressione(visit.visita?.pressioneArteriosa) ?? undefined,
+        adulto: eAdulto(visit.eta),
       });
       continue;
     }
@@ -143,70 +149,66 @@ const groupRecentVisits = (
     .slice(0, maxItems);
 };
 
+/**
+ * Sotto al saluto: l'ultima visita registrata, come su Corioli Cardiologia e
+ * Ginecologia ("Ultima visita: 11 settembre con Maria Vecchi"). Sempre la
+ * stessa forma; senza visite resta la data di oggi.
+ */
 const buildDashboardSubtitle = (
-  visits: (Visit & { patientName: string })[],
+  visits: (Visit & { patientNameInFrase: string })[],
 ): string => {
+  const last = visits[0];
+  if (!last) return oggiPerEsteso();
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const visitDate = new Date(last.dataVisita);
+  if (isNaN(visitDate.getTime())) return oggiPerEsteso();
+  visitDate.setHours(0, 0, 0, 0);
 
-  const visitsToday = visits.filter((v) => {
-    const d = new Date(v.dataVisita);
-    if (isNaN(d.getTime())) return false;
-    d.setHours(0, 0, 0, 0);
-    return d.getTime() === today.getTime();
-  });
-
-  if (visitsToday.length > 0) {
-    const n = visitsToday.length;
-    return n === 1
-      ? "Hai registrato 1 visita oggi"
-      : `Hai registrato ${n} visite oggi`;
-  }
-
-  const todayKey = toLocalIsoDate(today);
-  let isFirstOpenToday = false;
-  try {
-    const lastOpen = localStorage.getItem("corioli_home_last_open");
-    isFirstOpenToday = lastOpen !== todayKey;
-    if (isFirstOpenToday) {
-      localStorage.setItem("corioli_home_last_open", todayKey);
-    }
-  } catch {
-    /* ignore */
-  }
-
-  if (isFirstOpenToday && visits.length > 0) {
-    const last = visits[0];
-    const visitDate = new Date(last.dataVisita);
-    visitDate.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const when =
-      visitDate.getTime() === yesterday.getTime()
+  const when =
+    visitDate.getTime() === today.getTime()
+      ? "oggi"
+      : visitDate.getTime() === yesterday.getTime()
         ? "ieri"
         : visitDate.toLocaleDateString("it-IT", {
             day: "numeric",
             month: "long",
+            // L'anno solo se non e' quello in corso: "11 settembre" basta.
+            ...(visitDate.getFullYear() !== today.getFullYear()
+              ? { year: "numeric" as const }
+              : {}),
           });
-    return `Ultima visita: ${when} con ${last.patientName}`;
-  }
-
-  return "Ecco il riepilogo della tua attività";
+  return `Ultima visita: ${when} con ${last.patientNameInFrase}`;
 };
+
+/** "mercoledì 23 settembre": sotto al saluto, al posto di una frase di rito. */
+function oggiPerEsteso(): string {
+  const oggi = new Date().toLocaleDateString("it-IT", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  return oggi.charAt(0).toUpperCase() + oggi.slice(1);
+}
 
 export default function Home() {
   const navigate = useNavigate();
   const { openCheckPatientModal } = useCheckPatientModal();
   const [doctorName, setDoctorName] = useState<string | null>(null);
+  const [titolo, setTitolo] = useState<string>("Dott.");
   const [stats, setStats] = useState<DashboardStats>({
     totalPatients: 0,
     totalVisits: 0,
     recentPatients: [],
+    pazientiDaSeguire: [],
     groupedRecentVisits: [],
     averageAge: 0,
     visitsThisMonth: 0,
     patientsThisMonth: 0,
-    subtitle: "Ecco il riepilogo della tua attività",
+    subtitle: "",
   });
   const [loading, setLoading] = useState(true);
 
@@ -224,6 +226,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Un caricamento superato (pagina lasciata prima della fine) non scrive.
+    let superato = false;
     const load = async () => {
       setLoading(true);
       try {
@@ -233,8 +237,10 @@ export default function Home() {
           patientsPromise,
           VisitService.getAllVisits(),
         ]);
+        if (superato) return;
 
         setDoctorName(doctor.cognome);
+        setTitolo(titoloMedico(doctor));
 
         const now = new Date();
         const thisMonthStart = new Date(
@@ -249,6 +255,18 @@ export default function Home() {
         const patientsThisMonth = patients.filter(
           (p) => p.createdAt >= thisMonthStart,
         ).length;
+
+        let validAgesCount = 0;
+        const totalAge = patients.reduce((sum, p) => {
+          const age = calculateAge(p.dataNascita);
+          if (age > 0) {
+            validAgesCount++;
+            return sum + age;
+          }
+          return sum;
+        }, 0);
+        const averageAge =
+          validAgesCount > 0 ? Math.round(totalAge / validAgesCount) : 0;
 
         const visitDatesByPatient = new Map<string, number>();
         for (const v of visits) {
@@ -281,31 +299,42 @@ export default function Home() {
               ? formatPatientDisplayName(p) ?? "Paziente senza nome"
               : "Paziente sconosciuto",
             patientCf: p?.codiceFiscale || "",
+            eta: p ? etaAllaData(p.dataNascita, v.dataVisita) : null,
+            // Per la frase sotto al saluto: "con Maria Vecchi", non "con
+            // VECCHI Maria". Il maiuscolo del cognome serve negli elenchi.
+            patientNameInFrase: p
+              ? [p.nome, p.cognome].filter(Boolean).join(" ") || "paziente senza nome"
+              : "paziente sconosciuto",
           };
         });
         const sortedVisits = enrichedVisits.sort(
           (a, b) =>
             new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime(),
         );
-        const groupedRecentVisits = groupRecentVisits(sortedVisits, 5);
+        // Sei, come i pazienti recenti nella colonna accanto: le righe delle
+        // due colonne stanno allineate.
+        const groupedRecentVisits = groupRecentVisits(sortedVisits, 6);
         const subtitle = buildDashboardSubtitle(sortedVisits);
 
-        let validAgesCount = 0;
-        const totalAge = patients.reduce((sum, p) => {
-          const age = calculateAge(p.dataNascita);
-          if (age > 0) {
-            validAgesCount++;
-            return sum + age;
-          }
-          return sum;
-        }, 0);
-        const averageAge =
-          validAgesCount > 0 ? Math.round(totalAge / validAgesCount) : 0;
+        // Colonna "Pazienti da seguire": il nome si risolve qui perche' la
+        // funzione lavora sui dati clinici e non deve sapere come si scrive
+        // un paziente.
+        const daSeguire = pazientiDaSeguire(patients, visits).map((voce) => {
+          const p = patientMap.get(voce.patientId);
+          return {
+            ...voce,
+            patientName: p
+              ? formatPatientDisplayName(p) ?? "Paziente senza nome"
+              : "Paziente sconosciuto",
+            iniziali: p ? patientInitials(p) : "?",
+          };
+        });
 
         setStats({
           totalPatients: patients.length,
           totalVisits: visits.length,
           recentPatients: sortedPatients,
+          pazientiDaSeguire: daSeguire,
           groupedRecentVisits,
           averageAge,
           visitsThisMonth,
@@ -315,33 +344,38 @@ export default function Home() {
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        if (!superato) setLoading(false);
       }
     };
     load();
+    return () => {
+      superato = true;
+    };
   }, []);
 
   if (loading) {
     return <PageLoadingSkeleton variant="home" pathname="/" />;
   }
 
+  // "Nuova visita" e' l'azione di tutti i giorni, "Nuovo paziente" solo
+  // per chi viene la prima volta: prima il pulsante pieno era il secondo.
   const HeaderActions = (
     <div className="flex gap-3 w-full md:w-auto">
       <Button
-        color="primary"
+        variant="bordered"
         startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
-        className="font-medium shadow-md shadow-primary/20 flex-1 md:flex-none"
-      >
-        Nuovo Paziente
-      </Button>
-      <Button
-        variant="bordered"
-        startContent={<Calendar size={18} />}
-        onPress={openCheckPatientModal}
         className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
       >
-        Nuova Visita
+        Nuovo paziente
+      </Button>
+      <Button
+        color="primary"
+        startContent={<Calendar size={18} />}
+        onPress={openCheckPatientModal}
+        className="corioli-cta font-medium flex-1 md:flex-none"
+      >
+        Nuova visita
       </Button>
     </div>
   );
@@ -349,14 +383,15 @@ export default function Home() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title={`${getGreetingMessage()}, ${doctorName ? `Dott. ${doctorName}` : "Dottore"}`}
+        title={`${getGreetingMessage()}, ${doctorName ? `${titolo} ${doctorName}` : "Dottore"}`}
         subtitle={stats.subtitle}
         icon={LayoutDashboard}
-        iconColor="primary"
         actions={HeaderActions}
       />
 
       {/* ─── KPI Cards ────────────────────────────────────────── */}
+      {/* Sostituite per un giorno da una barra di ricerca e rimesse: sono
+          piaciute di piu'. La ricerca sta nella navbar (Ctrl K). */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card
           isPressable
@@ -366,7 +401,7 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Pazienti
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
@@ -394,7 +429,7 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Visite
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
@@ -418,14 +453,14 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Età Media
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Età media
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
                   {stats.averageAge > 0 ? (
                     <>
                       {stats.averageAge}
-                      <span className="text-base font-normal text-gray-400 ml-1">
+                      <span className="text-base font-normal text-gray-500 ml-1">
                         anni
                       </span>
                     </>
@@ -433,7 +468,7 @@ export default function Home() {
                     "—"
                   )}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">dei pazienti</p>
+                <p className="text-xs text-gray-500 mt-1">dei pazienti</p>
               </div>
               <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Cake size={22} />
@@ -450,13 +485,13 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Questo Mese
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Questo mese
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
                   {stats.visitsThisMonth}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">visite effettuate</p>
+                <p className="text-xs text-gray-500 mt-1">visite effettuate</p>
               </div>
               <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Clock size={22} />
@@ -467,14 +502,16 @@ export default function Home() {
       </div>
 
       {/* ─── Lists Row ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pazienti Recenti */}
+      {/* Tre colonne fisse, come su Corioli Cardiologia: pazienti, visite e
+          i pazienti da seguire. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Pazienti recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
               <Users className="text-brand-700 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
-                Pazienti Recenti
+                Pazienti recenti
               </h3>
             </div>
             <Button
@@ -492,10 +529,7 @@ export default function Home() {
               <div className="divide-y divide-gray-100">
                 {stats.recentPatients.map((patient) => {
                   const displayName = formatPatientDisplayName(patient);
-                  const avatarInitials = displayName
-                    ? `${patient.nome?.[0] ?? ""}${patient.cognome?.[0] ?? ""}`.trim() ||
-                      displayName.slice(0, 2).toUpperCase()
-                    : "?";
+                  const avatarInitials = patientInitials(patient);
 
                   return (
                     <div
@@ -516,11 +550,15 @@ export default function Home() {
                               {displayName}
                             </p>
                           ) : (
-                            <p className="text-sm text-gray-400 italic truncate">
+                            <p className="text-sm text-gray-500 italic truncate">
                               Paziente senza nome
                             </p>
                           )}
-                          <p className="text-xs text-gray-500 truncate">
+                          {/* Altezza fissa, la stessa della seconda riga delle
+                              altre due colonne: il codice fiscale e' a
+                              spaziatura fissa e allungava la riga di un pixel,
+                              e le righe non stavano piu' allineate. */}
+                          <p className="text-xs leading-5 h-5 text-gray-500 truncate">
                             <CodiceFiscaleValue
                               value={patient.codiceFiscale}
                               generatedFromImport={Boolean(
@@ -551,7 +589,7 @@ export default function Home() {
                 })}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
+              <div className="flex flex-col items-center justify-center p-8 text-gray-500 gap-2">
                 <Users size={32} className="text-gray-200" />
                 <p className="text-sm">Nessun paziente registrato.</p>
                 <Button
@@ -568,13 +606,13 @@ export default function Home() {
           </CardBody>
         </Card>
 
-        {/* Visite Recenti */}
+        {/* Visite recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
               <FileText className="text-brand-700 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
-                Visite Recenti
+                Visite recenti
               </h3>
             </div>
             <Button
@@ -607,22 +645,16 @@ export default function Home() {
                         <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                           {group.patientName}
                         </p>
-                        {/* div, non p: contiene una Chip (che rende un div) ed è usato come contenitore flex */}
-                        <div className="text-xs text-gray-500 truncate flex items-center gap-1 flex-wrap">
-                          {group.mixedTypes ? (
-                            <span>{group.count} visite</span>
-                          ) : (
-                            <Chip
-                              size="sm"
-                              variant="flat"
-                              color={getVisitTypeColor(group.tipo)}
-                              className="text-xs h-5"
-                            >
-                              {getVisitTypePluralPhrase(group.tipo, group.count)}
-                            </Chip>
+                        {/* Riga alta 20px come la seconda riga delle altre
+                            due colonne: le righe restano allineate. */}
+                        <div className="flex h-5 min-w-0 items-center gap-1.5">
+                          {group.pressione && (
+                            <TagPressione pa={group.pressione} adulto={group.adulto} compatta />
                           )}
-                          <span className="text-gray-400">·</span>
-                          <span>{group.dateLabel}</span>
+                          <span className="min-w-0 truncate text-xs text-default-600">
+                            {group.dateLabel}
+                            {group.count > 1 && <> · {group.count} visite</>}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -634,7 +666,7 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
+              <div className="flex flex-col items-center justify-center p-8 text-gray-500 gap-2">
                 <FileText size={32} className="text-gray-200" />
                 <p className="text-sm">Nessuna visita registrata.</p>
                 <Button
@@ -651,13 +683,72 @@ export default function Home() {
           </CardBody>
         </Card>
 
+
+        {/* Pazienti da seguire: la versione generale della colonna "Pazienti
+            a rischio" di Corioli Cardiologia. Entra chi all'ultima misura ha
+            la pressione da ipertensione, un BMI da obesita' o un'ipotensione
+            ortostatica (`utils/pazientiDaSeguire`). "Vedi tutti" apre lo
+            stesso elenco intero, in tabella. */}
+        <Card className="corioli-card">
+          <CardHeader className="corioli-card-header flex justify-between items-center">
+            <div className="dashboard-column-header-title">
+              <Activity className="text-brand-700 shrink-0" size={16} />
+              <h3 className="text-base font-semibold text-gray-900">
+                Pazienti da seguire
+              </h3>
+            </div>
+            <Button
+              size="sm"
+              variant="light"
+              color="primary"
+              endContent={<ChevronRight size={16} />}
+              onPress={() => navigate("/pazienti-da-seguire")}
+            >
+              Vedi tutti
+            </Button>
+          </CardHeader>
+          <CardBody className="p-0">
+            {stats.pazientiDaSeguire.length > 0 ? (
+              <div className="divide-y divide-gray-100">
+                {stats.pazientiDaSeguire.map((voce) => (
+                  <RigaPazienteDaSeguire
+                    key={voce.patientId}
+                    voce={voce}
+                    nome={voce.patientName}
+                    iniziali={voce.iniziali}
+                    onApri={() => navigate(`/patient-history/${voce.patientId}`)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center px-6 py-10 text-center gap-2">
+                <Activity size={32} className="text-gray-200" />
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  Nessun paziente da seguire
+                </p>
+                <p
+                  className="text-xs max-w-[260px]"
+                  style={{ color: "var(--color-text-tertiary)" }}
+                >
+                  Compaiono qui i pazienti che all&apos;ultima visita avevano la
+                  pressione da 140/90 in su, un BMI da 30 in su o
+                  un&apos;ipotensione ortostatica.
+                </p>
+              </div>
+            )}
+          </CardBody>
+        </Card>
       </div>
 
       <Snackbar
         open={toast.open}
         autoHideDuration={5000}
         onClose={() => setToast((t) => ({ ...t, open: false }))}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        // In basso a destra come gli altri messaggi (`ToastContext`).
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert
           onClose={() => setToast((t) => ({ ...t, open: false }))}

@@ -10,7 +10,11 @@ export interface Patient {
   cognome: string;
   dataNascita: string;
   luogoNascita: string;
-  sesso: 'M' | 'F';
+  /**
+   * Facoltativo, come in Cardiologia: senza scelta prima si salvava "M", e il
+   * dato inventato finiva nel referto e nelle soglie della circonferenza vita.
+   */
+  sesso?: 'M' | 'F';
   indirizzo?: string;
   telefono?: string;
   email?: string;
@@ -167,8 +171,25 @@ export interface Visit {
     pesoCorporeo?: number;
     /** Pressione arteriosa (es. "120/80"). */
     pressioneArteriosa?: string;
+    /**
+     * Posizione della prima misurazione, come su Corioli Cardiologia.
+     * Assente vale "clino".
+     */
+    posizionePa?: "clino" | "orto";
     /** Frequenza cardiaca (bpm). */
     frequenzaCardiaca?: string;
+    /**
+     * Seconda misurazione, facoltativa: con una delle due in clino e l'altra
+     * in orto e' la prova ortostatica (vedi `utils/parametriVitali`).
+     * Campi semplici e non un oggetto, perche' la cronologia delle revisioni
+     * confronta la visita campo per campo.
+     */
+    pressioneArteriosa2?: string;
+    /** Posizione della seconda misurazione; assente vale "orto". */
+    posizionePa2?: "clino" | "orto";
+    frequenzaCardiaca2?: string;
+    /** Circonferenza vita (cm). */
+    circonferenzaVita?: number;
     /** Data URL (base64) delle immagini allegate al referto. */
     immagini?: string[];
   };
@@ -187,8 +208,13 @@ export interface Ambulatorio {
   isPrimario: boolean;
 }
 
+/** Come il medico vuole essere chiamato, nel saluto e nell'intestazione dei PDF. */
+export type TitoloMedico = "Dott." | "Dott.ssa" | "Prof." | "Prof.ssa";
+
 export interface Doctor {
   id: string;
+  /** Assente nei profili creati prima del campo: vale "Dott.". */
+  titolo?: TitoloMedico;
   nome: string;
   cognome: string;
   email: string;
@@ -199,6 +225,11 @@ export interface Doctor {
   profileImage?: string;
   /** Data URL (base64) immagine timbro e/o firma per i PDF */
   signatureStampImage?: string;
+  /**
+   * Partita IVA, solo le 11 cifre. Facoltativa: quando c'e' si stampa
+   * nell'intestazione di referti e documenti.
+   */
+  partitaIva?: string;
   createdAt: string;
   updatedAt: string;
 }

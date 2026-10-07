@@ -73,27 +73,42 @@ async function runDemoCleanupOnce(): Promise<void> {
   await storageService.setPreference(DEMO_CLEANUP_FLAG, "true");
 }
 
+/** L'avvio in corso, condiviso fra chi lo lancia e chi lo aspetta. */
+let avvio: Promise<void> | null = null;
+
 /**
  * Inizializzazione all'avvio: profilo dottore di default + migrazione dati demo (una tantum).
  * Non lancia mai: un errore qui non deve impedire l'apertura dell'app.
+ *
+ * La promessa si risolve quando c'e' quello che serve alla prima pagina; il
+ * backup giornaliero continua dopo, senza trattenere l'interfaccia.
  */
-export async function initializeAppData(): Promise<void> {
-  try {
-    await DoctorService.initializeDefaultDoctor();
-  } catch (error) {
-    console.error("Inizializzazione profilo dottore non riuscita:", error);
-  }
+export function initializeAppData(): Promise<void> {
+  const corrente = (async () => {
+    try {
+      await DoctorService.initializeDefaultDoctor();
+    } catch (error) {
+      console.error("Inizializzazione profilo dottore non riuscita:", error);
+    }
 
-  try {
-    await runDemoCleanupOnce();
-  } catch (error) {
-    console.error("Migrazione dati demo non riuscita:", error);
-  }
+    try {
+      await runDemoCleanupOnce();
+    } catch (error) {
+      console.error("Migrazione dati demo non riuscita:", error);
+    }
+  })();
+  avvio = corrente;
 
   // Copia di sicurezza giornaliera del database (una sola per giorno).
-  try {
-    await runDailyAutoBackup();
-  } catch (error) {
-    console.error("Backup automatico non riuscito:", error);
-  }
+  void corrente.then(() =>
+    runDailyAutoBackup().catch((error) => {
+      console.error("Backup automatico non riuscito:", error);
+    }),
+  );
+  return corrente;
+}
+
+/** Si risolve quando l'avvio e' finito (subito, se non e' mai partito). */
+export function datiPronti(): Promise<void> {
+  return avvio ?? Promise.resolve();
 }
