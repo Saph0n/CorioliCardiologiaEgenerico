@@ -11,7 +11,13 @@ import path from "path";
  *  - su richiesta dalle impostazioni ("manuale").
  */
 
-export const BACKUP_REASONS = ["auto", "manuale", "pre-import", "pre-restore"];
+export const BACKUP_REASONS = [
+  "auto",
+  "manuale",
+  "pre-import",
+  "pre-restore",
+  "pre-migrazione",
+];
 
 /** Quante copie conservare per motivo. Rotazione separata: un import sbagliato
  *  non deve poter spazzare via le copie giornaliere. */
@@ -20,7 +26,41 @@ export const BACKUP_KEEP = {
   manuale: 10,
   "pre-import": 5,
   "pre-restore": 5,
+  // copia dell'archivio nel vecchio formato, presa prima della conversione a righe
+  "pre-migrazione": 2,
 };
+
+/** File di appoggio che SQLite crea accanto al database. */
+const SQLITE_SIDECARS = ["-journal", "-wal", "-shm"];
+
+/**
+ * Elimina i file di appoggio di SQLite rimasti accanto a `dbPath`.
+ * Va chiamata solo a connessione chiusa e quando il database sta per essere
+ * sostituito: un journal residuo verrebbe applicato al file nuovo, rovinandolo.
+ */
+export function removeSqliteSidecars(dbPath) {
+  for (const suffix of SQLITE_SIDECARS) {
+    try {
+      fs.rmSync(`${dbPath}${suffix}`, { force: true });
+    } catch (e) {
+      console.error(`Rimozione ${dbPath}${suffix} non riuscita:`, e);
+    }
+  }
+}
+
+/** Sposta il database (e i suoi file di appoggio) aggiungendo `suffix` al nome. */
+export function moveDatabaseAside(dbPath, suffix) {
+  fs.renameSync(dbPath, `${dbPath}${suffix}`);
+  for (const sidecar of SQLITE_SIDECARS) {
+    const from = `${dbPath}${sidecar}`;
+    if (!fs.existsSync(from)) continue;
+    try {
+      fs.renameSync(from, `${dbPath}${suffix}${sidecar}`);
+    } catch (e) {
+      console.error(`Spostamento ${from} non riuscito:`, e);
+    }
+  }
+}
 
 const BACKUP_NAME_RE =
   /^corioli-([a-z-]+)-(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.db$/;
@@ -157,6 +197,9 @@ export function restoreBackupFile({ dbPath, backupsDir, fileName }) {
     return { ok: false, error: "Backup non trovato." };
   }
   try {
+    // Il chiamante ha già chiuso la connessione: un journal rimasto del vecchio
+    // database non deve essere applicato a quello ripristinato.
+    removeSqliteSidecars(dbPath);
     fs.copyFileSync(source, dbPath);
     return { ok: true };
   } catch (e) {
@@ -166,26 +209,33 @@ export function restoreBackupFile({ dbPath, backupsDir, fileName }) {
 }
 
 /**
- * Apre un database sql.js da file verificando che sia effettivamente leggibile.
- * Restituisce null se il file è troncato o corrotto, così il chiamante può
- * ripiegare sulla copia `.bak`.
+ * Apre un database SQLite (node:sqlite) verificando che sia effettivamente
+ * leggibile. Restituisce null se il file manca, è troncato o corrotto, così il
+ * chiamante può ripiegare sulla copia `.bak`.
+ *
+ * @param {typeof import("node:sqlite").DatabaseSync} DatabaseSync
  */
-export function openDatabaseFromFile(SQL, filePath) {
+export function openDatabaseFromFile(DatabaseSync, filePath, { readOnly = false } = {}) {
+  let db = null;
   try {
-    const buf = fs.readFileSync(filePath);
+    // DatabaseSync crea il file se non esiste: qui invece un file assente è un errore.
+    const st = fs.statSync(filePath);
     // Un file da 0 byte è per SQLite un database nuovo e valido: senza questo
     // controllo una scrittura interrotta sul nascere passerebbe per un archivio
     // vuoto legittimo e il recupero dalla copia `.bak` non scatterebbe.
-    if (buf.length === 0) {
+    if (st.size === 0) {
       console.error(`DB vuoto (0 byte): ${filePath}`);
       return null;
     }
-    const db = new SQL.Database(new Uint8Array(buf));
-    // Query di verifica: su un file corrotto sql.js fallisce qui, non all'apertura.
-    db.exec("SELECT name FROM sqlite_master LIMIT 1");
+    db = new DatabaseSync(filePath, { readOnly });
+    // Query di verifica: su un file corrotto SQLite fallisce qui, non all'apertura.
+    db.prepare("SELECT name FROM sqlite_master LIMIT 1").all();
     return db;
   } catch (e) {
     console.error(`DB non leggibile (${filePath}):`, e?.message || e);
+    try {
+      db?.close();
+    } catch (_) {}
     return null;
   }
 }

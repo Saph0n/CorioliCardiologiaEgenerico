@@ -37,6 +37,7 @@ import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { AppModal, MODAL_SCHERMO_INTERO } from "../../components/AppModal";
 import { formatPatientDisplayName } from "../../utils/patientDisplay";
+import { ordinaPerChiaveDecrescente } from "../../utils/ordinamento";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -155,7 +156,7 @@ export default function Visite() {
       setLoading(true);
       try {
         const [allVisits, allPatients] = await Promise.all([
-          VisitService.getAllVisits(),
+          VisitService.getAllVisitsWithoutImages(),
           PatientService.getAllPatients(),
         ]);
 
@@ -171,9 +172,7 @@ export default function Visite() {
         });
 
         // Sort by date desc
-        enriched.sort((a, b) => new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime());
-
-        setVisits(enriched);
+        setVisits(ordinaPerChiaveDecrescente(enriched, (v) => new Date(v.dataVisita).getTime()));
       } catch (e) {
         console.error(e);
       } finally {
@@ -208,8 +207,17 @@ export default function Visite() {
 
   const totalPages = Math.ceil(filteredVisits.length / rowsPerPage);
 
-  const openPreview = (visit: EnrichedVisit) => {
-    setSelectedVisit(visit);
+  const openPreview = async (visit: EnrichedVisit) => {
+    // L'elenco è caricato senza immagini allegate: anteprima e stampa
+    // lavorano sulla visita completa, riletta dall'archivio.
+    let full: EnrichedVisit = visit;
+    try {
+      const stored = await VisitService.getVisitById(visit.id);
+      if (stored) full = { ...stored, patientName: visit.patientName, patientCf: visit.patientCf };
+    } catch (e) {
+      console.error("Errore caricamento visita:", e);
+    }
+    setSelectedVisit(full);
     onOpen();
   };
 
@@ -304,14 +312,13 @@ export default function Visite() {
     try {
       setIsDeletingVisit(true);
       await VisitService.deleteVisit(visitToDelete);
-      const [allVisits, allPatients] = await Promise.all([VisitService.getAllVisits(), PatientService.getAllPatients()]);
+      const [allVisits, allPatients] = await Promise.all([VisitService.getAllVisitsWithoutImages(), PatientService.getAllPatients()]);
       const patientMap = new Map(allPatients.map((p) => [p.id, p]));
       const enriched = allVisits.map((v) => {
         const p = patientMap.get(v.patientId);
         return { ...v, patientName: p ? formatPatientDisplayName(p) ?? "Paziente senza nome" : "Paziente sconosciuto", patientCf: p?.codiceFiscale || "" };
       });
-      enriched.sort((a, b) => new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime());
-      setVisits(enriched);
+      setVisits(ordinaPerChiaveDecrescente(enriched, (v) => new Date(v.dataVisita).getTime()));
       if (selectedVisit?.id === visitToDelete) onClose();
       setSelectedVisit(null);
       onDeleteVisitClose();

@@ -10,6 +10,10 @@ export class PatientService {
     return await storageService.getPatients();
   }
 
+  static async countPatients(): Promise<number> {
+    return await storageService.countPatients();
+  }
+
   static async getPatientById(id: string): Promise<Patient | null> {
     return await storageService.getPatientById(id);
   }
@@ -48,6 +52,18 @@ export class PatientService {
 export class VisitService {
   static async getAllVisits(): Promise<Visit[]> {
     return await storageService.getVisits();
+  }
+
+  /**
+   * Tutte le visite senza le immagini allegate: molto più leggero, per elenchi e
+   * statistiche. Prima di stampare o salvare una visita va riletta con `getVisitById`.
+   */
+  static async getAllVisitsWithoutImages(): Promise<Visit[]> {
+    return await storageService.getVisitsWithoutImages();
+  }
+
+  static async countVisits(): Promise<number> {
+    return await storageService.countVisits();
   }
 
   static async getVisitsByPatientId(patientId: string): Promise<Visit[]> {
@@ -92,10 +108,8 @@ export class VisitService {
 // Richieste esami complementari (entità separata dalla visita)
 export class RichiestaEsameService {
   static async getAll(): Promise<RichiestaEsameComplementare[]> {
-    // Recupera tutti i pazienti e unisce i loro esami
-    const patients = await storageService.getPatients();
-    const all = await Promise.all(patients.map(p => storageService.getRichiesteEsamiByPatientId(p.id)));
-    return all.flat().sort((a, b) => new Date(b.dataRichiesta).getTime() - new Date(a.dataRichiesta).getTime());
+    // Una lettura sola: prima rileggeva l'intera collezione per ogni paziente.
+    return await storageService.getAllRichiesteEsami();
   }
 
   static async getByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]> {
@@ -335,6 +349,14 @@ export class DocumentService {
   // ... (rimane uguale)
   static async getAllDocuments(): Promise<Document[]> {
     return await storageService.getDocuments();
+  }
+
+  static async countDocuments(): Promise<number> {
+    return await storageService.countDocuments();
+  }
+
+  static async getDocumentsByPatientId(patientId: string): Promise<Document[]> {
+    return await storageService.getDocumentsByPatientId(patientId);
   }
 
   static async getDocumentById(id: string): Promise<Document | null> {

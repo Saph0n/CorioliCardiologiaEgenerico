@@ -626,6 +626,7 @@ export function CalcSuggestion({
   segnale,
   banda,
   precedente,
+  rimedio,
 }: {
   label: string;
   outcome: CalcOutcome;
@@ -634,16 +635,28 @@ export function CalcSuggestion({
   /** Testo della fascia di appartenenza (es. categoria di rischio). */
   banda?: ReactNode;
   precedente?: ValorePrecedente;
+  /**
+   * Accanto al motivo, quando il calcolo non si puo' fare: il pulsante che
+   * porta al dato mancante, se sta in un altro punto della pagina.
+   */
+  rimedio?: ReactNode;
 }) {
   if (!outcome.ok) {
     // "Servono QT..." diventa "servono QT...", ma "LDL..." resta com'e'.
     const motivo = /^[A-ZÀ-Ý][a-zà-ÿ]/.test(outcome.reason)
       ? outcome.reason.charAt(0).toLowerCase() + outcome.reason.slice(1)
       : outcome.reason;
-    return (
+    const riga = (
       <p className="text-[11px] leading-snug text-default-500">
         <span className="font-semibold">{label}</span>: {motivo}
       </p>
+    );
+    if (!rimedio) return riga;
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {riga}
+        {rimedio}
+      </div>
     );
   }
 

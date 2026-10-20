@@ -136,9 +136,7 @@ export default function PatientFiles() {
         return;
       }
       setPatient(p);
-      const all = await DocumentService.getAllDocuments();
-      const docs = all
-        .filter((d) => d.patientId === p.id)
+      const docs = (await DocumentService.getDocumentsByPatientId(p.id))
         .sort(
           (a, b) =>
             new Date(b.uploadDate || b.createdAt).getTime() -

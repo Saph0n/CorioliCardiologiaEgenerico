@@ -223,6 +223,64 @@ describe("pannello metabolico contestuale", () => {
   });
 });
 
+describe("elettroliti", () => {
+  it("legge il sodio fra 135 e 145 come nella norma, estremi compresi", () => {
+    expect(valutaMisura("lab.sodio", 135).livello).toBe("nella-norma");
+    expect(valutaMisura("lab.sodio", 145).livello).toBe("nella-norma");
+  });
+
+  it("separa l'iponatriemia da quella severa", () => {
+    expect(valutaMisura("lab.sodio", 130).etichetta).toBe("iponatriemia");
+    expect(valutaMisura("lab.sodio", 130).livello).toBe("attenzione");
+    expect(valutaMisura("lab.sodio", 124).livello).toBe("alterato");
+  });
+
+  it("segnala l'ipernatriemia", () => {
+    expect(valutaMisura("lab.sodio", 148).livello).toBe("attenzione");
+    expect(valutaMisura("lab.sodio", 162).livello).toBe("alterato");
+  });
+
+  it("legge il potassio fra 3,5 e 5,0 come nella norma", () => {
+    expect(valutaMisura("lab.potassio", 3.5).livello).toBe("nella-norma");
+    expect(valutaMisura("lab.potassio", 5).livello).toBe("nella-norma");
+  });
+
+  it("gradua il potassio alto: limiti alti, iperkaliemia, severa", () => {
+    // 5,5 e' ancora "ai limiti alti": l'iperkaliemia comincia sopra.
+    expect(valutaMisura("lab.potassio", 5.5).etichetta).toBe("ai limiti alti");
+    expect(valutaMisura("lab.potassio", 5.5).livello).toBe("attenzione");
+    expect(valutaMisura("lab.potassio", 5.8).etichetta).toBe("iperkaliemia");
+    expect(valutaMisura("lab.potassio", 5.8).livello).toBe("alterato");
+    expect(valutaMisura("lab.potassio", 6.5).etichetta).toBe("iperkaliemia severa");
+  });
+
+  it("gradua il potassio basso", () => {
+    expect(valutaMisura("lab.potassio", 3.2).livello).toBe("attenzione");
+    expect(valutaMisura("lab.potassio", 2.8).livello).toBe("alterato");
+  });
+});
+
+describe("ferritina", () => {
+  it("segnala le riserve di ferro ridotte ed esaurite", () => {
+    expect(valutaMisura("lab.ferritina", 80).livello).toBe("nella-norma");
+    expect(valutaMisura("lab.ferritina", 25).livello).toBe("attenzione");
+    expect(valutaMisura("lab.ferritina", 10).livello).toBe("alterato");
+  });
+
+  it("ha il limite alto distinto per sesso", () => {
+    expect(valutaMisura("lab.ferritina", 250, "M").livello).toBe("nella-norma");
+    expect(valutaMisura("lab.ferritina", 250, "F").livello).toBe("attenzione");
+    // Senza sesso vale il limite maschile, come per uricemia ed emoglobina.
+    expect(valutaMisura("lab.ferritina", 250).livello).toBe("nella-norma");
+  });
+
+  it("ricorda che e' una proteina di fase acuta quando e' alta", () => {
+    const segnale = valutaMisura("lab.ferritina", 1200, "M");
+    expect(segnale.livello).toBe("alterato");
+    expect(segnale.nota).toContain("hs-PCR");
+  });
+});
+
 describe("rapporti lipidici", () => {
   // Tabella indicata dal cardiologo:
   //   CT/HDL   < 4    ottimale | 4-5    borderline | > 5    a rischio

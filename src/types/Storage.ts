@@ -477,6 +477,25 @@ export interface FattoriRischioCvData {
 }
 
 /**
+ * Dati che il MESA chiede oltre a quelli che la visita ha gia'.
+ *
+ * Eta', sesso, fumo, pressione, lipidi, diabete e calcium score il MESA li
+ * legge dove stanno; qui ci sono solo le tre domande che altrove non hanno un
+ * campo. La familiarita' e' a parte da `familiaritaCad` perche' il MESA conta
+ * l'infarto di un familiare a qualunque eta', non solo precoce.
+ *
+ * Il punteggio non si salva: si ricalcola a ogni apertura come SCORE2.
+ */
+export interface RischioMesaData {
+  /** Gruppo della coorte MESA; senza scelta vale la caucasica. */
+  etnia?: "bianca" | "cinese" | "afroamericana" | "ispanica";
+  terapiaAntipertensiva?: boolean;
+  terapiaIpolipemizzante?: boolean;
+  /** Infarto in un genitore, fratello o figlio, a qualunque eta'. */
+  familiaritaInfarto?: boolean;
+}
+
+/**
  * Fibrillazione atriale: i fattori dichiarati dal medico per il CHA₂DS₂-VASc e
  * per l'HAS-BLED.
  *
@@ -579,8 +598,22 @@ export interface LaboratorioData {
   creatinina?: number;
   /** Rapporto albumina/creatinina urinaria (mg/g). */
   albuminuria?: number;
+  /**
+   * Sodio (mmol/L, che per uno ione monovalente sono gli stessi mEq/L). Con il
+   * potassio e' il controllo che si fa sotto diuretici, ACE-inibitori, sartani,
+   * ARNI e antialdosteronici.
+   */
+  sodio?: number;
+  /** Potassio (mmol/L = mEq/L). */
+  potassio?: number;
   /** Emoglobina (g/dL). */
   emoglobina?: number;
+  /**
+   * Ferritina (ng/mL, che sono gli stessi µg/L). E' una proteina di fase
+   * acuta: con una flogosi in atto sale anche se le riserve di ferro sono
+   * basse, quindi va letta accanto alla hs-PCR.
+   */
+  ferritina?: number;
   /** Aspartato aminotransferasi (U/L). */
   ast?: number;
   /** Alanina aminotransferasi (U/L). */
@@ -704,14 +737,18 @@ export interface Visit {
     fibrillazioneAtriale?: FibrillazioneAtrialeData;
     /** Fattori di rischio cardiovascolare spuntati accanto alle variabili cliniche. */
     fattoriRischio?: FattoriRischioCvData;
+    /** Domande in piu' del punteggio MESA (etnia, terapie, familiarita'). */
+    rischioMesa?: RischioMesaData;
     /**
      * Sintesi del rischio cardiovascolare scritta dal medico.
      *
      * È l'unico punto in cui rischio calcolato (SCORE2) e rischio osservato
      * all'imaging (calcium score, CAD-RADS) vengono messi insieme, e li mette
-     * insieme una persona: l'applicazione **non calcola un rischio combinato**,
+     * insieme una persona: l'applicazione **non combina SCORE2 e imaging**,
      * perché nessuna formula condivisa lo fa e sommarli darebbe a un numero
-     * inventato l'autorevolezza dei due che lo hanno prodotto.
+     * inventato l'autorevolezza dei due che lo hanno prodotto. L'eccezione e'
+     * il MESA col calcium score, che pero' e' un modello pubblicato e
+     * validato a se', non una somma fatta dall'app.
      */
     sintesiRischio?: string;
   };
@@ -834,6 +871,7 @@ export type BackupImportMode = 'replace' | 'merge';
 export interface StorageService {
   // Pazienti
   getPatients(): Promise<Patient[]>;
+  countPatients(): Promise<number>;
   getPatientById(id: string): Promise<Patient | null>;
   getPatientByCF(cf: string): Promise<Patient | null>;
   addPatient(patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Patient>;
@@ -842,6 +880,9 @@ export interface StorageService {
 
   // Visite
   getVisits(): Promise<Visit[]>;
+  /** Visite senza immagini allegate: solo per elenchi, non da salvare. */
+  getVisitsWithoutImages(): Promise<Visit[]>;
+  countVisits(): Promise<number>;
   getVisitsByPatientId(patientId: string): Promise<Visit[]>;
   getVisitById(id: string): Promise<Visit | null>;
   addVisit(visit: Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>): Promise<Visit>;
@@ -852,6 +893,7 @@ export interface StorageService {
   getVisitRevisions(): Promise<VisitRevision[]>;
 
   // Richieste esami complementari (entità separata dalla visita)
+  getAllRichiesteEsami(): Promise<RichiestaEsameComplementare[]>;
   getRichiesteEsamiByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]>;
   getRichiestaEsameById(id: string): Promise<RichiestaEsameComplementare | null>;
   addRichiestaEsame(data: Omit<RichiestaEsameComplementare, 'id' | 'createdAt' | 'updatedAt'>): Promise<RichiestaEsameComplementare>;
@@ -878,6 +920,8 @@ export interface StorageService {
 
   // Documenti
   getDocuments(): Promise<Document[]>;
+  countDocuments(): Promise<number>;
+  getDocumentsByPatientId(patientId: string): Promise<Document[]>;
   getDocumentById(id: string): Promise<Document | null>;
   addDocument(document: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>): Promise<Document>;
   updateDocument(id: string, document: Partial<Document>): Promise<Document>;

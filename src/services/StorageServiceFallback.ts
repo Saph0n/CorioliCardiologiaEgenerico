@@ -12,6 +12,11 @@ declare global {
       kvSet: (key: string, value: string) => Promise<void>;
       kvRemove: (key: string) => Promise<void>;
       kvClearAppDottori: () => Promise<void>;
+      recordsGetAll?: (collection: string, options?: { withoutImages?: boolean }) => Promise<string[]>;
+      recordsGetById?: (collection: string, id: string) => Promise<string | null>;
+      recordsGetByPatient?: (collection: string, patientId: string) => Promise<string[]>;
+      recordsCount?: (collection: string) => Promise<number>;
+      recordsBatch?: (ops: StoreOp[]) => Promise<void>;
     };
   }
 }
@@ -21,15 +26,15 @@ function isSqliteAvailable(): boolean {
 }
 
 /**
- * Dove stanno fisicamente le chiavi: il database locale (tabella chiave/valore)
- * in Electron, localStorage nel browser e nei test.
+ * Dove stanno fisicamente le chiavi dei dati piccoli (profilo, modelli,
+ * preferenze, bozze): il database locale (tabella chiave/valore) in Electron,
+ * localStorage nel browser e nei test. I record clinici stanno invece in un
+ * `RecordBackend`, uno per record.
  */
 interface ArchivioChiavi {
   leggi(chiave: string): Promise<string | null>;
   scrivi(chiave: string, valore: string): Promise<void>;
   togli(chiave: string): Promise<void>;
-  /** Toglie tutte le chiavi dell'app; in localStorage solo quelle elencate. */
-  svuota(chiaviLocalStorage: string[]): Promise<void>;
 }
 
 const chiaviReali: ArchivioChiavi = {
@@ -45,10 +50,6 @@ const chiaviReali: ArchivioChiavi = {
   async togli(chiave) {
     if (isSqliteAvailable()) await window.electronAPI!.kvRemove(chiave);
     else localStorage.removeItem(chiave);
-  },
-  async svuota(chiaviLocalStorage) {
-    if (isSqliteAvailable()) await window.electronAPI!.kvClearAppDottori();
-    else for (const chiave of chiaviLocalStorage) localStorage.removeItem(chiave);
   },
 };
 
@@ -99,9 +100,6 @@ function chiaviDiProva(memoria: Map<string, string>): ArchivioChiavi {
       if (chiaveClinica(chiave)) memoria.delete(chiave);
       else await chiaviReali.togli(chiave);
     },
-    async svuota() {
-      throw new Error(NON_NELLA_PROVA);
-    },
   };
 }
 
@@ -114,8 +112,272 @@ function generateUuid(): string {
   return `${r(8)}-${r(4)}-4${r(3)}-${['8', '9', 'a', 'b'][Math.floor(Math.random() * 4)]}${r(3)}-${r(12)}`;
 }
 
+/** Collezioni salvate una riga per record (vedi electron/recordStore.js). */
+type RecordCollection =
+  | 'patients'
+  | 'visits'
+  | 'visit_revisions'
+  | 'richieste_esami'
+  | 'certificati_paziente'
+  | 'ricette_paziente'
+  | 'documents';
+
+const RECORD_COLLECTIONS: RecordCollection[] = [
+  'patients',
+  'visits',
+  'visit_revisions',
+  'richieste_esami',
+  'certificati_paziente',
+  'ricette_paziente',
+  'documents',
+];
+
+/** Collezioni legate a un paziente, da eliminare con lui (la cronologia resta). */
+const PATIENT_OWNED_COLLECTIONS: RecordCollection[] = [
+  'visits',
+  'richieste_esami',
+  'certificati_paziente',
+  'ricette_paziente',
+  'documents',
+];
+
+type StoredRecord = { id: string; patientId?: string };
+
+/** Operazione di scrittura: un gruppo di operazioni è applicato tutto o niente. */
+type StoreOp =
+  | { type: 'put'; collection: RecordCollection; records: StoredRecord[] }
+  | { type: 'delete'; collection: RecordCollection; id: string }
+  | { type: 'deleteByPatient'; collection: RecordCollection; patientId: string }
+  | { type: 'replaceCollection'; collection: RecordCollection; records: StoredRecord[] }
+  | { type: 'kvSet'; key: string; value: string }
+  | { type: 'kvRemove'; key: string }
+  /** Reset dei dati dell'app: la cronologia delle modifiche non viene toccata. */
+  | { type: 'clearAppData' };
+
+/**
+ * Dove stanno i record clinici: una riga per record nel database SQLite
+ * dell'app desktop, un array JSON per collezione nel browser, nei test e
+ * nell'archivio di prova della guida.
+ *
+ * Prima ogni collezione era un unico blob letto e riscritto per intero a ogni
+ * operazione: con qualche migliaio di pazienti salvare una visita costava
+ * secondi (lo stesso problema corretto in Corioli Ginecologia 1.4.0).
+ */
+interface RecordBackend {
+  getAll<T>(collection: RecordCollection, options?: { withoutImages?: boolean }): Promise<T[]>;
+  getById<T>(collection: RecordCollection, id: string): Promise<T | null>;
+  getByPatient<T>(collection: RecordCollection, patientId: string): Promise<T[]>;
+  count(collection: RecordCollection): Promise<number>;
+  batch(ops: StoreOp[]): Promise<void>;
+}
+
+/** Copia della visita senza le immagini allegate (per gli elenchi). */
+function stripVisitImages(visit: Visit): Visit {
+  if (!visit.visita || !('immagini' in visit.visita)) return visit;
+  const { immagini: _omit, ...rest } = visit.visita;
+  return { ...visit, visita: rest };
+}
+
+function parseRows<T>(rows: string[] | null | undefined): T[] {
+  const out: T[] = [];
+  for (const row of rows ?? []) {
+    try {
+      out.push(JSON.parse(row) as T);
+    } catch (error) {
+      console.error('Record illeggibile ignorato:', error);
+    }
+  }
+  return out;
+}
+
+/** App desktop: un record per riga nel database SQLite del main process. */
+class ElectronRecordBackend implements RecordBackend {
+  private get api() {
+    return window.electronAPI!;
+  }
+
+  async getAll<T>(collection: RecordCollection, options?: { withoutImages?: boolean }): Promise<T[]> {
+    return parseRows<T>(await this.api.recordsGetAll!(collection, options));
+  }
+
+  async getById<T>(collection: RecordCollection, id: string): Promise<T | null> {
+    const row = await this.api.recordsGetById!(collection, id);
+    return row ? parseRows<T>([row])[0] ?? null : null;
+  }
+
+  async getByPatient<T>(collection: RecordCollection, patientId: string): Promise<T[]> {
+    return parseRows<T>(await this.api.recordsGetByPatient!(collection, patientId));
+  }
+
+  async count(collection: RecordCollection): Promise<number> {
+    return await this.api.recordsCount!(collection);
+  }
+
+  async batch(ops: StoreOp[]): Promise<void> {
+    if (ops.length === 0) return;
+    await this.api.recordsBatch!(ops);
+  }
+}
+
+/** Chiavi lette e scritte senza attese: localStorage, o la memoria della prova. */
+interface ChiaviSincrone {
+  leggi(chiave: string): string | null;
+  scrivi(chiave: string, valore: string): void;
+  togli(chiave: string): void;
+}
+
+/**
+ * Browser (sviluppo), test e archivio di prova: ogni collezione è un array
+ * JSON sotto `AppDottori_<collezione>`, come nelle versioni precedenti. Un
+ * gruppo di operazioni viene calcolato per intero e poi scritto; se una
+ * scrittura fallisce si ripristinano i valori precedenti, così anche qui vale
+ * il "tutto o niente".
+ */
+class ArrayRecordBackend implements RecordBackend {
+  /** Chiavi kv rimosse dal reset (oltre alle collezioni). */
+  private static readonly CLEARED_KV_KEYS = ['doctor', 'templates', 'preferences', 'recent_patient_searches'];
+
+  /**
+   * @param conChiaviKv falso nell'archivio di prova: lì profilo, modelli e
+   *   preferenze restano nell'archivio vero, e import e reset sono vietati.
+   */
+  constructor(
+    private readonly chiavi: ChiaviSincrone,
+    private readonly conChiaviKv = true,
+  ) {}
+
+  private key(collection: RecordCollection): string {
+    return `AppDottori_${collection}`;
+  }
+
+  private read<T>(collection: RecordCollection): T[] {
+    try {
+      const raw = this.chiavi.leggi(this.key(collection));
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error(`Errore nel recupero dei dati per ${collection}:`, error);
+      return [];
+    }
+  }
+
+  async getAll<T>(collection: RecordCollection, options?: { withoutImages?: boolean }): Promise<T[]> {
+    const list = this.read<T>(collection);
+    if (options?.withoutImages && collection === 'visits') {
+      return (list as unknown as Visit[]).map(stripVisitImages) as unknown as T[];
+    }
+    return list;
+  }
+
+  async getById<T>(collection: RecordCollection, id: string): Promise<T | null> {
+    return this.read<T & StoredRecord>(collection).find((r) => r.id === id) ?? null;
+  }
+
+  async getByPatient<T>(collection: RecordCollection, patientId: string): Promise<T[]> {
+    return this.read<T & StoredRecord>(collection).filter((r) => r.patientId === patientId);
+  }
+
+  async count(collection: RecordCollection): Promise<number> {
+    return this.read(collection).length;
+  }
+
+  async batch(ops: StoreOp[]): Promise<void> {
+    const lists = new Map<RecordCollection, StoredRecord[]>();
+    const kv = new Map<string, string | null>();
+    const list = (collection: RecordCollection) => {
+      if (!lists.has(collection)) lists.set(collection, this.read<StoredRecord>(collection));
+      return lists.get(collection)!;
+    };
+    const soloArchivioVero = () => {
+      if (!this.conChiaviKv) throw new Error(NON_NELLA_PROVA);
+    };
+
+    for (const op of ops) {
+      switch (op.type) {
+        case 'put': {
+          const arr = list(op.collection);
+          for (const record of op.records) {
+            const index = arr.findIndex((r) => r.id === record.id);
+            if (index === -1) arr.push(record);
+            else arr[index] = record;
+          }
+          break;
+        }
+        case 'delete':
+          lists.set(op.collection, list(op.collection).filter((r) => r.id !== op.id));
+          break;
+        case 'deleteByPatient':
+          lists.set(op.collection, list(op.collection).filter((r) => r.patientId !== op.patientId));
+          break;
+        case 'replaceCollection':
+          lists.set(op.collection, [...op.records]);
+          break;
+        case 'kvSet':
+          soloArchivioVero();
+          kv.set(op.key, op.value);
+          break;
+        case 'kvRemove':
+          soloArchivioVero();
+          kv.set(op.key, null);
+          break;
+        case 'clearAppData':
+          soloArchivioVero();
+          for (const collection of RECORD_COLLECTIONS) {
+            if (collection !== 'visit_revisions') lists.set(collection, []);
+          }
+          for (const key of ArrayRecordBackend.CLEARED_KV_KEYS) kv.set(`AppDottori_${key}`, null);
+          break;
+      }
+    }
+
+    const writes: [string, string | null][] = [
+      ...[...lists].map(([collection, arr]): [string, string] => [this.key(collection), JSON.stringify(arr)]),
+      ...kv,
+    ];
+    const previous = writes.map(([key]): [string, string | null] => [key, this.chiavi.leggi(key)]);
+    try {
+      for (const [key, value] of writes) {
+        if (value === null) this.chiavi.togli(key);
+        else this.chiavi.scrivi(key, value);
+      }
+    } catch (error) {
+      for (const [key, value] of previous) {
+        try {
+          if (value === null) this.chiavi.togli(key);
+          else this.chiavi.scrivi(key, value);
+        } catch (restoreError) {
+          console.error(`Ripristino di ${key} non riuscito:`, restoreError);
+        }
+      }
+      throw error;
+    }
+  }
+}
+
+const recordElectron = new ElectronRecordBackend();
+const recordLocalStorage = new ArrayRecordBackend({
+  leggi: (chiave) => localStorage.getItem(chiave),
+  scrivi: (chiave, valore) => localStorage.setItem(chiave, valore),
+  togli: (chiave) => localStorage.removeItem(chiave),
+});
+
+/** Record dell'archivio vero: SQLite nell'app desktop, localStorage nel browser e nei test. */
+function recordReali(): RecordBackend {
+  return typeof window !== 'undefined' && window.electronAPI?.recordsBatch
+    ? recordElectron
+    : recordLocalStorage;
+}
+
 class LocalStorageFallbackService implements StorageService {
-  constructor(private readonly chiavi: ArchivioChiavi) {}
+  constructor(
+    private readonly chiavi: ArchivioChiavi,
+    private readonly scegliRecord: () => RecordBackend,
+  ) {}
+
+  /** Record clinici: SQLite nell'app desktop, localStorage nel browser e nei test. */
+  private get records(): RecordBackend {
+    return this.scegliRecord();
+  }
 
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -129,6 +391,7 @@ class LocalStorageFallbackService implements StorageService {
     return `AppDottori_${key}`;
   }
 
+  /** Liste piccole salvate come un unico valore kv (modelli e firme dei seminati). */
   private async getFromStorage<T>(key: string): Promise<T[]> {
     try {
       const data = await this.chiavi.leggi(this.getStorageKey(key));
@@ -159,12 +422,15 @@ class LocalStorageFallbackService implements StorageService {
 
   // Pazienti
   async getPatients(): Promise<Patient[]> {
-    return await this.getFromStorage<Patient>('patients');
+    return await this.records.getAll<Patient>('patients');
+  }
+
+  async countPatients(): Promise<number> {
+    return await this.records.count('patients');
   }
 
   async getPatientById(id: string): Promise<Patient | null> {
-    const patients = await this.getPatients();
-    return patients.find(p => p.id === id) || null;
+    return await this.records.getById<Patient>('patients', id);
   }
 
   async getPatientByCF(cf: string): Promise<Patient | null> {
@@ -178,10 +444,10 @@ class LocalStorageFallbackService implements StorageService {
   }
 
   async addPatient(patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Patient> {
-    const patients = await this.getPatients();
     const cfValue = patientData.codiceFiscale != null ? String(patientData.codiceFiscale).trim() : '';
     const normalizedCf = cfValue ? cfValue.toUpperCase() : '';
     if (normalizedCf) {
+      const patients = await this.getPatients();
       const duplicate = patients.some(
         (p) => String(p.codiceFiscale || '').trim().toUpperCase() === normalizedCf
       );
@@ -195,20 +461,19 @@ class LocalStorageFallbackService implements StorageService {
       updatedAt: this.getCurrentTimestamp()
     };
 
-    patients.push(patient);
-    await this.saveToStorage('patients', patients);
+    await this.records.batch([{ type: 'put', collection: 'patients', records: [patient] }]);
     return patient;
   }
 
   async updatePatient(id: string, patientData: Partial<Patient>): Promise<Patient> {
     const patients = await this.getPatients();
-    const index = patients.findIndex(p => p.id === id);
+    const current = patients.find(p => p.id === id);
 
-    if (index === -1) {
+    if (!current) {
       throw new Error('Paziente non trovato');
     }
 
-    const rawNextCf = patientData.codiceFiscale ?? patients[index].codiceFiscale;
+    const rawNextCf = patientData.codiceFiscale ?? current.codiceFiscale;
     const nextCf = rawNextCf != null ? String(rawNextCf).trim().toUpperCase() : '';
     if (nextCf) {
       const duplicate = patients.some(
@@ -217,215 +482,171 @@ class LocalStorageFallbackService implements StorageService {
       if (duplicate) throw new Error('Codice fiscale già presente');
     }
 
-    patients[index] = {
-      ...patients[index],
+    const updated: Patient = {
+      ...current,
       ...patientData,
       codiceFiscale: nextCf || undefined,
       id,
       updatedAt: this.getCurrentTimestamp()
     };
 
-    await this.saveToStorage('patients', patients);
-    return patients[index];
+    await this.records.batch([{ type: 'put', collection: 'patients', records: [updated] }]);
+    return updated;
   }
 
   async deletePatient(id: string): Promise<void> {
-    const patients = await this.getPatients();
-    const visits = await this.getVisits();
-    const richiesteEsami = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
-    const certificati = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
-    const ricette = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
-
-    const filteredVisits = visits.filter(v => v.patientId !== id);
-    await this.saveToStorage('visits', filteredVisits);
-
-    const filteredRichieste = richiesteEsami.filter(r => r.patientId !== id);
-    await this.saveToStorage('richieste_esami', filteredRichieste);
-
-    const filteredCertificati = certificati.filter(c => c.patientId !== id);
-    await this.saveToStorage('certificati_paziente', filteredCertificati);
-
-    const filteredRicette = ricette.filter(r => r.patientId !== id);
-    await this.saveToStorage('ricette_paziente', filteredRicette);
-
-    const documents = await this.getDocuments();
-    const filteredDocuments = documents.filter(d => d.patientId !== id);
-    await this.saveToStorage('documents', filteredDocuments);
-
-    const filteredPatients = patients.filter(p => p.id !== id);
-    await this.saveToStorage('patients', filteredPatients);
+    // Paziente e dati collegati spariscono insieme, in un'unica transazione.
+    // La cronologia delle modifiche alle visite resta.
+    await this.records.batch([
+      ...PATIENT_OWNED_COLLECTIONS.map((collection): StoreOp => ({ type: 'deleteByPatient', collection, patientId: id })),
+      { type: 'delete', collection: 'patients', id },
+    ]);
   }
 
-  // Richieste esami complementari
-  async getRichiesteEsamiByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]> {
-    const list = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
-    return list.filter(r => r.patientId === patientId).sort((a, b) => new Date(b.dataRichiesta).getTime() - new Date(a.dataRichiesta).getTime());
-  }
-
-  async getRichiestaEsameById(id: string): Promise<RichiestaEsameComplementare | null> {
-    const list = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
-    return list.find(r => r.id === id) || null;
-  }
-
-  async addRichiestaEsame(data: Omit<RichiestaEsameComplementare, 'id' | 'createdAt' | 'updatedAt'>): Promise<RichiestaEsameComplementare> {
-    const list = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
-    const richiesta: RichiestaEsameComplementare = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    };
-    list.push(richiesta);
-    await this.saveToStorage('richieste_esami', list);
-    return richiesta;
-  }
-
-  async updateRichiestaEsame(id: string, data: Partial<RichiestaEsameComplementare>): Promise<RichiestaEsameComplementare> {
-    const list = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
-    const index = list.findIndex(r => r.id === id);
-    if (index === -1) throw new Error('Richiesta esame non trovata');
-    list[index] = {
-      ...list[index],
+  /** Aggiorna un record esistente della collezione, o lancia `notFound`. */
+  private async updateRecord<T extends StoredRecord & { updatedAt: string }>(
+    collection: RecordCollection,
+    id: string,
+    data: Partial<T>,
+    notFound: string,
+  ): Promise<T> {
+    const current = await this.records.getById<T>(collection, id);
+    if (!current) throw new Error(notFound);
+    const updated: T = {
+      ...current,
       ...data,
       id,
       updatedAt: this.getCurrentTimestamp(),
     };
-    await this.saveToStorage('richieste_esami', list);
-    return list[index];
+    await this.records.batch([{ type: 'put', collection, records: [updated] }]);
+    return updated;
+  }
+
+  private async addRecord<T extends StoredRecord>(
+    collection: RecordCollection,
+    data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<T> {
+    const record = {
+      ...data,
+      id: this.generateId(),
+      createdAt: this.getCurrentTimestamp(),
+      updatedAt: this.getCurrentTimestamp(),
+    } as unknown as T;
+    await this.records.batch([{ type: 'put', collection, records: [record] }]);
+    return record;
+  }
+
+  private async deleteRecord(collection: RecordCollection, id: string): Promise<void> {
+    await this.records.batch([{ type: 'delete', collection, id }]);
+  }
+
+  // Richieste esami complementari
+  async getAllRichiesteEsami(): Promise<RichiestaEsameComplementare[]> {
+    const list = await this.records.getAll<RichiestaEsameComplementare>('richieste_esami');
+    return list.sort((a, b) => new Date(b.dataRichiesta).getTime() - new Date(a.dataRichiesta).getTime());
+  }
+
+  async getRichiesteEsamiByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]> {
+    const list = await this.records.getByPatient<RichiestaEsameComplementare>('richieste_esami', patientId);
+    return list.sort((a, b) => new Date(b.dataRichiesta).getTime() - new Date(a.dataRichiesta).getTime());
+  }
+
+  async getRichiestaEsameById(id: string): Promise<RichiestaEsameComplementare | null> {
+    return await this.records.getById<RichiestaEsameComplementare>('richieste_esami', id);
+  }
+
+  async addRichiestaEsame(data: Omit<RichiestaEsameComplementare, 'id' | 'createdAt' | 'updatedAt'>): Promise<RichiestaEsameComplementare> {
+    return await this.addRecord<RichiestaEsameComplementare>('richieste_esami', data);
+  }
+
+  async updateRichiestaEsame(id: string, data: Partial<RichiestaEsameComplementare>): Promise<RichiestaEsameComplementare> {
+    return await this.updateRecord<RichiestaEsameComplementare>('richieste_esami', id, data, 'Richiesta esame non trovata');
   }
 
   async deleteRichiestaEsame(id: string): Promise<void> {
-    const list = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
-    const filtered = list.filter(r => r.id !== id);
-    await this.saveToStorage('richieste_esami', filtered);
+    await this.deleteRecord('richieste_esami', id);
   }
 
   // Certificati paziente
   async getCertificatiByPatientId(patientId: string): Promise<CertificatoPaziente[]> {
-    const list = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
-    return list.filter(c => c.patientId === patientId).sort((a, b) => new Date(b.dataCertificato).getTime() - new Date(a.dataCertificato).getTime());
+    const list = await this.records.getByPatient<CertificatoPaziente>('certificati_paziente', patientId);
+    return list.sort((a, b) => new Date(b.dataCertificato).getTime() - new Date(a.dataCertificato).getTime());
   }
 
   async getCertificatoById(id: string): Promise<CertificatoPaziente | null> {
-    const list = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
-    return list.find(c => c.id === id) || null;
+    return await this.records.getById<CertificatoPaziente>('certificati_paziente', id);
   }
 
   async addCertificato(data: Omit<CertificatoPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<CertificatoPaziente> {
-    const list = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
-    const cert: CertificatoPaziente = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    };
-    list.push(cert);
-    await this.saveToStorage('certificati_paziente', list);
-    return cert;
+    return await this.addRecord<CertificatoPaziente>('certificati_paziente', data);
   }
 
   async updateCertificato(id: string, data: Partial<CertificatoPaziente>): Promise<CertificatoPaziente> {
-    const list = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
-    const index = list.findIndex(c => c.id === id);
-    if (index === -1) throw new Error('Certificato non trovato');
-    list[index] = {
-      ...list[index],
-      ...data,
-      id,
-      updatedAt: this.getCurrentTimestamp(),
-    };
-    await this.saveToStorage('certificati_paziente', list);
-    return list[index];
+    return await this.updateRecord<CertificatoPaziente>('certificati_paziente', id, data, 'Certificato non trovato');
   }
 
   async deleteCertificato(id: string): Promise<void> {
-    const list = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
-    const filtered = list.filter(c => c.id !== id);
-    await this.saveToStorage('certificati_paziente', filtered);
+    await this.deleteRecord('certificati_paziente', id);
   }
 
   // Ricette paziente
   async getRicetteByPatientId(patientId: string): Promise<RicettaPaziente[]> {
-    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
-    return list.filter(r => r.patientId === patientId).sort((a, b) => new Date(b.dataRicetta).getTime() - new Date(a.dataRicetta).getTime());
+    const list = await this.records.getByPatient<RicettaPaziente>('ricette_paziente', patientId);
+    return list.sort((a, b) => new Date(b.dataRicetta).getTime() - new Date(a.dataRicetta).getTime());
   }
 
   async getRicettaById(id: string): Promise<RicettaPaziente | null> {
-    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
-    return list.find(r => r.id === id) || null;
+    return await this.records.getById<RicettaPaziente>('ricette_paziente', id);
   }
 
   async addRicetta(data: Omit<RicettaPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<RicettaPaziente> {
-    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
-    const ricetta: RicettaPaziente = {
-      ...data,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp(),
-    };
-    list.push(ricetta);
-    await this.saveToStorage('ricette_paziente', list);
-    return ricetta;
+    return await this.addRecord<RicettaPaziente>('ricette_paziente', data);
   }
 
   async updateRicetta(id: string, data: Partial<RicettaPaziente>): Promise<RicettaPaziente> {
-    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
-    const index = list.findIndex(r => r.id === id);
-    if (index === -1) throw new Error('Ricetta non trovata');
-    list[index] = {
-      ...list[index],
-      ...data,
-      id,
-      updatedAt: this.getCurrentTimestamp(),
-    };
-    await this.saveToStorage('ricette_paziente', list);
-    return list[index];
+    return await this.updateRecord<RicettaPaziente>('ricette_paziente', id, data, 'Ricetta non trovata');
   }
 
   async deleteRicetta(id: string): Promise<void> {
-    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
-    const filtered = list.filter(r => r.id !== id);
-    await this.saveToStorage('ricette_paziente', filtered);
+    await this.deleteRecord('ricette_paziente', id);
   }
 
   // Visite
   async getVisits(): Promise<Visit[]> {
-    return await this.getFromStorage<Visit>('visits');
+    return await this.records.getAll<Visit>('visits');
+  }
+
+  /**
+   * Tutte le visite senza le immagini allegate: per elenchi e statistiche.
+   * Non vanno salvate così come sono, le immagini andrebbero perse.
+   */
+  async getVisitsWithoutImages(): Promise<Visit[]> {
+    return await this.records.getAll<Visit>('visits', { withoutImages: true });
+  }
+
+  async countVisits(): Promise<number> {
+    return await this.records.count('visits');
   }
 
   async getVisitsByPatientId(patientId: string): Promise<Visit[]> {
-    const visits = await this.getVisits();
-    return visits.filter(v => v.patientId === patientId);
+    return await this.records.getByPatient<Visit>('visits', patientId);
   }
 
   async getVisitById(id: string): Promise<Visit | null> {
-    const visits = await this.getVisits();
-    return visits.find(v => v.id === id) || null;
+    return await this.records.getById<Visit>('visits', id);
   }
 
   async addVisit(visitData: Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>): Promise<Visit> {
-    const visits = await this.getVisits();
-    const visit: Visit = {
-      ...visitData,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp()
-    };
-
-    visits.push(visit);
-    await this.saveToStorage('visits', visits);
-    return visit;
+    return await this.addRecord<Visit>('visits', visitData);
   }
 
   async updateVisit(id: string, visitData: Partial<Visit>): Promise<Visit> {
-    const visits = await this.getVisits();
-    const index = visits.findIndex(v => v.id === id);
+    const previousVisit = await this.getVisitById(id);
 
-    if (index === -1) {
+    if (!previousVisit) {
       throw new Error('Visita non trovata');
     }
 
-    const previousVisit = visits[index];
     const updatedVisit: Visit = {
       ...previousVisit,
       ...visitData,
@@ -433,8 +654,11 @@ class LocalStorageFallbackService implements StorageService {
       updatedAt: this.getCurrentTimestamp()
     };
 
+    const ops: StoreOp[] = [];
+
     // Registra la cronologia in uno store dedicato e indipendente:
     // data/ora + campi modificati con valore precedente. Non viene mai cancellata.
+    // Visita e cronologia sono scritte nella stessa transazione.
     const changes = computeVisitChanges(previousVisit, updatedVisit);
     if (changes.length > 0) {
       const patient = await this.getPatientById(updatedVisit.patientId);
@@ -450,83 +674,54 @@ class LocalStorageFallbackService implements StorageService {
         modifiedAt: updatedVisit.updatedAt,
         changes,
       };
-      await this.appendVisitRevision(revision);
+      ops.push({ type: 'put', collection: 'visit_revisions', records: [revision] });
     }
 
-    visits[index] = updatedVisit;
-
-    await this.saveToStorage('visits', visits);
-    return visits[index];
+    ops.push({ type: 'put', collection: 'visits', records: [updatedVisit] });
+    await this.records.batch(ops);
+    return updatedVisit;
   }
 
   // Cronologia modifiche visite (store dedicato, mai cancellato)
   async getVisitRevisions(): Promise<VisitRevision[]> {
-    const list = await this.getFromStorage<VisitRevision>('visit_revisions');
+    const list = await this.records.getAll<VisitRevision>('visit_revisions');
     return list.sort(
       (a, b) =>
         new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
     );
   }
 
-  private async appendVisitRevision(revision: VisitRevision): Promise<void> {
-    const list = await this.getFromStorage<VisitRevision>('visit_revisions');
-    list.push(revision);
-    await this.saveToStorage('visit_revisions', list);
-  }
-
   async deleteVisit(id: string): Promise<void> {
-    const visits = await this.getVisits();
-    const filteredVisits = visits.filter(v => v.id !== id);
-    await this.saveToStorage('visits', filteredVisits);
+    await this.deleteRecord('visits', id);
   }
 
   // Documenti
   async getDocuments(): Promise<Document[]> {
-    return await this.getFromStorage<Document>('documents');
+    return await this.records.getAll<Document>('documents');
+  }
+
+  async countDocuments(): Promise<number> {
+    return await this.records.count('documents');
+  }
+
+  async getDocumentsByPatientId(patientId: string): Promise<Document[]> {
+    return await this.records.getByPatient<Document>('documents', patientId);
   }
 
   async getDocumentById(id: string): Promise<Document | null> {
-    const documents = await this.getDocuments();
-    return documents.find(d => d.id === id) || null;
+    return await this.records.getById<Document>('documents', id);
   }
 
   async addDocument(documentData: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>): Promise<Document> {
-    const documents = await this.getDocuments();
-    const document: Document = {
-      ...documentData,
-      id: this.generateId(),
-      createdAt: this.getCurrentTimestamp(),
-      updatedAt: this.getCurrentTimestamp()
-    };
-
-    documents.push(document);
-    await this.saveToStorage('documents', documents);
-    return document;
+    return await this.addRecord<Document>('documents', documentData);
   }
 
   async updateDocument(id: string, documentData: Partial<Document>): Promise<Document> {
-    const documents = await this.getDocuments();
-    const index = documents.findIndex(d => d.id === id);
-
-    if (index === -1) {
-      throw new Error('Documento non trovato');
-    }
-
-    documents[index] = {
-      ...documents[index],
-      ...documentData,
-      id,
-      updatedAt: this.getCurrentTimestamp()
-    };
-
-    await this.saveToStorage('documents', documents);
-    return documents[index];
+    return await this.updateRecord<Document>('documents', id, documentData, 'Documento non trovato');
   }
 
   async deleteDocument(id: string): Promise<void> {
-    const documents = await this.getDocuments();
-    const filteredDocuments = documents.filter(d => d.id !== id);
-    await this.saveToStorage('documents', filteredDocuments);
+    await this.deleteRecord('documents', id);
   }
 
   // Dottore
@@ -711,7 +906,8 @@ class LocalStorageFallbackService implements StorageService {
     if (this.terapieInConclusioni(templates)) {
       await this.saveToStorage('templates', templates);
     }
-    const firmeSeminate = new Set(await this.getFromStorage<string>('templates_seeded'));
+    const firmeLette = await this.getFromStorage<string>('templates_seeded');
+    const firmeSeminate = new Set(firmeLette);
     this.firmeTerapieComeConclusioni(firmeSeminate);
     const firmePresenti = new Set(templates.map((t) => this.firmaModello(t)));
     const mancanti = this.modelliPredefiniti().filter((t) => {
@@ -726,13 +922,20 @@ class LocalStorageFallbackService implements StorageService {
     }
     // L'elenco dei seminati assorbe anche cio' che era gia' nello store: da qui
     // in avanti cancellare uno di quei modelli lo tiene cancellato.
-    await this.saveToStorage('templates_seeded', [
+    const firmeDaSalvare = [
       ...new Set([
         ...firmeSeminate,
         ...firmePresenti,
         ...mancanti.map((t) => this.firmaModello(t)),
       ]),
-    ]);
+    ];
+    // Si riscrive solo se l'elenco cambia: i modelli si leggono a ogni
+    // apertura di visita e di scheda, e una scrittura a ogni lettura costava
+    // una riscrittura dell'archivio (vedi electron/recordStore.js).
+    const giaLette = new Set(firmeLette);
+    if (firmeDaSalvare.length !== firmeLette.length || firmeDaSalvare.some((f) => !giaLette.has(f))) {
+      await this.saveToStorage('templates_seeded', firmeDaSalvare);
+    }
 
     // Accenti nei modelli gia' in archivio: migrazione una-tantum.
     //
@@ -942,10 +1145,10 @@ class LocalStorageFallbackService implements StorageService {
     const [patients, visits, visitRevisions, richiesteEsami, certificatiPaziente, ricettePaziente, doctor, documents, templates] = await Promise.all([
       this.getPatients(),
       this.getVisits(),
-      this.getFromStorage<VisitRevision>('visit_revisions'),
-      this.getFromStorage<RichiestaEsameComplementare>('richieste_esami'),
-      this.getFromStorage<CertificatoPaziente>('certificati_paziente'),
-      this.getFromStorage<RicettaPaziente>('ricette_paziente'),
+      this.records.getAll<VisitRevision>('visit_revisions'),
+      this.records.getAll<RichiestaEsameComplementare>('richieste_esami'),
+      this.records.getAll<CertificatoPaziente>('certificati_paziente'),
+      this.records.getAll<RicettaPaziente>('ricette_paziente'),
       this.getDoctor(),
       this.getDocuments(),
       this.getTemplates()
@@ -977,72 +1180,30 @@ class LocalStorageFallbackService implements StorageService {
     };
   }
 
-  /** Tutte le chiavi gestite dall'app, usate per snapshot e rollback dell'import. */
-  private static readonly MANAGED_KEYS = [
-    'patients',
-    'visits',
-    'visit_revisions',
-    'richieste_esami',
-    'certificati_paziente',
-    'ricette_paziente',
-    'doctor',
-    'documents',
-    'templates',
-    'preferences',
-    'recent_patient_searches',
-  ] as const;
-
   /**
-   * Copia in memoria dei dati grezzi correnti, presa **prima** di un'operazione
-   * distruttiva. Serve a rimettere tutto com'era se l'import fallisce a metà.
+   * Cronologie in ingresso non ancora presenti: si aggiungono senza duplicati
+   * e senza toccare quelle esistenti.
    */
-  private async readRawSnapshot(): Promise<Map<string, string | null>> {
-    const snapshot = new Map<string, string | null>();
-    for (const key of LocalStorageFallbackService.MANAGED_KEYS) {
-      const fullKey = this.getStorageKey(key);
-      snapshot.set(fullKey, await this.chiavi.leggi(fullKey));
-    }
-    return snapshot;
-  }
-
-  /** Riscrive i dati grezzi salvati da `readRawSnapshot`. */
-  private async restoreRawSnapshot(snapshot: Map<string, string | null>): Promise<void> {
-    for (const [fullKey, value] of snapshot) {
-      if (value === null) await this.chiavi.togli(fullKey);
-      else await this.chiavi.scrivi(fullKey, value);
-    }
-  }
-
-  /** Unisce le cronologie in ingresso con quelle presenti, senza duplicati e senza cancellare nulla. */
-  private async mergeVisitRevisions(incoming?: VisitRevision[]): Promise<void> {
-    if (!incoming || incoming.length === 0) return;
-    const existing = await this.getFromStorage<VisitRevision>('visit_revisions');
+  private async newVisitRevisions(incoming?: VisitRevision[]): Promise<VisitRevision[]> {
+    if (!incoming || incoming.length === 0) return [];
+    const existing = await this.records.getAll<VisitRevision>('visit_revisions');
     const existingIds = new Set(existing.map((r) => r.id));
-    let changed = false;
+    const added: VisitRevision[] = [];
     for (const rev of incoming) {
       if (rev && rev.id && !existingIds.has(rev.id)) {
-        existing.push(rev);
+        added.push(rev);
         existingIds.add(rev.id);
-        changed = true;
       }
     }
-    if (changed) {
-      await this.saveToStorage('visit_revisions', existing);
-    }
+    return added;
   }
 
   async importData(data: AppData, mode: BackupImportMode = 'replace'): Promise<void> {
     if (mode === 'replace') {
-      // La sostituzione totale cancella l'archivio prima di riscriverlo: senza una
-      // copia in memoria, un errore a metà strada lascerebbe il medico senza dati.
-      const rollback = await this.readRawSnapshot();
-      try {
-        await this.replaceAllData(data);
-      } catch (error) {
-        console.error('Import fallito: ripristino dei dati precedenti.', error);
-        await this.restoreRawSnapshot(rollback);
-        throw error;
-      }
+      // La sostituzione totale cancella l'archivio prima di riscriverlo: tutte le
+      // scritture formano un'unica transazione, così un errore a metà strada
+      // lascia l'archivio com'era invece che dimezzato.
+      await this.records.batch(await this.replaceAllDataOps(data));
       return;
     }
 
@@ -1051,9 +1212,9 @@ class LocalStorageFallbackService implements StorageService {
     const [currentPatients, currentVisits, currentRichiesteEsami, currentCertificati, currentRicette, currentDocuments, currentTemplates, currentDoctor] = await Promise.all([
       this.getPatients(),
       this.getVisits(),
-      this.getFromStorage<RichiestaEsameComplementare>('richieste_esami'),
-      this.getFromStorage<CertificatoPaziente>('certificati_paziente'),
-      this.getFromStorage<RicettaPaziente>('ricette_paziente'),
+      this.records.getAll<RichiestaEsameComplementare>('richieste_esami'),
+      this.records.getAll<CertificatoPaziente>('certificati_paziente'),
+      this.records.getAll<RicettaPaziente>('ricette_paziente'),
       this.getDocuments(),
       this.getTemplates(),
       this.getDoctor(),
@@ -1067,12 +1228,12 @@ class LocalStorageFallbackService implements StorageService {
     const incomingDocuments = data.documents || [];
     const incomingTemplates = data.templates || [];
 
-    const mergedPatients = [...currentPatients];
-    const mergedVisits = [...currentVisits];
-    const mergedRichiesteEsami = [...currentRichiesteEsami];
-    const mergedCertificati = [...currentCertificati];
-    const mergedRicette = [...currentRicette];
-    const mergedDocuments = [...currentDocuments];
+    const addedPatients: Patient[] = [];
+    const addedVisits: Visit[] = [];
+    const addedRichiesteEsami: RichiestaEsameComplementare[] = [];
+    const addedCertificati: CertificatoPaziente[] = [];
+    const addedRicette: RicettaPaziente[] = [];
+    const addedDocuments: Document[] = [];
     const mergedTemplates = [...currentTemplates];
 
     const patientIdMap = new Map<string, string>();
@@ -1100,7 +1261,7 @@ class LocalStorageFallbackService implements StorageService {
       const nextId = existingPatientIds.has(p.id) ? generateUuid() : p.id;
       existingPatientIds.add(nextId);
       const patientToAdd: Patient = { ...p, id: nextId };
-      mergedPatients.push(patientToAdd);
+      addedPatients.push(patientToAdd);
       patientById.set(nextId, patientToAdd);
       if (cf) patientByCf.set(cf, patientToAdd);
       patientIdMap.set(p.id, nextId);
@@ -1116,7 +1277,7 @@ class LocalStorageFallbackService implements StorageService {
       if (existingVisitKeys.has(visitKey)) continue;
       const nextId = existingVisitIds.has(v.id) ? this.generateId() : v.id;
       existingVisitIds.add(nextId);
-      mergedVisits.push({ ...v, id: nextId, patientId: mappedPatientId });
+      addedVisits.push({ ...v, id: nextId, patientId: mappedPatientId });
       existingVisitKeys.add(visitKey);
     }
 
@@ -1126,7 +1287,7 @@ class LocalStorageFallbackService implements StorageService {
       if (!existingPatientIds.has(mappedPatientId)) continue;
       const nextId = existingRichiestaIds.has(r.id) ? this.generateId() : r.id;
       existingRichiestaIds.add(nextId);
-      mergedRichiesteEsami.push({ ...r, id: nextId, patientId: mappedPatientId });
+      addedRichiesteEsami.push({ ...r, id: nextId, patientId: mappedPatientId });
     }
 
     const existingDocumentIds = new Set(currentDocuments.map((d) => d.id));
@@ -1138,7 +1299,7 @@ class LocalStorageFallbackService implements StorageService {
       if (existingDocumentKeys.has(docKey)) continue;
       const nextId = existingDocumentIds.has(d.id) ? this.generateId() : d.id;
       existingDocumentIds.add(nextId);
-      mergedDocuments.push({ ...d, id: nextId });
+      addedDocuments.push({ ...d, id: nextId });
       existingDocumentKeys.add(docKey);
     }
 
@@ -1161,7 +1322,7 @@ class LocalStorageFallbackService implements StorageService {
       if (!newPatientId) continue;
       const nextId = existingCertificatoIds.has(c.id) ? this.generateId() : c.id;
       existingCertificatoIds.add(nextId);
-      mergedCertificati.push({ ...c, id: nextId, patientId: newPatientId });
+      addedCertificati.push({ ...c, id: nextId, patientId: newPatientId });
     }
 
     const existingRicettaIds = new Set(currentRicette.map((r) => r.id));
@@ -1170,26 +1331,26 @@ class LocalStorageFallbackService implements StorageService {
       if (!newPatientId) continue;
       const nextId = existingRicettaIds.has(r.id) ? this.generateId() : r.id;
       existingRicettaIds.add(nextId);
-      mergedRicette.push({ ...r, id: nextId, patientId: newPatientId });
+      addedRicette.push({ ...r, id: nextId, patientId: newPatientId });
     }
 
-    await Promise.all([
-      this.saveToStorage('patients', mergedPatients),
-      this.saveToStorage('visits', mergedVisits),
-      this.saveToStorage('richieste_esami', mergedRichiesteEsami),
-      this.saveToStorage('certificati_paziente', mergedCertificati),
-      this.saveToStorage('ricette_paziente', mergedRicette),
-      this.saveToStorage('documents', mergedDocuments),
-      this.saveToStorage('templates', mergedTemplates),
-    ]);
-
-    await this.mergeVisitRevisions(data.visitRevisions);
+    // Tutto in un'unica transazione: un errore a metà non lascia l'unione dimezzata.
+    const ops: StoreOp[] = [
+      { type: 'put', collection: 'patients', records: addedPatients },
+      { type: 'put', collection: 'visits', records: addedVisits },
+      { type: 'put', collection: 'richieste_esami', records: addedRichiesteEsami },
+      { type: 'put', collection: 'certificati_paziente', records: addedCertificati },
+      { type: 'put', collection: 'ricette_paziente', records: addedRicette },
+      { type: 'put', collection: 'documents', records: addedDocuments },
+      { type: 'put', collection: 'visit_revisions', records: await this.newVisitRevisions(data.visitRevisions) },
+      { type: 'kvSet', key: this.getStorageKey('templates'), value: JSON.stringify(mergedTemplates) },
+    ];
 
     if (data.doctor) {
       const incomingDoctor = data.doctor;
 
       if (!currentDoctor) {
-        await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(incomingDoctor));
+        ops.push({ type: 'kvSet', key: this.getStorageKey('doctor'), value: JSON.stringify(incomingDoctor) });
       } else {
         const currentAmbulatori = currentDoctor.ambulatori || [];
         const incomingAmbulatori = incomingDoctor.ambulatori || [];
@@ -1233,78 +1394,46 @@ class LocalStorageFallbackService implements StorageService {
           updatedAt: this.getCurrentTimestamp(),
         };
 
-        await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(mergedDoctor));
+        ops.push({ type: 'kvSet', key: this.getStorageKey('doctor'), value: JSON.stringify(mergedDoctor) });
       }
     }
+
+    await this.records.batch(ops);
   }
 
-  /** Sostituzione totale dell'archivio con il contenuto del backup. */
-  private async replaceAllData(data: AppData): Promise<void> {
-    // clearAllData preserva la cronologia esistente; uniamo poi quella del backup.
-    await this.clearAllData();
-    await this.mergeVisitRevisions(data.visitRevisions);
-
-    if (data.patients && data.patients.length > 0) {
-      await this.saveToStorage('patients', data.patients);
-    }
-
-    if (data.visits && data.visits.length > 0) {
-      await this.saveToStorage('visits', data.visits);
-    }
-
-    if (data.richiesteEsami && data.richiesteEsami.length > 0) {
-      await this.saveToStorage('richieste_esami', data.richiesteEsami);
-    }
-
-    if (data.certificatiPaziente && data.certificatiPaziente.length > 0) {
-      await this.saveToStorage('certificati_paziente', data.certificatiPaziente);
-    }
-
-    if (data.ricettePaziente && data.ricettePaziente.length > 0) {
-      await this.saveToStorage('ricette_paziente', data.ricettePaziente);
-    }
+  /** Operazioni per la sostituzione totale dell'archivio con il contenuto del backup. */
+  private async replaceAllDataOps(data: AppData): Promise<StoreOp[]> {
+    // Il reset preserva la cronologia esistente; si aggiunge poi quella del backup.
+    const ops: StoreOp[] = [
+      { type: 'clearAppData' },
+      { type: 'put', collection: 'visit_revisions', records: await this.newVisitRevisions(data.visitRevisions) },
+      { type: 'replaceCollection', collection: 'patients', records: data.patients ?? [] },
+      { type: 'replaceCollection', collection: 'visits', records: data.visits ?? [] },
+      { type: 'replaceCollection', collection: 'richieste_esami', records: data.richiesteEsami ?? [] },
+      { type: 'replaceCollection', collection: 'certificati_paziente', records: data.certificatiPaziente ?? [] },
+      { type: 'replaceCollection', collection: 'ricette_paziente', records: data.ricettePaziente ?? [] },
+      { type: 'replaceCollection', collection: 'documents', records: data.documents ?? [] },
+    ];
 
     if (data.doctor) {
-      await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(data.doctor));
-    }
-
-    if (data.documents && data.documents.length > 0) {
-      await this.saveToStorage('documents', data.documents);
+      ops.push({ type: 'kvSet', key: this.getStorageKey('doctor'), value: JSON.stringify(data.doctor) });
     }
 
     if (data.templates && data.templates.length > 0) {
-      await this.saveToStorage('templates', data.templates);
+      ops.push({ type: 'kvSet', key: this.getStorageKey('templates'), value: JSON.stringify(data.templates) });
     }
+    return ops;
   }
 
 
   async clearAllData(): Promise<void> {
-    // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale.
-    const preservedRevisions = await this.getFromStorage<VisitRevision>('visit_revisions');
-
-    await this.chiavi.svuota(
-      [
-        'patients',
-        'visits',
-        'richieste_esami',
-        'certificati_paziente',
-        'ricette_paziente',
-        'doctor',
-        'documents',
-        'templates',
-        'preferences',
-        'recent_patient_searches',
-      ].map((k) => this.getStorageKey(k)),
-    );
-
-    // Ripristina la cronologia preservata (kvClearAppDottori cancella anche questa chiave).
-    if (preservedRevisions.length > 0) {
-      await this.saveToStorage('visit_revisions', preservedRevisions);
-    }
+    // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale:
+    // `clearAppData` la lascia al suo posto.
+    await this.records.batch([{ type: 'clearAppData' }]);
   }
 }
 
-const archivioReale = new LocalStorageFallbackService(chiaviReali);
+const archivioReale = new LocalStorageFallbackService(chiaviReali, recordReali);
 let archivioProva: LocalStorageFallbackService | null = null;
 
 /** Quello che l'archivio di prova contiene appena aperto. */
@@ -1325,7 +1454,16 @@ export function apriArchivioDiProva(contenuto: ContenutoArchivioDiProva): void {
   metti('ricette_paziente', contenuto.ricettePaziente);
   metti('richieste_esami', contenuto.richiesteEsami);
   metti('certificati_paziente', contenuto.certificatiPaziente);
-  archivioProva = new LocalStorageFallbackService(chiaviDiProva(memoria));
+  // I record della prova stanno nella stessa memoria, un array per collezione.
+  const recordProva = new ArrayRecordBackend(
+    {
+      leggi: (chiave) => memoria.get(chiave) ?? null,
+      scrivi: (chiave, valore) => void memoria.set(chiave, valore),
+      togli: (chiave) => void memoria.delete(chiave),
+    },
+    false,
+  );
+  archivioProva = new LocalStorageFallbackService(chiaviDiProva(memoria), () => recordProva);
 }
 
 /** Chiude l'archivio di prova: si torna a quello vero, e la memoria si butta. */
@@ -1343,10 +1481,10 @@ export function archivioDiProvaAperto(): boolean {
  */
 export async function conteggiArchivioReale(): Promise<{ pazienti: number; visite: number }> {
   const [pazienti, visite] = await Promise.all([
-    archivioReale.getPatients(),
-    archivioReale.getVisits(),
+    archivioReale.countPatients(),
+    archivioReale.countVisits(),
   ]);
-  return { pazienti: pazienti.length, visite: visite.length };
+  return { pazienti, visite };
 }
 
 /**

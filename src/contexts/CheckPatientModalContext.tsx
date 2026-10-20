@@ -110,7 +110,7 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
   useEffect(() => {
     if (!modo) return;
     let cancelled = false;
-    void Promise.all([PatientService.getAllPatients(), VisitService.getAllVisits()])
+    void Promise.all([PatientService.getAllPatients(), VisitService.getAllVisitsWithoutImages()])
       .then(([tutti, visite]) => {
         if (cancelled) return;
         setPazienti(tutti);

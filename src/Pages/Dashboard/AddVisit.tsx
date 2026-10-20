@@ -141,6 +141,7 @@ import {
   calcolaEgfrCkdEpi,
   calcolaHomaIr,
   calcolaLdlFriedewald,
+  calcolaMesa,
   calcolaMassaVs,
   calcolaMassaVsIndicizzata,
   calcolaNonHdl,
@@ -154,7 +155,10 @@ import {
   calcolaQtcHodges,
   calcolaScore2,
   calcolaSpessoreParietaleRelativo,
+  calcolaSuperficieCorporea,
+  calcolaSuperficieCorporeaDuBois,
   stadioKdigo,
+  type CalcOutcome,
 } from "../../utils/cardioCalcs";
 import {
   SCORE2_CATEGORIA_LABELS,
@@ -166,6 +170,14 @@ import {
   SCORE2_REGION_LABELS,
   type Score2Region,
 } from "../../utils/score2Coefficients";
+import { SCORE2_OP_MIN_AGE } from "../../utils/score2OpCoefficients";
+import {
+  ETNIA_MESA_LABELS,
+  ETNIA_MESA_PREDEFINITA,
+  MESA_ETA_MAX,
+  MESA_ETA_MIN,
+  type EtniaMesa,
+} from "../../utils/mesaCoefficients";
 import {
   costruisciPrecedenti,
   costruisciSerie,
@@ -350,6 +362,7 @@ const createDefaultVisitaData = () => ({
   fattoriRischio: {} as NonNullable<
     NonNullable<Visit["visita"]>["fattoriRischio"]
   >,
+  rischioMesa: {} as NonNullable<NonNullable<Visit["visita"]>["rischioMesa"]>,
 });
 
 /** Blocchi annidati della visita, aggiornati con lo stesso handler. */
@@ -364,7 +377,8 @@ type BloccoVisita =
   | "dopplerTsa"
   | "scompenso"
   | "fibrillazioneAtriale"
-  | "fattoriRischio";
+  | "fattoriRischio"
+  | "rischioMesa";
 
 /**
  * Da fattore del punteggio a campo salvato.
@@ -520,6 +534,7 @@ function visitaPerSalvataggio(
       ? {}
       : { fibrillazioneAtriale: v.fibrillazioneAtriale }),
     ...(vuoto(v.fattoriRischio) ? {} : { fattoriRischio: v.fattoriRischio }),
+    ...(vuoto(v.rischioMesa) ? {} : { rischioMesa: v.rischioMesa }),
     ...(vuoto(v.testErgometrico) ? {} : { testErgometrico: v.testErgometrico }),
     ...(vuoto(v.holterEcg) ? {} : { holterEcg: v.holterEcg }),
     ...(vuoto(v.holterPressorio)
@@ -562,7 +577,10 @@ const MISURE: Record<string, { path: string; range?: ChiaveMisura }> = {
   "lab.hba1c": { path: "laboratorio.hba1c", range: "lab.hba1c" },
   "lab.crea": { path: "laboratorio.creatinina" },
   "lab.alb": { path: "laboratorio.albuminuria", range: "lab.albuminuria" },
+  "lab.na": { path: "laboratorio.sodio", range: "lab.sodio" },
+  "lab.k": { path: "laboratorio.potassio", range: "lab.potassio" },
   "lab.hb": { path: "laboratorio.emoglobina", range: "lab.emoglobina" },
+  "lab.ferr": { path: "laboratorio.ferritina", range: "lab.ferritina" },
   "lab.apob": { path: "laboratorio.apoB", range: "lab.apoB" },
   "lab.lpa": { path: "laboratorio.lpa", range: "lab.lpa" },
   "lab.ast": { path: "laboratorio.ast", range: "lab.ast" },
@@ -695,6 +713,11 @@ type VoceEsame = {
  * ha voluto il cardiologo il 18 settembre 2026), che di lipidico non ha niente
  * ed e' il dato che pesa di piu' sulla classe di rischio. Azotemia accanto
  * all'uricemia, emoglobina e TSH dopo: call dell'11 settembre 2026.
+ *
+ * Sodio e potassio (19 ottobre 2026) sono un pannello a parte, come sul foglio
+ * del laboratorio, e stanno nella colonna di mezzo: quella della funzione
+ * renale era gia' la piu' lunga. La ferritina sta sotto l'emoglobina, perche'
+ * e' con quella che si legge.
  */
 const VOCI_ESAMI = {
   burden: [
@@ -716,6 +739,10 @@ const VOCI_ESAMI = {
     { chiave: "lab.ins", label: "Insulinemia", unita: "µU/mL" },
     { chiave: "lab.hba1c", label: "HbA1c", unita: "%" },
   ],
+  elettroliti: [
+    { chiave: "lab.na", label: "Sodio", unita: "mmol/L", decimali: false },
+    { chiave: "lab.k", label: "Potassio", unita: "mmol/L" },
+  ],
   renale: [
     { chiave: "lab.crea", label: "Creatinina", unita: "mg/dL" },
     { chiave: "lab.alb", label: "Albuminuria", unita: "mg/g" },
@@ -726,6 +753,7 @@ const VOCI_ESAMI = {
     { chiave: "lab.uric", label: "Uricemia", unita: "mg/dL" },
     { chiave: "lab.azot", label: "Azotemia", unita: "mg/dL", decimali: false },
     { chiave: "lab.hb", label: "Emoglobina", unita: "g/dL" },
+    { chiave: "lab.ferr", label: "Ferritina", unita: "ng/mL", decimali: false },
     { chiave: "lab.tsh", label: "TSH", unita: "mU/L" },
   ],
 } satisfies Record<string, VoceEsame[]>;
@@ -970,6 +998,13 @@ export default function AddVisit() {
         const conTerapia = visite.find((v) => v.visita?.terapiaInAtto?.trim());
         const fattori = conFattori?.visita?.fattoriRischio;
         const terapia = conTerapia?.visita?.terapiaInAtto;
+        // Le domande del MESA (etnia, terapie, familiarita') cambiano di rado
+        // come i fattori di rischio: si portano dietro senza avviso, tanto
+        // stanno accanto al punteggio che alimentano.
+        const mesa = visite.find((v) => v.visita?.rischioMesa)?.visita?.rischioMesa;
+        if (mesa) {
+          setVisitaData((prev) => ({ ...prev, rischioMesa: { ...mesa } }));
+        }
         if (!fattori && !terapia) return;
         setDaRileggere({
           terapia: terapia ? conTerapia?.dataVisita : undefined,
@@ -1030,6 +1065,7 @@ export default function AddVisit() {
                 holterPressorio: visit.visita?.holterPressorio ?? {},
                 fibrillazioneAtriale: visit.visita?.fibrillazioneAtriale ?? {},
                 fattoriRischio: visit.visita?.fattoriRischio ?? {},
+                rischioMesa: visit.visita?.rischioMesa ?? {},
               }));
             } else {
               // Visita salvata prima del blocco `visita` (o importata): i campi
@@ -1919,6 +1955,63 @@ export default function AddVisit() {
     ],
   );
 
+  /**
+   * MESA con e senza calcium score. Legge quello che la visita ha gia' (fumo,
+   * pressione, lipidi, diabete, CAC del modulo TC) e chiede solo le domande di
+   * `rischioMesa`. La familiarita' precoce dei fattori di rischio vale anche
+   * per il MESA, che conta l'infarto in famiglia a qualunque eta'.
+   */
+  const rischioMesa = visitaData.rischioMesa;
+  const familiaritaMesa =
+    visitaData.fattoriRischio.familiaritaCad === true ||
+    rischioMesa.familiaritaInfarto === true;
+  const mesaCalc = useMemo(() => {
+    const input = {
+      eta: etaPaziente,
+      sesso:
+        patient?.sesso === "M" || patient?.sesso === "F" ? patient.sesso : undefined,
+      etnia: rischioMesa.etnia ?? ETNIA_MESA_PREDEFINITA,
+      diabete: visitaData.fattoriRischio.diabete === true,
+      fumatore:
+        visitaData.fumatore === "si"
+          ? true
+          : visitaData.fumatore === "no"
+            ? false
+            : undefined,
+      colesteroloTotale: lab.colesteroloTotale,
+      hdl: lab.hdl,
+      terapiaIpolipemizzante: rischioMesa.terapiaIpolipemizzante === true,
+      pas: parseSistolica(visitaData.pressioneArteriosa),
+      terapiaAntipertensiva: rischioMesa.terapiaAntipertensiva === true,
+      familiaritaInfarto: familiaritaMesa,
+      cac: visitaData.tcCoronarica.cacScore,
+      eventoCvPregresso: visitaData.fattoriRischio.eventoCvPregresso === true,
+    };
+    return {
+      conCac: calcolaMesa(input, true),
+      senzaCac: calcolaMesa(input, false),
+    };
+  }, [
+    etaPaziente,
+    patient?.sesso,
+    rischioMesa,
+    familiaritaMesa,
+    visitaData.fattoriRischio.diabete,
+    visitaData.fattoriRischio.eventoCvPregresso,
+    visitaData.fumatore,
+    visitaData.pressioneArteriosa,
+    visitaData.tcCoronarica.cacScore,
+    lab.colesteroloTotale,
+    lab.hdl,
+  ]);
+  /** Fuori dalla coorte MESA le domande in piu' non servono: resta il motivo. */
+  const mesaApplicabile =
+    visitaData.fattoriRischio.eventoCvPregresso !== true &&
+    !(
+      etaPaziente != null &&
+      (etaPaziente < MESA_ETA_MIN || etaPaziente > MESA_ETA_MAX)
+    );
+
   /** Sesso del paziente nella forma richiesta dalle soglie cliniche. */
   const sessoPaziente =
     patient?.sesso === "M" || patient?.sesso === "F" ? patient.sesso : undefined;
@@ -2012,6 +2105,27 @@ export default function AddVisit() {
     // Visibile anche quando lo porta con se' un altro modulo: lo scompenso
     // senza ecocardiogramma non avrebbe dove leggere la FE.
     moduliCheRichiedono(chiave).some(moduloVisibile);
+
+  /**
+   * Il MESA col CAC quando manca solo il calcium score: se il modulo TC e'
+   * spento il medico non lo vede, e va detto dove si accende invece di
+   * rimandarlo a una sezione che non c'e'.
+   */
+  const mesaConCacMostrato: CalcOutcome =
+    !mesaCalc.conCac.ok &&
+    mesaCalc.senzaCac.ok &&
+    !moduloVisibile("tcCoronarica")
+      ? {
+          ok: false,
+          reason:
+            "Serve il calcium score: il modulo TC coronarica si attiva in Impostazioni, Moduli della visita.",
+        }
+      : mesaCalc.conCac;
+  /** Mancano gli stessi dati a tutti e due: basta una riga sola. */
+  const mesaStessoMotivo =
+    !mesaConCacMostrato.ok &&
+    !mesaCalc.senzaCac.ok &&
+    mesaConCacMostrato.reason === mesaCalc.senzaCac.reason;
 
   /**
    * Esami aperti o richiusi a mano in questa visita.
@@ -2190,9 +2304,23 @@ export default function AddVisit() {
     [bmi],
   );
 
+  // ── Superficie corporea ───────────────────────────────────────────────────
+  // Dal peso di questa visita e dall'altezza della scheda, gli stessi del BMI.
+  // Sta nel modulo dell'eco perche' e' li' che serve: indicizza la massa del
+  // VS, e il medico la vuole sott'occhio per confrontarla con quella
+  // dell'ecografo o per indicizzare a mano una misura che la maschera non ha.
+  const bsaCalc = useMemo(
+    () => calcolaSuperficieCorporea(visitaData.pesoCorporeo, altezzaCm ?? undefined),
+    [visitaData.pesoCorporeo, altezzaCm],
+  );
+  const bsaDuBoisCalc = useMemo(
+    () => calcolaSuperficieCorporeaDuBois(visitaData.pesoCorporeo, altezzaCm ?? undefined),
+    [visitaData.pesoCorporeo, altezzaCm],
+  );
+
   // ── Massa e geometria del ventricolo sinistro ─────────────────────────────
-  // Dalle misure lineari dell'eco; l'indicizzazione usa il peso di questa
-  // visita e l'altezza della scheda, gli stessi del BMI.
+  // Dalle misure lineari dell'eco; l'indicizzazione usa la superficie
+  // corporea qui sopra.
   const eco = visitaData.ecocardiogramma;
   const massaVsCalc = useMemo(
     () => calcolaMassaVs(eco.ddvs, eco.siv, eco.pp),
@@ -2209,6 +2337,16 @@ export default function AddVisit() {
       ),
     [eco.ddvs, eco.siv, eco.pp, visitaData.pesoCorporeo, altezzaCm],
   );
+  /**
+   * La massa indicizzata senza superficie corporea rimanda a quella: il
+   * motivo vero (manca il peso o l'altezza) lo dice gia' la riga della
+   * superficie, con il pulsante per rimediare, e ripeterlo due righe sotto
+   * era rumore.
+   */
+  const massaVsIndMostrata: CalcOutcome =
+    !bsaCalc.ok && massaVsCalc.ok
+      ? { ok: false, reason: "Serve la superficie corporea." }
+      : massaVsIndCalc;
   const massaVsIndSegnale = useMemo(
     () =>
       valutaMisura(
@@ -2325,6 +2463,22 @@ export default function AddVisit() {
     } catch {
       // Storage pieno o negato: la preferenza vale per questa sessione.
     }
+  };
+
+  /**
+   * Dal modulo dell'eco al dato che manca alla superficie corporea: l'altezza
+   * se la scheda non ce l'ha, se no il peso della visita. Tutti e due stanno
+   * nelle variabili cliniche, che possono essere chiuse.
+   */
+  const inserisciPesoAltezza = () => {
+    impostaCardColonna("cliniche", true);
+    window.setTimeout(() => {
+      const campo = document.querySelector<HTMLInputElement>(
+        altezzaCm == null ? 'input[name="altezza-paziente"]' : 'input[name="peso-visita"]',
+      );
+      campo?.scrollIntoView({ behavior: "smooth", block: "center" });
+      campo?.focus({ preventScroll: true });
+    }, 120);
   };
 
   /**
@@ -3416,41 +3570,94 @@ export default function AddVisit() {
                       {...misura("eco.ea")}
                     />
                   </div>
-                  {/* Massa e geometria del VS: suggerimento accanto ai campi,
-                      non entrano da sole nel referto (chiesto da Pablo il 7
-                      ottobre 2026, soglie da confermare con il cardiologo).
-                      Finche' mancano le tre misure basta una riga sola. */}
-                  {massaVsCalc.ok ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <CalcSuggestion label="Massa VS" outcome={massaVsCalc} />
+                  {/* Superficie corporea, massa e geometria del VS:
+                      suggerimenti accanto ai campi, non entrano da soli nel
+                      referto (massa chiesta da Pablo il 7 ottobre 2026,
+                      superficie il 19, soglie da confermare con il
+                      cardiologo). Su quattro colonne come le misure sopra; un
+                      calcolo che non si puo' fare e' una riga sola, e la riga
+                      della superficie porta al campo che manca. */}
+                  {/* `[&>p]`: le righe grigie dei calcoli non possibili stanno
+                      a meta' altezza fra i riquadri, non appese in alto. */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 [&>p]:self-center">
+                    {/* Il riquadro cresce con la riga come gli altri tre. */}
+                    <div
+                      className={
+                        bsaCalc.ok
+                          ? "flex flex-col [&>*]:grow"
+                          : "sm:col-span-2 md:col-span-4"
+                      }
+                    >
                       <CalcSuggestion
-                        label="Massa VS indicizzata"
-                        outcome={massaVsIndCalc}
-                        segnale={massaVsIndSegnale}
+                        label="Superficie corporea"
+                        outcome={bsaCalc}
                         banda={
-                          massaVsIndCalc.ok && !sessoPaziente ? (
-                            <p className="text-[11px] leading-snug text-default-500">
-                              Sesso non indicato nella scheda: nessuna soglia applicata.
-                            </p>
+                          bsaCalc.ok ? (
+                            <div className="text-[11px] leading-snug text-default-500">
+                              <p>
+                                {String(visitaData.pesoCorporeo).replace(".", ",")} kg ·{" "}
+                                {altezzaCm} cm
+                              </p>
+                              {bsaDuBoisCalc.ok && (
+                                <p title={bsaDuBoisCalc.result.source}>
+                                  DuBois {bsaDuBoisCalc.result.display} m²
+                                </p>
+                              )}
+                            </div>
                           ) : undefined
                         }
-                      />
-                      <CalcSuggestion
-                        label="Spessore parietale relativo"
-                        outcome={rwtCalc}
-                        segnale={rwtSegnale}
-                        banda={
-                          geometriaVs ? (
-                            <p className="text-xs font-semibold text-gray-700">
-                              {geometriaVs}
-                            </p>
-                          ) : undefined
+                        rimedio={
+                          <Button
+                            size="sm"
+                            variant="flat"
+                            color="primary"
+                            className="font-medium"
+                            startContent={<Ruler size={14} />}
+                            onPress={inserisciPesoAltezza}
+                          >
+                            {altezzaCm == null ? "Inserisci l'altezza" : "Inserisci il peso"}
+                          </Button>
                         }
                       />
                     </div>
-                  ) : (
-                    <CalcSuggestion label="Massa VS" outcome={massaVsCalc} />
-                  )}
+                    {massaVsCalc.ok ? (
+                      <>
+                        <CalcSuggestion label="Massa VS" outcome={massaVsCalc} />
+                        <CalcSuggestion
+                          label="Massa VS indicizzata"
+                          outcome={massaVsIndMostrata}
+                          segnale={massaVsIndSegnale}
+                          banda={
+                            massaVsIndCalc.ok && !sessoPaziente ? (
+                              <p className="text-[11px] leading-snug text-default-500">
+                                Sesso non indicato nella scheda: nessuna soglia applicata.
+                              </p>
+                            ) : undefined
+                          }
+                        />
+                        <CalcSuggestion
+                          label="Spessore parietale relativo"
+                          outcome={rwtCalc}
+                          segnale={rwtSegnale}
+                          banda={
+                            geometriaVs ? (
+                              <p className="text-xs font-semibold text-gray-700">
+                                {geometriaVs}
+                              </p>
+                            ) : undefined
+                          }
+                        />
+                      </>
+                    ) : (
+                      <div
+                        className={`self-center ${
+                          bsaCalc.ok ? "md:col-span-3" : "sm:col-span-2 md:col-span-4"
+                        }`}
+                      >
+                        <CalcSuggestion label="Massa VS" outcome={massaVsCalc} />
+                      </div>
+                    )}
+                  </div>
                   <RefertoTextarea
                     value={visitaData.ecocardiogramma.referto ?? ""}
                     onValueChange={(value) =>
@@ -3570,13 +3777,15 @@ export default function AddVisit() {
                           <p className="text-xs text-default-500">
                             {esitoCac.intervallo}
                           </p>
-                          <p className="mt-1 text-xs text-default-500">
-                            {/* Percentile: finche' le tabelle MESA non ci sono,
-                                si dice perché manca invece di stimarlo. */}
-                            {percentileCac.ok
-                              ? `Percentile MESA: ${percentileCac.percentile}deg`
-                              : percentileCac.reason}
-                          </p>
+                          {/* Percentile MESA: finche' le tabelle non ci sono
+                              non si stima e non si nomina. L'avviso "non
+                              attivo" annunciava al medico una funzione che non
+                              c'e' (Pablo, 19 ottobre 2026). */}
+                          {percentileCac.ok && (
+                            <p className="mt-1 text-xs text-default-500">
+                              Percentile MESA: {percentileCac.percentile}°
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-default-500">
@@ -5097,12 +5306,13 @@ export default function AddVisit() {
                         <Ruler size={14} />
                       </div>
                       <p className="text-xs font-semibold text-primary-800">
-                        Inserisci l&apos;altezza (cm) per calcolare il BMI
+                        Inserisci l&apos;altezza (cm) per calcolare BMI e superficie corporea
                       </p>
                     </div>
                     <div className="flex w-full flex-col gap-2">
                       <Input
                         aria-label="Altezza in cm"
+                        name="altezza-paziente"
                         type="text"
                         inputMode="numeric"
                         size="sm"
@@ -5132,6 +5342,7 @@ export default function AddVisit() {
                 <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
                   <Input
                     label="Peso corporeo (kg)"
+                    name="peso-visita"
                     type="text"
                     inputMode="decimal"
                     size="sm"
@@ -5647,11 +5858,7 @@ export default function AddVisit() {
                 <Divider className="my-1" />
 
                 <p className="text-xs font-semibold uppercase tracking-wider text-default-500">
-                  {/* Dai 70 anni il modello è SCORE2-OP: l'intestazione li
-                      nomina entrambi, altrimenti su un paziente anziano
-                      annuncia SCORE2 e sotto compare un messaggio su un altro
-                      modello. */}
-                  Rischio calcolato (SCORE2 / SCORE2-OP)
+                  Rischio calcolato
                 </p>
                 <Select
                   label="Regione di rischio SCORE2"
@@ -5669,8 +5876,15 @@ export default function AddVisit() {
                     <SelectItem key={r}>{SCORE2_REGION_LABELS[r]}</SelectItem>
                   ))}
                 </Select>
+                {/* Dai 70 anni il modello è SCORE2-OP: l'etichetta lo nomina,
+                    altrimenti su un paziente anziano annuncia SCORE2 e sotto
+                    compare un messaggio su un altro modello. */}
                 <CalcSuggestion
-                  label="SCORE2 — rischio a 10 anni"
+                  label={
+                    etaPaziente != null && etaPaziente >= SCORE2_OP_MIN_AGE
+                      ? "SCORE2-OP — rischio a 10 anni"
+                      : "SCORE2 — rischio a 10 anni"
+                  }
                   outcome={score2Calc}
                   emphasis
                   banda={
@@ -5717,6 +5931,113 @@ export default function AddVisit() {
                 {/* La nota sulle fasce di SCORE2 sta nel suggerimento della
                     fascia: tre righe fisse nella colonna spiegavano al
                     cardiologo quello che sa. */}
+
+                {/* MESA: eventi coronarici a 10 anni, col calcium score del
+                    modulo TC quando c'è. Niente fascia colorata: l'articolo
+                    non definisce categorie e quelle di SCORE2 qui non valgono.
+                    Fuori età o con un evento pregresso resta la sola riga del
+                    motivo, senza domande che non servirebbero a niente. */}
+                {mesaApplicabile ? (
+                  // `gap` e non `space-y`, come nella card: vedi il commento
+                  // sulle etichette `outside` all'inizio del CardBody.
+                  <div className="flex flex-col gap-3 rounded-lg border border-default-200 px-3 pb-3 pt-2.5">
+                    <p className="text-[11px] font-semibold tracking-wide text-default-500">
+                      Dati per il MESA
+                    </p>
+                    <Select
+                      label="Etnia"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      placeholder=" "
+                      selectedKeys={[rischioMesa.etnia ?? ETNIA_MESA_PREDEFINITA]}
+                      onSelectionChange={(keys) => {
+                        const scelta = Array.from(keys)[0] as EtniaMesa | undefined;
+                        if (scelta) handleBloccoChange("rischioMesa", "etnia", scelta);
+                      }}
+                    >
+                      {(Object.keys(ETNIA_MESA_LABELS) as EtniaMesa[]).map((e) => (
+                        <SelectItem key={e}>{ETNIA_MESA_LABELS[e]}</SelectItem>
+                      ))}
+                    </Select>
+                    {/* Stesse distanze delle caselle dei fattori di rischio:
+                        il Checkbox di NextUI allarga l'area di tocco di 8px
+                        per lato, e sotto i 12px fra le righe si sovrappone. */}
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                      <div className="min-w-0">
+                        <Checkbox
+                          size="sm"
+                          isSelected={rischioMesa.terapiaAntipertensiva === true}
+                          onValueChange={(c) =>
+                            handleBloccoChange(
+                              "rischioMesa",
+                              "terapiaAntipertensiva",
+                              c ? true : undefined,
+                            )
+                          }
+                        >
+                          <span className="text-sm text-gray-700">Antipertensivi</span>
+                        </Checkbox>
+                      </div>
+                      <div className="min-w-0">
+                        <Checkbox
+                          size="sm"
+                          isSelected={rischioMesa.terapiaIpolipemizzante === true}
+                          onValueChange={(c) =>
+                            handleBloccoChange(
+                              "rischioMesa",
+                              "terapiaIpolipemizzante",
+                              c ? true : undefined,
+                            )
+                          }
+                        >
+                          <span className="text-sm text-gray-700">Ipolipemizzanti</span>
+                        </Checkbox>
+                      </div>
+                      <div className="col-span-2 min-w-0">
+                        {/* La familiarità precoce dei fattori di rischio è
+                            già un sì: la casella resta spuntata e ferma, e
+                            dice da dove viene. */}
+                        <Checkbox
+                          size="sm"
+                          isSelected={familiaritaMesa}
+                          isDisabled={visitaData.fattoriRischio.familiaritaCad === true}
+                          onValueChange={(c) =>
+                            handleBloccoChange(
+                              "rischioMesa",
+                              "familiaritaInfarto",
+                              c ? true : undefined,
+                            )
+                          }
+                        >
+                          <span className="text-sm text-gray-700">
+                            Infarto in un familiare di 1° grado
+                            {visitaData.fattoriRischio.familiaritaCad === true && (
+                              <span className="text-default-500"> · dalla familiarità per CAD</span>
+                            )}
+                          </span>
+                        </Checkbox>
+                      </div>
+                    </div>
+                    {mesaStessoMotivo ? (
+                      <CalcSuggestion label="MESA" outcome={mesaCalc.senzaCac} />
+                    ) : (
+                      <>
+                        <CalcSuggestion
+                          label="MESA con CAC — eventi coronarici a 10 anni"
+                          outcome={mesaConCacMostrato}
+                          emphasis
+                        />
+                        <CalcSuggestion
+                          label="MESA senza CAC"
+                          outcome={mesaCalc.senzaCac}
+                        />
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <CalcSuggestion label="MESA" outcome={mesaCalc.senzaCac} />
+                )}
 
                 {/* Rischio osservato all'imaging, tenuto separato da quello
                     calcolato: sono due cose diverse e affiancarle sotto la
@@ -5772,9 +6093,9 @@ export default function AddVisit() {
                         </p>
                       </div>
                     )}
-                    {!percentileCac.ok && esitoCac && (
+                    {percentileCac.ok && esitoCac && (
                       <p className="text-[11px] leading-snug text-default-500">
-                        {percentileCac.reason}
+                        Percentile MESA: {percentileCac.percentile}°
                       </p>
                     )}
                   </div>
@@ -5788,9 +6109,10 @@ export default function AddVisit() {
 
                 <Divider className="my-1" />
 
-                {/* Il solo punto in cui i due rischi si mettono insieme, e li
-                    mette insieme il medico: l'app non calcola un rischio
-                    combinato perché nessuna formula condivisa lo fa. */}
+                {/* Il punto in cui i due rischi si mettono insieme, e li
+                    mette insieme il medico: l'app non combina SCORE2 e
+                    imaging perché nessuna formula condivisa lo fa (il MESA
+                    col CAC è un modello pubblicato a sé, non una somma). */}
                 <p className="text-xs font-semibold uppercase tracking-wider text-default-500">
                   Sintesi del medico
                 </p>
@@ -6082,6 +6404,7 @@ export default function AddVisit() {
                         <RigaCalcolata label="HOMA-IR" outcome={homaCalc} segnale={homaSegnale} />
                       </StrisciaCalcolati>
                     )}
+                    {gruppoEsami("elettroliti", "Elettroliti", { intestazione: false })}
                   </div>
                   <div className="flex flex-col gap-4">
                     {gruppoEsami("renale", "Funzione renale")}

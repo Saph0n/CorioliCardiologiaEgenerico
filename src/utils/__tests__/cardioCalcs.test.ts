@@ -5,6 +5,7 @@ import {
   calcolaEgfrCkdEpi,
   calcolaHomaIr,
   calcolaLdlFriedewald,
+  calcolaMesa,
   calcolaMassaVs,
   calcolaMassaVsIndicizzata,
   calcolaCaloNotturno,
@@ -21,6 +22,7 @@ import {
   calcolaScore2Op,
   calcolaSpessoreParietaleRelativo,
   calcolaSuperficieCorporea,
+  calcolaSuperficieCorporeaDuBois,
   categoriaRischioScore2,
   computeScore2,
   stadioKdigo,
@@ -29,6 +31,111 @@ import {
   SCORE2_COEFFICIENTS_VALIDATED,
   SCORE2_RECALIBRATION,
 } from "../score2Coefficients";
+import {
+  MESA_CON_CAC,
+  MESA_SENZA_CAC,
+  type MesaCoefficienti,
+} from "../mesaCoefficients";
+
+describe("MESA", () => {
+  // Il caso della Figura 2 di McClelland 2015: screenshot del calcolatore
+  // ufficiale, con i valori inseriti leggibili.
+  const figura2 = {
+    eta: 70,
+    sesso: "M" as const,
+    etnia: "ispanica" as const,
+    diabete: false,
+    fumatore: false,
+    colesteroloTotale: 190,
+    hdl: 50,
+    pas: 130,
+    terapiaIpolipemizzante: false,
+    terapiaAntipertensiva: true,
+    familiaritaInfarto: false,
+    cac: 0,
+  };
+
+  it("col CAC riproduce il 3,1% del calcolatore ufficiale", () => {
+    const out = calcolaMesa(figura2, true);
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.result.value).toBeCloseTo(3.06, 2);
+      expect(out.result.display).toBe("3,1");
+    }
+  });
+
+  // Il calcolatore online dice 9,3%: lo scarto e' documentato in
+  // mesaCoefficients.ts. Si tiene la Tabella 2 pubblicata, come CVrisk.
+  it("senza CAC segue la Tabella 2 pubblicata (8,6%)", () => {
+    const out = calcolaMesa(figura2, false);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.result.value).toBeCloseTo(8.61, 2);
+  });
+
+  it("ogni coefficiente torna con l'hazard ratio stampato nella Tabella 2", () => {
+    // [variabile, HR senza CAC, HR con CAC], dall'articolo.
+    const hr: [keyof MesaCoefficienti, number, number][] = [
+      ["eta", 1.05, 1.02],
+      ["maschio", 2.12, 1.5],
+      ["cinese", 0.6, 0.71],
+      ["afroamericana", 0.81, 1.04],
+      ["ispanica", 0.83, 0.98],
+      ["diabete", 1.68, 1.48],
+      ["fumatore", 1.61, 1.45],
+      ["colesteroloTotale", 1.01, 1.0],
+      ["hdl", 0.99, 0.99],
+      ["terapiaIpolipemizzante", 1.28, 1.13],
+      ["pas", 1.01, 1.01],
+      ["terapiaAntipertensiva", 1.4, 1.26],
+      ["familiaritaInfarto", 1.57, 1.38],
+    ];
+    for (const [voce, senza, con] of hr) {
+      expect(Math.exp(MESA_SENZA_CAC[voce]), voce).toBeCloseTo(senza, 2);
+      expect(Math.exp(MESA_CON_CAC[voce]), voce).toBeCloseTo(con, 2);
+    }
+    expect(Math.exp(MESA_CON_CAC.lnCac)).toBeCloseTo(1.32, 2);
+  });
+
+  it("un calcium score alto alza il rischio", () => {
+    const zero = calcolaMesa(figura2, true);
+    const alto = calcolaMesa({ ...figura2, cac: 400 }, true);
+    expect(zero.ok && alto.ok).toBe(true);
+    if (zero.ok && alto.ok) expect(alto.result.value).toBeGreaterThan(zero.result.value * 3);
+  });
+
+  it("col CAC chiede il calcium score, senza no", () => {
+    const senzaDato = { ...figura2, cac: undefined };
+    const con = calcolaMesa(senzaDato, true);
+    expect(con.ok).toBe(false);
+    if (!con.ok) expect(con.reason).toContain("calcium score");
+    expect(calcolaMesa(senzaDato, false).ok).toBe(true);
+  });
+
+  it("fuori dai 45-84 anni non risponde", () => {
+    expect(calcolaMesa({ ...figura2, eta: 44 }, false).ok).toBe(false);
+    expect(calcolaMesa({ ...figura2, eta: 85 }, false).ok).toBe(false);
+    expect(calcolaMesa({ ...figura2, eta: 45 }, false).ok).toBe(true);
+  });
+
+  it("con un evento pregresso non si applica", () => {
+    const out = calcolaMesa({ ...figura2, eventoCvPregresso: true }, true);
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.reason).toContain("prevenzione primaria");
+  });
+
+  it("senza fumo dichiarato non calcola", () => {
+    expect(calcolaMesa({ ...figura2, fumatore: undefined }, true).ok).toBe(false);
+  });
+
+  it("senza etnia usa la caucasica", () => {
+    const predefinita = calcolaMesa({ ...figura2, etnia: undefined }, true);
+    const caucasica = calcolaMesa({ ...figura2, etnia: "bianca" }, true);
+    expect(predefinita.ok && caucasica.ok).toBe(true);
+    if (predefinita.ok && caucasica.ok) {
+      expect(predefinita.result.value).toBe(caucasica.result.value);
+    }
+  });
+});
 
 describe("LDL secondo Friedewald", () => {
   it("calcola LDL = totale - HDL - TG/5", () => {
@@ -528,6 +635,28 @@ describe("massa del ventricolo sinistro", () => {
     const out = calcolaMassaVsIndicizzata(48, 9, 9, 0, 175);
     expect(out.ok).toBe(false);
     if (!out.ok) expect(out.reason).toContain("peso");
+  });
+
+  it("dice quale dei due dati manca alla superficie corporea", () => {
+    const motivo = (out: ReturnType<typeof calcolaSuperficieCorporea>) =>
+      out.ok ? "" : out.reason;
+    expect(motivo(calcolaSuperficieCorporea(0, 175))).toBe("Manca il peso della visita.");
+    expect(motivo(calcolaSuperficieCorporea(70, undefined))).toBe(
+      "Manca l'altezza del paziente.",
+    );
+    expect(motivo(calcolaSuperficieCorporea(undefined, undefined))).toContain("peso");
+    expect(motivo(calcolaSuperficieCorporea(undefined, undefined))).toContain("altezza");
+  });
+
+  it("calcola la superficie corporea anche con DuBois", () => {
+    // 0,007184 × 70^0,425 × 175^0,725 = 1,848: a questa taglia le due
+    // formule differiscono di pochi centesimi.
+    const out = calcolaSuperficieCorporeaDuBois(70, 175);
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.result.value).toBeCloseTo(1.8481, 4);
+      expect(out.result.display).toBe("1,85");
+    }
   });
 
   it("calcola lo spessore parietale relativo", () => {

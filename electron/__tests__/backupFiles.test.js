@@ -2,10 +2,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DatabaseSync } from "node:sqlite";
 import initSqlJs from "sql.js";
 import {
   createBackupFile,
   listBackupFiles,
+  moveDatabaseAside,
   openDatabaseFromFile,
   parseBackupFileName,
   restoreBackupFile,
@@ -141,6 +143,8 @@ describe("apertura del database e recupero", () => {
     SQL = await initSqlJs();
   });
 
+  // Il database di prova è creato con sql.js, come quelli delle versioni
+  // precedenti: il nuovo archivio (node:sqlite) deve aprirli così come sono.
   const creaDb = () => {
     const db = new SQL.Database();
     db.run("CREATE TABLE kv_store (key TEXT PRIMARY KEY, value TEXT);");
@@ -151,11 +155,14 @@ describe("apertura del database e recupero", () => {
     return Buffer.from(db.export());
   };
 
+  const leggiKv = (db) => db.prepare("SELECT value FROM kv_store").get().value;
+
   it("apre un database valido e ne legge i dati", () => {
     writeFileAtomicSync(dbPath, creaDb());
-    const db = openDatabaseFromFile(SQL, dbPath);
+    const db = openDatabaseFromFile(DatabaseSync, dbPath);
     expect(db).not.toBeNull();
-    expect(db.exec("SELECT value FROM kv_store")[0].values[0][0]).toContain("Neri");
+    expect(leggiKv(db)).toContain("Neri");
+    db.close();
   });
 
   it.each([
@@ -166,7 +173,7 @@ describe("apertura del database e recupero", () => {
   ])("riconosce come illeggibile: %s", (_nome, rovina) => {
     const buono = creaDb();
     fs.writeFileSync(dbPath, rovina(buono));
-    expect(openDatabaseFromFile(SQL, dbPath)).toBeNull();
+    expect(openDatabaseFromFile(DatabaseSync, dbPath)).toBeNull();
   });
 
   it("dalla copia .bak i dati restano recuperabili", () => {
@@ -174,12 +181,46 @@ describe("apertura del database e recupero", () => {
     writeFileAtomicSync(dbPath, buono);
     fs.copyFileSync(dbPath, `${dbPath}.bak`);
     fs.writeFileSync(dbPath, buono.subarray(0, 200)); // il principale si rovina
-    expect(openDatabaseFromFile(SQL, dbPath)).toBeNull();
-    const recuperato = openDatabaseFromFile(SQL, `${dbPath}.bak`);
-    expect(recuperato.exec("SELECT value FROM kv_store")[0].values[0][0]).toContain("Neri");
+    expect(openDatabaseFromFile(DatabaseSync, dbPath)).toBeNull();
+    const recuperato = openDatabaseFromFile(DatabaseSync, `${dbPath}.bak`, { readOnly: true });
+    expect(leggiKv(recuperato)).toContain("Neri");
+    recuperato.close();
   });
 
-  it("un percorso inesistente non fa crashare", () => {
-    expect(openDatabaseFromFile(SQL, path.join(root, "assente.db"))).toBeNull();
+  it("un percorso inesistente non fa crashare e non crea il file", () => {
+    const assente = path.join(root, "assente.db");
+    expect(openDatabaseFromFile(DatabaseSync, assente)).toBeNull();
+    expect(fs.existsSync(assente)).toBe(false);
   });
 });
+
+describe("file di appoggio di SQLite", () => {
+  it("il ripristino elimina un journal rimasto del vecchio database", () => {
+    fs.mkdirSync(backupsDir, { recursive: true });
+    const nome = "corioli-auto-2026-01-01_10-00-00.db";
+    fs.writeFileSync(path.join(backupsDir, nome), "backup");
+    fs.writeFileSync(dbPath, "attuale");
+    fs.writeFileSync(`${dbPath}-journal`, "journal-vecchio");
+    expect(restoreBackupFile({ dbPath, backupsDir, fileName: nome }).ok).toBe(true);
+    expect(fs.readFileSync(dbPath, "utf8")).toBe("backup");
+    expect(fs.existsSync(`${dbPath}-journal`)).toBe(false);
+  });
+
+  it("un database messo da parte si porta dietro il suo journal", () => {
+    fs.writeFileSync(dbPath, "rovinato");
+    fs.writeFileSync(`${dbPath}-journal`, "journal");
+    moveDatabaseAside(dbPath, ".corrupted-1");
+    expect(fs.existsSync(dbPath)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-journal`)).toBe(false);
+    expect(fs.readFileSync(`${dbPath}.corrupted-1`, "utf8")).toBe("rovinato");
+    expect(fs.readFileSync(`${dbPath}.corrupted-1-journal`, "utf8")).toBe("journal");
+  });
+
+  it("il motivo pre-migrazione è riconosciuto", () => {
+    fs.writeFileSync(dbPath, "dati");
+    const r = createBackupFile({ dbPath, backupsDir, reason: "pre-migrazione" });
+    expect(r.ok).toBe(true);
+    expect(r.fileName).toMatch(/^corioli-pre-migrazione-/);
+  });
+});
+

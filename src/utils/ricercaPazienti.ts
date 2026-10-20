@@ -1,4 +1,5 @@
 import type { Patient } from "../types/Storage";
+import { confrontaNomi } from "./ordinamento";
 
 /**
  * Ricerca del paziente per cognome, nome o codice fiscale.
@@ -104,5 +105,5 @@ export function ultimaVisitaPerPaziente(
 function confrontaCognomi(a: Cercabile, b: Cercabile): number {
   const ca = `${a.cognome ?? ""} ${a.nome ?? ""}`;
   const cb = `${b.cognome ?? ""} ${b.nome ?? ""}`;
-  return ca.localeCompare(cb, "it", { sensitivity: "base" });
+  return confrontaNomi(ca, cb);
 }

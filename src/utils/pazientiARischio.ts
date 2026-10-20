@@ -22,6 +22,7 @@ import {
   confrontaConTarget,
   type CategoriaRischioCv,
 } from "./rischioCv";
+import { ordinaPerChiaveDecrescente } from "./ordinamento";
 
 /** Da dove viene il valore di LDL mostrato. */
 export type FonteLdl = "dosato" | "stimato";
@@ -58,8 +59,9 @@ function gravita(categoria: CategoriaRischioCv): number {
   return CATEGORIE_RISCHIO_CV.indexOf(categoria);
 }
 
-function piuRecente(a: Visit, b: Visit): number {
-  return new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime();
+/** Dalla visita piu' recente: la data si legge una volta per visita. */
+function piuRecenti(visite: Visit[]): Visit[] {
+  return ordinaPerChiaveDecrescente(visite, (v) => new Date(v.dataVisita).getTime());
 }
 
 /** L'LDL di una visita: il dosato se c'e', altrimenti Friedewald. */
@@ -107,7 +109,7 @@ export function pazientiDaTenereDOcchio(
 
   const voci: VoceRischio[] = [];
   for (const [patientId, elenco] of perPaziente) {
-    const ordinate = [...elenco].sort(piuRecente);
+    const ordinate = piuRecenti(elenco);
     const conClasse = ordinate.find((v) => v.visita?.categoriaRischioCv);
     const categoria = conClasse?.visita?.categoriaRischioCv;
     if (!conClasse || !categoria) continue;

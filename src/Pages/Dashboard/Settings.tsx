@@ -427,14 +427,16 @@ const SettingsScreen = () => {
   useEffect(() => {
     const loadCounts = async () => {
       try {
+        // Solo i conteggi: leggere tutto (documenti compresi) per contarli
+        // costava quanto aprire l'intero archivio.
         const [patients, visits, docs] = await Promise.all([
-          PatientService.getAllPatients(),
-          VisitService.getAllVisits(),
-          DocumentService.getAllDocuments(),
+          PatientService.countPatients(),
+          VisitService.countVisits(),
+          DocumentService.countDocuments(),
         ]);
-        setPatientCount(patients.length);
-        setVisitCount(visits.length);
-        setDocCount(docs.length);
+        setPatientCount(patients);
+        setVisitCount(visits);
+        setDocCount(docs);
       } catch {
         // ignore
       }
@@ -979,11 +981,11 @@ const SettingsScreen = () => {
       await PatientService.deletePatient(patientId);
       showNotice("duplicati", "success", "Paziente duplicato eliminato.");
       const [patients, visits] = await Promise.all([
-        PatientService.getAllPatients(),
-        VisitService.getAllVisits(),
+        PatientService.countPatients(),
+        VisitService.countVisits(),
       ]);
-      setPatientCount(patients.length);
-      setVisitCount(visits.length);
+      setPatientCount(patients);
+      setVisitCount(visits);
       setDuplicateGroups((prev) =>
         prev
           .map((g) => ({
@@ -1033,11 +1035,11 @@ const SettingsScreen = () => {
 
       setDuplicateGroups((prev) => prev.filter((g) => g.key !== groupKey));
       const [patients, visits] = await Promise.all([
-        PatientService.getAllPatients(),
-        VisitService.getAllVisits(),
+        PatientService.countPatients(),
+        VisitService.countVisits(),
       ]);
-      setPatientCount(patients.length);
-      setVisitCount(visits.length);
+      setPatientCount(patients);
+      setVisitCount(visits);
       showNotice(
         "duplicati",
         "success",

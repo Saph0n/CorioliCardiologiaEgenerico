@@ -34,6 +34,7 @@ import { calculateAge } from "../../utils/dateUtils";
 import { normalizeGruppi } from "../../utils/gruppiRicerca";
 import { formatPatientDisplayName } from "../../utils/patientDisplay";
 import { cercaPazienti, ultimaVisitaPerPaziente } from "../../utils/ricercaPazienti";
+import { confrontaNomi } from "../../utils/ordinamento";
 import type { Patient } from "../../types/Storage";
 
 /**
@@ -111,7 +112,7 @@ export default function Dashboard() {
     try {
       const [tutti, visite] = await Promise.all([
         PatientService.getAllPatients(),
-        VisitService.getAllVisits(),
+        VisitService.getAllVisitsWithoutImages(),
       ]);
       setPatients(tutti);
       setUltimaVisita(ultimaVisitaPerPaziente(visite));
@@ -185,11 +186,7 @@ export default function Dashboard() {
     const ordinati = [...patients];
     if (ordine === "cognome") {
       ordinati.sort((a, b) =>
-        `${a.cognome ?? ""} ${a.nome ?? ""}`.localeCompare(
-          `${b.cognome ?? ""} ${b.nome ?? ""}`,
-          "it",
-          { sensitivity: "base" },
-        ),
+        confrontaNomi(`${a.cognome ?? ""} ${a.nome ?? ""}`, `${b.cognome ?? ""} ${b.nome ?? ""}`),
       );
     } else {
       // Chi non ha visite va in fondo, fra loro dal piu' recente in anagrafica.

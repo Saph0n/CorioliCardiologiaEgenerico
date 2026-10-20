@@ -4,10 +4,11 @@ import { cleanupPrintDir, writePrintFile } from "./printFiles.js";
 import {
   createBackupFile,
   listBackupFiles,
+  moveDatabaseAside,
   openDatabaseFromFile,
   restoreBackupFile,
-  writeFileAtomicSync,
 } from "./backupFiles.js";
+import { createRecordStore, RECORD_COLLECTIONS } from "./recordStore.js";
 import {
   checkBiometricAvailable,
   promptBiometric,
@@ -23,7 +24,7 @@ const isDev = process.env.NODE_ENV === "development";
 
 app.setName("CorioliCardiologia");
 
-let kvReady = null;
+let storeReady = null;
 let mainWindowRef = null;
 let sessionUnlocked = false;
 
@@ -57,10 +58,16 @@ function getLegacyPrintDir() {
   return path.join(app.getPath("userData"), "stampe");
 }
 
-async function getKv() {
-  if (kvReady) return kvReady;
-  const initSqlJs = (await import("sql.js")).default;
-  const SQL = await initSqlJs();
+/**
+ * Apre (una volta sola) l'archivio SQLite su disco.
+ *
+ * Nelle versioni precedenti il database era tenuto in memoria da sql.js e riscritto per
+ * intero a ogni salvataggio; ora è un normale file SQLite aggiornato pagina per
+ * pagina (vedi recordStore.js). Il formato del file è lo stesso: un archivio
+ * vecchio si apre così com'è e viene convertito a righe al primo avvio.
+ */
+async function openStore() {
+  const { DatabaseSync } = await import("node:sqlite");
   const dbPath = getDbPath();
   const bakPath = `${dbPath}.bak`;
 
@@ -70,36 +77,40 @@ async function getKv() {
   let openedFromValidFile = false;
 
   if (fs.existsSync(dbPath)) {
-    db = openDatabaseFromFile(SQL, dbPath);
+    db = openDatabaseFromFile(DatabaseSync, dbPath);
     openedFromValidFile = db !== null;
 
     if (!db) {
       // Il file danneggiato viene messo da parte, mai sovrascritto: è l'unica
       // copia rimasta se anche il .bak dovesse mancare.
       try {
-        fs.renameSync(dbPath, `${dbPath}.corrupted-${Date.now()}`);
+        moveDatabaseAside(dbPath, `.corrupted-${Date.now()}`);
       } catch (e) {
         console.error("Impossibile mettere da parte il DB corrotto:", e);
       }
-      if (fs.existsSync(bakPath)) {
+      const bak = fs.existsSync(bakPath)
+        ? openDatabaseFromFile(DatabaseSync, bakPath, { readOnly: true })
+        : null;
+      if (bak) {
         console.warn("corioli-cardiologia.db illeggibile: ripristino da corioli-cardiologia.db.bak");
-        db = openDatabaseFromFile(SQL, bakPath);
-        if (db) {
-          try {
-            fs.copyFileSync(bakPath, dbPath);
-            openedFromValidFile = true;
-          } catch (e) {
-            console.error("Ripristino da .bak non riuscito:", e);
-          }
+        bak.close();
+        try {
+          fs.copyFileSync(bakPath, dbPath);
+          db = openDatabaseFromFile(DatabaseSync, dbPath);
+          openedFromValidFile = db !== null;
+        } catch (e) {
+          console.error("Ripristino da .bak non riuscito:", e);
         }
       }
     }
   }
-  if (!db) db = new SQL.Database();
-
-  db.run(
-    "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT);",
-  );
+  if (!db) {
+    // Se il file danneggiato non è stato spostato, non va sovrascritto.
+    if (fs.existsSync(dbPath)) {
+      throw new Error("Database illeggibile e non spostabile: avvio interrotto.");
+    }
+    db = new DatabaseSync(dbPath);
+  }
 
   // Copia di sicurezza del file valido con cui si è aperta la sessione: è il punto
   // di rollback se una scrittura successiva dovesse rovinare il database.
@@ -115,52 +126,79 @@ async function getKv() {
     }
   }
 
-  /** Scrittura atomica del database (tmp + fsync + rename). */
-  function persist() {
-    ensureSessionBackup();
-    writeFileAtomicSync(dbPath, Buffer.from(db.export()));
+  const store = createRecordStore(db, { beforeWrite: ensureSessionBackup });
+  try {
+    migrateIfNeeded(store, dbPath);
+  } catch (e) {
+    store.close();
+    throw e;
   }
+  return store;
+}
 
-  kvReady = { db, persist, dbPath };
-  return kvReady;
+/** Converte a righe un archivio nel vecchio formato (una volta sola). */
+function migrateIfNeeded(store, dbPath) {
+  if (store.hasLegacyBlobs()) {
+    // Copia dell'archivio nel vecchio formato, conservata tra i backup: se la
+    // conversione desse problemi si torna indietro dalle impostazioni.
+    const backup = createBackupFile({
+      dbPath,
+      backupsDir: getBackupsDir(),
+      reason: "pre-migrazione",
+    });
+    if (!backup.ok) console.error("Backup pre-migrazione non riuscito:", backup.error);
+    const started = Date.now();
+    const report = store.migrateLegacyBlobs();
+    console.log(`Archivio convertito a righe in ${Date.now() - started} ms`, report);
+    if (report.some((r) => r.migrated != null)) {
+      try {
+        const compactStarted = Date.now();
+        store.compact();
+        console.log(`Archivio compattato in ${Date.now() - compactStarted} ms`);
+      } catch (e) {
+        // Non grave: il file resta solo più grande del necessario.
+        console.error("Compattazione dopo la conversione non riuscita:", e);
+      }
+    }
+  }
+}
+
+async function getStore() {
+  // Un errore di apertura vale per tutta la sessione: ritentare a ogni richiesta
+  // rifarebbe ogni volta backup e conversione. Al prossimo avvio si riprova.
+  storeReady ??= openStore();
+  return storeReady;
+}
+
+/** Chiude l'archivio (prima di sostituire il file su disco). */
+async function closeStore() {
+  if (!storeReady) return;
+  const pending = storeReady;
+  storeReady = null;
+  try {
+    (await pending).close();
+  } catch (e) {
+    console.error("Chiusura archivio:", e);
+  }
 }
 
 async function kvGet(key) {
-  const { db } = await getKv();
-  const stmt = db.prepare("SELECT value FROM kv_store WHERE key = ?");
-  stmt.bind([key]);
-  let value = null;
-  if (stmt.step()) value = stmt.get()[0];
-  stmt.free();
-  return value;
+  return (await getStore()).kvGet(key);
 }
 
 async function kvSet(key, value) {
-  const { db, persist } = await getKv();
-  db.run(
-    "INSERT INTO kv_store (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    [key, String(value ?? "")],
-  );
-  persist();
+  (await getStore()).kvSet(key, String(value ?? ""));
 }
 
 async function kvRemove(key) {
-  const { db, persist } = await getKv();
-  db.run("DELETE FROM kv_store WHERE key = ?", [key]);
-  persist();
+  (await getStore()).kvRemove(key);
 }
 
 /* Backup automatici: la logica sui file sta in `backupFiles.js`, qui solo il
- * collegamento con i percorsi di Electron e con lo stato del database in memoria. */
+ * collegamento con i percorsi di Electron e con l'archivio aperto. */
 
 async function createBackup(reason) {
-  // Lo stato corrente va scritto su disco prima di copiarlo.
-  try {
-    const { persist } = await getKv();
-    persist();
-  } catch (e) {
-    console.error("Persist prima del backup:", e);
-  }
+  // Ogni transazione è già su disco al commit: il file si copia così com'è.
   return createBackupFile({
     dbPath: getDbPath(),
     backupsDir: getBackupsDir(),
@@ -171,6 +209,8 @@ async function createBackup(reason) {
 async function restoreBackup(fileName) {
   // Lo stato attuale viene salvato prima di essere sovrascritto.
   await createBackup("pre-restore");
+  // La connessione va chiusa prima di sovrascrivere il file.
+  await closeStore();
   const result = restoreBackupFile({
     dbPath: getDbPath(),
     backupsDir: getBackupsDir(),
@@ -184,9 +224,7 @@ async function restoreBackup(fileName) {
 }
 
 async function kvClearAppDottori() {
-  const { db, persist } = await getKv();
-  db.run("DELETE FROM kv_store WHERE key LIKE 'AppDottori_%'");
-  persist();
+  (await getStore()).clearAppData();
 }
 
 function createWindow() {
@@ -383,6 +421,42 @@ ipcMain.handle("kv:remove", async (_event, key) => {
   } catch (e) {
     console.error("Errore kv:remove", e);
   }
+});
+
+// Record clinici, una riga per record. Gli errori arrivano al renderer:
+// un salvataggio fallito non deve sembrare riuscito.
+function assertRecordCollection(collection) {
+  if (!RECORD_COLLECTIONS.includes(collection)) {
+    throw new Error(`Collezione sconosciuta: ${collection}`);
+  }
+}
+
+ipcMain.handle("records:getAll", async (_event, collection, options) => {
+  assertRecordCollection(collection);
+  return (await getStore()).getAll(collection, {
+    withoutImages: Boolean(options?.withoutImages),
+  });
+});
+
+ipcMain.handle("records:getById", async (_event, collection, id) => {
+  assertRecordCollection(collection);
+  if (typeof id !== "string") return null;
+  return (await getStore()).getById(collection, id);
+});
+
+ipcMain.handle("records:getByPatient", async (_event, collection, patientId) => {
+  assertRecordCollection(collection);
+  if (typeof patientId !== "string") return [];
+  return (await getStore()).getByPatient(collection, patientId);
+});
+
+ipcMain.handle("records:count", async (_event, collection) => {
+  assertRecordCollection(collection);
+  return (await getStore()).count(collection);
+});
+
+ipcMain.handle("records:batch", async (_event, ops) => {
+  (await getStore()).batch(ops);
 });
 
 ipcMain.handle("kv:clearAppDottori", async () => {

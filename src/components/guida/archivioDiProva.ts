@@ -155,7 +155,7 @@ export function creaArchivioDiProva(oggi: Date = new Date()): ContenutoArchivioD
     },
     laboratorio: {
       dataPrelievo: fa(1094), colesteroloTotale: 246, hdl: 39, trigliceridi: 196, apoB: 121,
-      lpa: 60, glicemia: 104, creatinina: 1.05, emoglobina: 14.6,
+      lpa: 60, glicemia: 104, creatinina: 1.05, sodio: 140, potassio: 4.2, emoglobina: 14.6,
     },
   });
   visita("prova-martelli-2", "prova-martelli", 730, "11:10", {
@@ -178,7 +178,7 @@ export function creaArchivioDiProva(oggi: Date = new Date()): ContenutoArchivioD
     },
     laboratorio: {
       dataPrelievo: fa(744), colesteroloTotale: 224, hdl: 41, trigliceridi: 182, apoB: 108,
-      glicemia: 101, creatinina: 1.1, emoglobina: 14.4,
+      glicemia: 101, creatinina: 1.1, sodio: 139, potassio: 4.4, emoglobina: 14.4,
     },
   });
   visita("prova-martelli-3", "prova-martelli", 365, "10:20", {
@@ -203,7 +203,7 @@ export function creaArchivioDiProva(oggi: Date = new Date()): ContenutoArchivioD
     },
     laboratorio: {
       dataPrelievo: fa(379), colesteroloTotale: 214, hdl: 42, trigliceridi: 176, apoB: 100,
-      glicemia: 103, creatinina: 1.15, emoglobina: 14.3,
+      glicemia: 103, creatinina: 1.15, sodio: 141, potassio: 4.6, emoglobina: 14.3,
     },
   });
   visita("prova-martelli-4", "prova-martelli", 182, "16:30", {
@@ -280,7 +280,8 @@ export function creaArchivioDiProva(oggi: Date = new Date()): ContenutoArchivioD
     laboratorio: {
       dataPrelievo: fa(190), colesteroloTotale: 210, hdl: 42, trigliceridi: 180, apoB: 95,
       lpa: 60, glicemia: 102, insulina: 12, hba1c: 5.8, creatinina: 1.2, albuminuria: 45,
-      emoglobina: 14.2, ast: 28, alt: 32, uricemia: 6.1, tsh: 2.4,
+      sodio: 139, potassio: 4.9, emoglobina: 14.2, ferritina: 145, ast: 28, alt: 32,
+      uricemia: 6.1, tsh: 2.4,
     },
     sintesiRischio:
       "Prevenzione secondaria dopo evento coronarico, con calcium score in fascia severa: il " +

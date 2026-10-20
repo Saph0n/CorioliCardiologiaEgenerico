@@ -21,6 +21,16 @@ import {
   SCORE2_OP_MAX_AGE,
   SCORE2_OP_MIN_AGE,
 } from "./score2OpCoefficients";
+import {
+  ETNIA_MESA_PREDEFINITA,
+  MESA_COEFFICIENTI_VERIFICATI,
+  MESA_CON_CAC,
+  MESA_ETA_MAX,
+  MESA_ETA_MIN,
+  MESA_FONTE,
+  MESA_SENZA_CAC,
+  type EtniaMesa,
+} from "./mesaCoefficients";
 
 /** Esito di un calcolo: valore + unita' + fonte, oppure il motivo per cui non e' calcolabile. */
 export interface CalcResult {
@@ -411,8 +421,19 @@ function misureEcoPlausibili(ddvs: number, siv: number, pp: number): boolean {
 }
 
 /**
+ * Perche' la superficie corporea non si puo' calcolare, detto in modo che si
+ * sappia dove andare: il peso e' della visita, l'altezza della scheda.
+ */
+function motivoSenzaSuperficie(kg: number | null, cm: number | null): string {
+  if (kg == null && cm == null) return "Servono il peso della visita e l'altezza del paziente.";
+  return kg == null ? "Manca il peso della visita." : "Manca l'altezza del paziente.";
+}
+
+/**
  * Superficie corporea secondo Mosteller: √(altezza cm × peso kg / 3600), in m².
- * Serve a indicizzare la massa del ventricolo sinistro.
+ * E' la formula con cui si indicizzano le misure dell'eco (la massa del
+ * ventricolo sinistro), la piu' semplice e quella che le linee guida ASE/EACVI
+ * accettano accanto a DuBois.
  */
 export function calcolaSuperficieCorporea(
   pesoKg: number | undefined,
@@ -421,7 +442,7 @@ export function calcolaSuperficieCorporea(
   const kg = num(pesoKg);
   const cm = num(altezzaCm);
   if (kg == null || cm == null) {
-    return { ok: false, reason: "Servono il peso della visita e l'altezza del paziente." };
+    return { ok: false, reason: motivoSenzaSuperficie(kg, cm) };
   }
   const bsa = Math.sqrt((cm * kg) / 3600);
   return {
@@ -431,6 +452,34 @@ export function calcolaSuperficieCorporea(
       display: fmt(bsa, 2),
       unit: "m²",
       source: "Mosteller 1987: √(altezza × peso / 3600)",
+    },
+  };
+}
+
+/**
+ * Superficie corporea secondo DuBois: 0,007184 × peso^0,425 × altezza^0,725.
+ *
+ * Non indicizza niente nell'app: si mostra accanto a Mosteller perche' molti
+ * ecografi calcolano con DuBois, e chi confronta il numero della macchina con
+ * quello della maschera deve poter vedere che la differenza e' la formula.
+ */
+export function calcolaSuperficieCorporeaDuBois(
+  pesoKg: number | undefined,
+  altezzaCm: number | undefined,
+): CalcOutcome {
+  const kg = num(pesoKg);
+  const cm = num(altezzaCm);
+  if (kg == null || cm == null) {
+    return { ok: false, reason: motivoSenzaSuperficie(kg, cm) };
+  }
+  const bsa = 0.007184 * Math.pow(kg, 0.425) * Math.pow(cm, 0.725);
+  return {
+    ok: true,
+    result: {
+      value: bsa,
+      display: fmt(bsa, 2),
+      unit: "m²",
+      source: "DuBois 1916: 0,007184 × peso^0,425 × altezza^0,725",
     },
   };
 }
@@ -811,4 +860,146 @@ export function calcolaScore2Op(input: Partial<Score2Input>): CalcOutcome {
 
   // Il calcolo va qui quando i coefficienti ci saranno.
   return { ok: false, reason: "Coefficienti SCORE2-OP non disponibili." };
+}
+
+// ─── MESA ────────────────────────────────────────────────────────────────────
+
+export interface MesaInput {
+  eta: number;
+  sesso: "M" | "F";
+  etnia: EtniaMesa;
+  diabete: boolean;
+  fumatore: boolean;
+  /** Colesterolo totale (mg/dL). */
+  colesteroloTotale: number;
+  /** Colesterolo HDL (mg/dL). */
+  hdl: number;
+  terapiaIpolipemizzante: boolean;
+  /** Pressione arteriosa sistolica (mmHg). */
+  pas: number;
+  terapiaAntipertensiva: boolean;
+  /** Infarto in un genitore, fratello o figlio, a qualunque eta'. */
+  familiaritaInfarto: boolean;
+  /** Calcium score secondo Agatston; serve solo al modello col CAC. */
+  cac?: number;
+  /**
+   * Evento cardiovascolare pregresso: la coorte MESA era libera da malattia
+   * cardiovascolare clinica, quindi con un evento alle spalle il modello non
+   * si applica.
+   */
+  eventoCvPregresso?: boolean;
+}
+
+/**
+ * Rischio di evento coronarico a 10 anni secondo il MESA, con o senza il
+ * calcium score.
+ *
+ * Non e' lo stesso numero di SCORE2 e non va confrontato con le sue soglie:
+ * SCORE2 stima eventi cardiovascolari (anche l'ictus) in popolazioni europee,
+ * il MESA solo eventi coronarici (infarto, arresto rianimato, morte
+ * coronarica, rivascolarizzazione con angina) in una coorte statunitense.
+ * L'articolo non definisce categorie di rischio, e quindi qui non ce ne sono.
+ */
+export function calcolaMesa(
+  input: Partial<MesaInput>,
+  conCac: boolean,
+): CalcOutcome {
+  const { eta, sesso, fumatore, pas, colesteroloTotale, hdl, cac } = input;
+
+  if (
+    eta == null ||
+    (sesso !== "M" && sesso !== "F") ||
+    fumatore == null ||
+    pas == null ||
+    colesteroloTotale == null ||
+    hdl == null
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Servono età, sesso, abitudine al fumo, PA sistolica, colesterolo totale e HDL.",
+    };
+  }
+  if (input.eventoCvPregresso) {
+    return {
+      ok: false,
+      reason:
+        "Con un evento cardiovascolare pregresso il MESA non si applica: è un modello di prevenzione primaria.",
+    };
+  }
+  if (eta < MESA_ETA_MIN || eta > MESA_ETA_MAX) {
+    return {
+      ok: false,
+      reason: `Il MESA è validato fra ${MESA_ETA_MIN} e ${MESA_ETA_MAX} anni.`,
+    };
+  }
+  if (conCac && (cac == null || !Number.isFinite(cac) || cac < 0)) {
+    return {
+      ok: false,
+      reason: "Serve il calcium score del modulo TC coronarica.",
+    };
+  }
+  if (!MESA_COEFFICIENTI_VERIFICATI) {
+    return {
+      ok: false,
+      reason: "MESA non attivo: i coefficienti devono ancora essere verificati sulla pubblicazione.",
+    };
+  }
+
+  return {
+    ok: true,
+    result: computeMesa(
+      {
+        eta,
+        sesso,
+        etnia: input.etnia ?? ETNIA_MESA_PREDEFINITA,
+        diabete: input.diabete ?? false,
+        fumatore,
+        colesteroloTotale,
+        hdl,
+        terapiaIpolipemizzante: input.terapiaIpolipemizzante ?? false,
+        pas,
+        terapiaAntipertensiva: input.terapiaAntipertensiva ?? false,
+        familiaritaInfarto: input.familiaritaInfarto ?? false,
+        cac,
+      },
+      conCac,
+    ),
+  };
+}
+
+/**
+ * Calcolo puro, senza i controlli: 1 − S(10)^exp(Σ β·x), con le variabili non
+ * centrate e il CAC come ln(Agatston + 1).
+ */
+export function computeMesa(input: MesaInput, conCac: boolean): CalcResult {
+  const c = conCac ? MESA_CON_CAC : MESA_SENZA_CAC;
+  const si = (b: boolean) => (b ? 1 : 0);
+
+  const somma =
+    c.eta * input.eta +
+    c.maschio * si(input.sesso === "M") +
+    c.cinese * si(input.etnia === "cinese") +
+    c.afroamericana * si(input.etnia === "afroamericana") +
+    c.ispanica * si(input.etnia === "ispanica") +
+    c.diabete * si(input.diabete) +
+    c.fumatore * si(input.fumatore) +
+    c.colesteroloTotale * input.colesteroloTotale +
+    c.hdl * input.hdl +
+    c.terapiaIpolipemizzante * si(input.terapiaIpolipemizzante) +
+    c.pas * input.pas +
+    c.terapiaAntipertensiva * si(input.terapiaAntipertensiva) +
+    c.familiaritaInfarto * si(input.familiaritaInfarto) +
+    (conCac ? c.lnCac * Math.log1p(input.cac ?? 0) : 0);
+
+  const pct = (1 - Math.pow(c.sopravvivenzaBase, Math.exp(somma))) * 100;
+
+  return {
+    value: pct,
+    display: fmt(pct, 1),
+    unit: "% a 10 anni",
+    source: conCac
+      ? `MESA con calcium score (${MESA_FONTE}): eventi coronarici a 10 anni, coorte USA 45-84 anni. Non confrontabile con le soglie di SCORE2.`
+      : `MESA con i soli fattori di rischio (${MESA_FONTE}): eventi coronarici a 10 anni, coorte USA 45-84 anni.`,
+  };
 }

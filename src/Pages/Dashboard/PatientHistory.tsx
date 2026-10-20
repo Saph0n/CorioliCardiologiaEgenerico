@@ -1108,9 +1108,9 @@ export default function PatientHistory() {
   useEffect(() => {
     if (!patient?.id) return;
     let attivo = true;
-    DocumentService.getAllDocuments()
-      .then((tutti) => {
-        if (attivo) setNumeroFile(tutti.filter((d) => d.patientId === patient.id).length);
+    DocumentService.getDocumentsByPatientId(patient.id)
+      .then((suoi) => {
+        if (attivo) setNumeroFile(suoi.length);
       })
       .catch(() => {
         if (attivo) setNumeroFile(null);

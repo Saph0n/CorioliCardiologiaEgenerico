@@ -867,6 +867,26 @@ describe("referto di visita: azotemia", () => {
   });
 });
 
+describe("referto di visita: elettroliti e ferritina", () => {
+  const v = visita({ laboratorio: { sodio: 139, potassio: 5.8, ferritina: 22 } });
+
+  it("li stampa con le loro unita' e la virgola decimale", async () => {
+    const testo = await testoDelPdf(v);
+    expect(testo).toContain("Sodio");
+    expect(testo).toContain("139 mmol/L");
+    expect(testo).toContain("Potassio");
+    expect(testo).toContain("5,8 mmol/L");
+    expect(testo).toContain("Ferritina");
+    expect(testo).toContain("22 ng/mL");
+  });
+
+  it("mette in grassetto solo i valori fuori riferimento", async () => {
+    expect(await carattereDi(v, "5,8 mmol/L")).toContain("Bold");
+    expect(await carattereDi(v, "22 ng/mL")).toContain("Bold");
+    expect(await carattereDi(v, "139 mmol/L")).not.toContain("Bold");
+  });
+});
+
 describe("referto di visita: ordine delle sezioni", () => {
   // Chiesto dal cardiologo il 22 settembre 2026, sulle visite d'esempio che
   // aveva mandato: ematochimici dopo l'anamnesi e prima della terapia in

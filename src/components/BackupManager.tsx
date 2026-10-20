@@ -151,7 +151,7 @@ const BackupManager: React.FC = () => {
           break;
         case "visits": {
           const [visite, pazienti] = await Promise.all([
-            VisitService.getAllVisits(),
+            VisitService.getAllVisitsWithoutImages(),
             PatientService.getAllPatients(),
           ]);
           result = visite;
@@ -184,13 +184,10 @@ const BackupManager: React.FC = () => {
       const revisionsKey = "AppDottori_visit_revisions";
 
       if (window.electronAPI?.kvClearAppDottori) {
+        // Nell'app desktop la cronologia sta nelle righe dell'archivio e il
+        // reset la lascia dov'e' (electron/recordStore.js): riscriverla qui
+        // come blob la farebbe riconvertire al prossimo avvio.
         await window.electronAPI.kvClearAppDottori();
-        if (preservedRevisions.length > 0 && window.electronAPI?.kvSet) {
-          await window.electronAPI.kvSet(
-            revisionsKey,
-            JSON.stringify(preservedRevisions),
-          );
-        }
       } else {
         localStorage.clear();
         if (preservedRevisions.length > 0) {

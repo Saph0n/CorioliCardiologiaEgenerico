@@ -54,6 +54,7 @@ import { formatPatientDisplayName, patientInitials } from "../../utils/patientDi
 import { titoloMedico } from "../../utils/doctorProfile";
 import { EVENTO_PAZIENTI_CAMBIATI } from "../../utils/guidaPrimoAvvio";
 import { esamiDelleVisite, NOME_ESAME, type EsameStrumentale } from "../../utils/esamiVisita";
+import { ordinaPerChiaveDecrescente } from "../../utils/ordinamento";
 import { EtichettaAltriEsami, EtichettaEsame } from "../../components/cardio/EtichettaEsame";
 
 interface GroupedRecentVisit {
@@ -132,6 +133,8 @@ const groupRecentVisits = (
 ): GroupedRecentVisit[] => {
   const groups = new Map<string, GroupedRecentVisit>();
   const visitePerGruppo = new Map<string, Visit[]>();
+  /** La prima visita di ogni gruppo: da lei viene la data scritta in colonna. */
+  const primaDelGruppo = new Map<string, Visit>();
 
   for (const visit of visits) {
     const dateKey = getVisitDateKey(visit.dataVisita);
@@ -142,11 +145,12 @@ const groupRecentVisits = (
     else visitePerGruppo.set(key, [visit]);
 
     if (!existing) {
+      primaDelGruppo.set(key, visit);
       groups.set(key, {
         patientId: visit.patientId,
         patientName: visit.patientName,
         dateKey,
-        dateLabel: new Date(visit.dataVisita).toLocaleDateString("it-IT"),
+        dateLabel: "",
         count: 1,
         tipo: visit.tipo,
         mixedTypes: false,
@@ -161,13 +165,16 @@ const groupRecentVisits = (
     }
   }
 
+  // Data scritta ed esami solo per i gruppi che finiscono in colonna: prima si
+  // preparavano per tutti (uno per visita, migliaia) e se ne tenevano sei.
   return Array.from(groups.entries())
+    .sort(([, a], [, b]) => b.dateKey.localeCompare(a.dateKey))
+    .slice(0, maxItems)
     .map(([key, gruppo]) => ({
       ...gruppo,
+      dateLabel: new Date(primaDelGruppo.get(key)!.dataVisita).toLocaleDateString("it-IT"),
       esami: esamiDelleVisite(visitePerGruppo.get(key) ?? []),
-    }))
-    .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
-    .slice(0, maxItems);
+    }));
 };
 
 /**
@@ -289,7 +296,7 @@ export default function Home() {
         const [doctor, patients, visits] = await Promise.all([
           DoctorService.initializeDefaultDoctor(),
           patientsPromise,
-          VisitService.getAllVisits(),
+          VisitService.getAllVisitsWithoutImages(),
         ]);
         if (superato) return;
 
@@ -328,21 +335,13 @@ export default function Home() {
           const prev = visitDatesByPatient.get(v.patientId);
           if (prev == null || t > prev) visitDatesByPatient.set(v.patientId, t);
         }
-        const sortedPatients = [...patients]
-          .sort((a, b) => {
-            const lastA = Math.max(
-              new Date(a.createdAt).getTime(),
-              new Date(a.updatedAt).getTime(),
-              visitDatesByPatient.get(a.id) ?? 0,
-            );
-            const lastB = Math.max(
-              new Date(b.createdAt).getTime(),
-              new Date(b.updatedAt).getTime(),
-              visitDatesByPatient.get(b.id) ?? 0,
-            );
-            return lastB - lastA;
-          })
-          .slice(0, 6);
+        const sortedPatients = ordinaPerChiaveDecrescente(patients, (p) =>
+          Math.max(
+            new Date(p.createdAt).getTime(),
+            new Date(p.updatedAt).getTime(),
+            visitDatesByPatient.get(p.id) ?? 0,
+          ),
+        ).slice(0, 6);
 
         const patientMap = new Map(patients.map((p) => [p.id, p]));
         const enrichedVisits = visits.map((v) => {
@@ -360,9 +359,8 @@ export default function Home() {
               : "paziente sconosciuto",
           };
         });
-        const sortedVisits = enrichedVisits.sort(
-          (a, b) =>
-            new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime(),
+        const sortedVisits = ordinaPerChiaveDecrescente(enrichedVisits, (v) =>
+          new Date(v.dataVisita).getTime(),
         );
         // Sei, come i pazienti recenti nella colonna accanto: le righe delle
         // due colonne stanno allineate.

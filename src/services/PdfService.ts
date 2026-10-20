@@ -2218,10 +2218,27 @@ export class PdfService {
         value: lab.albuminuria != null ? `${lab.albuminuria} mg/g` : "",
         forte: this.fuoriNorma("lab.albuminuria", lab.albuminuria),
       },
+      // Elettroliti dopo la funzione renale: e' con creatinina ed eGFR che si
+      // leggono sotto diuretici e inibitori del sistema renina-angiotensina.
+      {
+        label: "Sodio",
+        value: lab.sodio != null ? `${lab.sodio} mmol/L` : "",
+        forte: this.fuoriNorma("lab.sodio", lab.sodio),
+      },
+      {
+        label: "Potassio",
+        value: lab.potassio != null ? `${lab.potassio} mmol/L` : "",
+        forte: this.fuoriNorma("lab.potassio", lab.potassio),
+      },
       {
         label: "Emoglobina",
         value: lab.emoglobina != null ? `${lab.emoglobina} g/dL` : "",
         forte: this.fuoriNorma("lab.emoglobina", lab.emoglobina, sesso),
+      },
+      {
+        label: "Ferritina",
+        value: lab.ferritina != null ? `${lab.ferritina} ng/mL` : "",
+        forte: this.fuoriNorma("lab.ferritina", lab.ferritina, sesso),
       },
       {
         label: "AST",

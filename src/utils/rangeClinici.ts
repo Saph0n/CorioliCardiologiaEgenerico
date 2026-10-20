@@ -82,7 +82,10 @@ export type ChiaveMisura =
   | "lab.hba1c"
   | "lab.egfr"
   | "lab.albuminuria"
+  | "lab.sodio"
+  | "lab.potassio"
   | "lab.emoglobina"
+  | "lab.ferritina"
   | "lab.ast"
   | "lab.alt"
   | "lab.uricemia"
@@ -457,10 +460,56 @@ export function valutaMisura(
       if (n >= 30) return attenzione("≥ 30 mg/g: albuminuria moderata (A2)");
       return norma;
 
+    // Sodio e potassio: intervalli di riferimento comuni ai laboratori (135-145
+    // e 3,5-5,0 mmol/L). Le fasce di gravita' sono quelle delle linee guida
+    // europee sull'iponatriemia (2014) e dell'ERC sull'iperkaliemia (2021);
+    // **da far confermare al referente clinico** come le altre.
+    case "lab.sodio":
+      if (n < 125) return alterato("< 125 mmol/L: iponatriemia severa", "iponatriemia severa");
+      if (n < 135) return attenzione("< 135 mmol/L: iponatriemia", "iponatriemia");
+      if (n >= 160) return alterato("≥ 160 mmol/L: ipernatriemia severa", "ipernatriemia severa");
+      if (n > 145) return attenzione("> 145 mmol/L: ipernatriemia", "ipernatriemia");
+      return norma;
+
+    case "lab.potassio":
+      // Il potassio alto e' quello che fa ridurre o sospendere
+      // antialdosteronici e inibitori del sistema renina-angiotensina; il
+      // basso, sotto diuretico, quello che allunga il QT.
+      if (n >= 6.5) return alterato("≥ 6,5 mmol/L: iperkaliemia severa", "iperkaliemia severa");
+      if (n > 5.5) return alterato("> 5,5 mmol/L: iperkaliemia", "iperkaliemia");
+      if (n > 5) return attenzione("5,1-5,5 mmol/L: sopra il riferimento", "ai limiti alti");
+      if (n < 3) return alterato("< 3,0 mmol/L: ipokaliemia marcata", "ipokaliemia marcata");
+      if (n < 3.5) return attenzione("3,0-3,4 mmol/L: ipokaliemia", "ipokaliemia");
+      return norma;
+
     case "lab.emoglobina": {
       const limite = sesso === "F" ? 12 : 13;
       if (n < limite - 2) return alterato(`< ${limite - 2} g/dL: anemia di grado rilevante`);
       if (n < limite) return attenzione(`< ${limite} g/dL: anemia`);
+      return norma;
+    }
+
+    case "lab.ferritina": {
+      // Sotto 15 le riserve di ferro sono esaurite (soglia OMS), sotto 30 sono
+      // gia' basse. Sopra, la soglia dell'iperferritinemia e' diversa per
+      // sesso. Indicative come le transaminasi: fa fede il riferimento del
+      // laboratorio, e nello scompenso l'ESC usa criteri suoi (con la
+      // saturazione della transferrina), che qui non ci sono.
+      const limite = sesso === "F" ? 200 : 300;
+      if (n < 15) return alterato("< 15 ng/mL: riserve di ferro esaurite", "carenza marziale");
+      if (n < 30) return attenzione("< 30 ng/mL: riserve di ferro ridotte", "riserve ridotte");
+      if (n > 1000) {
+        return alterato(
+          "> 1000 ng/mL: marcatamente elevata (proteina di fase acuta: leggerla con la hs-PCR)",
+          "molto elevata",
+        );
+      }
+      if (n > limite) {
+        return attenzione(
+          `> ${limite} ng/mL: elevata (proteina di fase acuta: leggerla con la hs-PCR)`,
+          "elevata",
+        );
+      }
       return norma;
     }
 

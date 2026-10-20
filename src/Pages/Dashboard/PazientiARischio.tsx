@@ -48,7 +48,7 @@ export default function PazientiARischio() {
       try {
         const [pazienti, visite] = await Promise.all([
           PatientService.getAllPatients(),
-          VisitService.getAllVisits(),
+          VisitService.getAllVisitsWithoutImages(),
         ]);
         const perId = new Map(pazienti.map((p) => [p.id, p]));
         // Senza limite: qui l'elenco e' il contenuto della pagina.

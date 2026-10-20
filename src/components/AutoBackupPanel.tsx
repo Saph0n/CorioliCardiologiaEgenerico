@@ -18,6 +18,9 @@ const REASON_LABELS: Record<string, string> = {
   manuale: "Manuale",
   "pre-import": "Prima di un import",
   "pre-restore": "Prima di un ripristino",
+  // Copia dell'archivio nel vecchio formato, presa al primo avvio della
+  // versione con l'archivio a righe (electron/main.js, migrateIfNeeded).
+  "pre-migrazione": "Prima dell'aggiornamento dell'archivio",
 };
 
 function formatSize(bytes: number): string {

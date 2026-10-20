@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   kvRemove: (key) => ipcRenderer.invoke('kv:remove', key),
   kvClearAppDottori: () => ipcRenderer.invoke('kv:clearAppDottori'),
 
+  // Record clinici (una riga per record nel database SQLite)
+  recordsGetAll: (collection, options) => ipcRenderer.invoke('records:getAll', collection, options),
+  recordsGetById: (collection, id) => ipcRenderer.invoke('records:getById', collection, id),
+  recordsGetByPatient: (collection, patientId) =>
+    ipcRenderer.invoke('records:getByPatient', collection, patientId),
+  recordsCount: (collection) => ipcRenderer.invoke('records:count', collection),
+  recordsBatch: (ops) => ipcRenderer.invoke('records:batch', ops),
+
   // Listener per eventi
   onExportData: (callback) => ipcRenderer.on('export-data', callback),
   onImportData: (callback) => ipcRenderer.on('import-data', callback),
