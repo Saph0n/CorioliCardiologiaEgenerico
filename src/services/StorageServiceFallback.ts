@@ -215,7 +215,11 @@ class ElectronRecordBackend implements RecordBackend {
 
   async batch(ops: StoreOp[]): Promise<void> {
     if (ops.length === 0) return;
-    await this.api.recordsBatch!(ops);
+    // Passaggio da JSON: al main arriva esattamente quello che la versione
+    // precedente scriveva (`JSON.stringify` di tutto). Mandati così come sono,
+    // un valore che l'IPC non sa copiare (una funzione, per dire) farebbe
+    // fallire il salvataggio invece di essere lasciato fuori come prima.
+    await this.api.recordsBatch!(JSON.parse(JSON.stringify(ops)) as StoreOp[]);
   }
 }
 
