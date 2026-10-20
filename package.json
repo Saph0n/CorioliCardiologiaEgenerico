@@ -1,7 +1,7 @@
 {
   "name": "appdottori-cardiologia",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.1",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli Cardiologia",
   "author": "Corioli",
