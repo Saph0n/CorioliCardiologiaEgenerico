@@ -15,6 +15,8 @@ type Props = {
   stepProgress?: { current: number; total: number };
   /** Altezza minima del corpo: tiene le card dei vari passi della stessa dimensione */
   bodyMinHeight?: number;
+  /** Card larga, per i passi che mostrano un'anteprima accanto alle scelte. */
+  larga?: boolean;
 };
 
 function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
@@ -72,9 +74,10 @@ export default function AppLockShell({
   overlay = false,
   stepProgress,
   bodyMinHeight,
+  larga = false,
 }: Props) {
   const card = (
-    <div className="onboarding-card">
+    <div className={larga ? "onboarding-card onboarding-card--larga" : "onboarding-card"}>
       <div className="p-6 sm:p-8 space-y-6">
         <div className="flex flex-col items-center text-center gap-3">
           {stepProgress ? (

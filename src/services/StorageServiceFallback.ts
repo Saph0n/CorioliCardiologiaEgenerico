@@ -4,6 +4,7 @@ import { MODELLI_RISCRITTI, TERAPIE_RITIRATE, type ModelloPrecedente } from '../
 import { computeVisitChanges } from '../utils/visitHistory';
 import { BACKUP_SCHEMA_VERSION } from '../utils/backupValidation';
 import { correggiAccenti } from '../utils/accenti';
+import { CHIAVE_MODELLI_STAMPA, normalizzaArchivio, unisciArchivi } from '../utils/modelliStampa';
 
 declare global {
   interface Window {
@@ -239,7 +240,7 @@ interface ChiaviSincrone {
  */
 class ArrayRecordBackend implements RecordBackend {
   /** Chiavi kv rimosse dal reset (oltre alle collezioni). */
-  private static readonly CLEARED_KV_KEYS = ['doctor', 'templates', 'preferences', 'recent_patient_searches'];
+  private static readonly CLEARED_KV_KEYS = ['doctor', 'templates', 'preferences', 'recent_patient_searches', CHIAVE_MODELLI_STAMPA];
 
   /**
    * @param conChiaviKv falso nell'archivio di prova: lì profilo, modelli e
@@ -1157,6 +1158,7 @@ class LocalStorageFallbackService implements StorageService {
       this.getDocuments(),
       this.getTemplates()
     ]);
+    const modelliStampa = await this.leggiModelliStampa();
 
     return {
       schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -1170,6 +1172,9 @@ class LocalStorageFallbackService implements StorageService {
       ricettePaziente,
       documents,
       templates,
+      // Sempre, anche vuoto: al ripristino l'assenza vuol dire "backup fatto
+      // prima dei modelli", e i modelli che ci sono restano (vedi sotto).
+      modelliStampa,
       doctor: doctor || {
         id: this.generateId(),
         nome: '',
@@ -1200,6 +1205,16 @@ class LocalStorageFallbackService implements StorageService {
       }
     }
     return added;
+  }
+
+  /** I modelli di stampa salvati, gia' ripuliti (vedi `ModelliStampaService`). */
+  private async leggiModelliStampa() {
+    const raw = await this.getPreference(CHIAVE_MODELLI_STAMPA);
+    try {
+      return normalizzaArchivio(raw ? JSON.parse(raw) : null);
+    } catch {
+      return normalizzaArchivio(null);
+    }
   }
 
   async importData(data: AppData, mode: BackupImportMode = 'replace'): Promise<void> {
@@ -1350,6 +1365,14 @@ class LocalStorageFallbackService implements StorageService {
       { type: 'kvSet', key: this.getStorageKey('templates'), value: JSON.stringify(mergedTemplates) },
     ];
 
+    if (data.modelliStampa) {
+      const uniti = unisciArchivi(
+        await this.leggiModelliStampa(),
+        normalizzaArchivio(data.modelliStampa),
+      );
+      ops.push({ type: 'kvSet', key: this.getStorageKey(CHIAVE_MODELLI_STAMPA), value: JSON.stringify(uniti) });
+    }
+
     if (data.doctor) {
       const incomingDoctor = data.doctor;
 
@@ -1426,6 +1449,19 @@ class LocalStorageFallbackService implements StorageService {
     if (data.templates && data.templates.length > 0) {
       ops.push({ type: 'kvSet', key: this.getStorageKey('templates'), value: JSON.stringify(data.templates) });
     }
+
+    // I modelli di stampa stanno fra le chiavi che il reset cancella. Un backup
+    // che li ha (anche vuoti) li rimette com'erano; uno fatto prima che i
+    // modelli esistessero non ne sa niente, e cancellarli vorrebbe dire
+    // perdere il logo e la carta intestata per un file che non li riguarda.
+    const modelliStampa = data.modelliStampa
+      ? normalizzaArchivio(data.modelliStampa)
+      : await this.leggiModelliStampa();
+    ops.push({
+      type: 'kvSet',
+      key: this.getStorageKey(CHIAVE_MODELLI_STAMPA),
+      value: JSON.stringify(modelliStampa),
+    });
     return ops;
   }
 

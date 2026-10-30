@@ -123,6 +123,19 @@
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.10);
   }
 
+  /* Il passo con l'anteprima dei documenti: scelte a sinistra, foglio a destra. */
+  .onboarding-card--larga {
+    max-width: 62rem;
+  }
+
+  /* Sui portatili da 768 righe la mascotte spingeva "Continua" fuori dallo
+     schermo: in questo passo l'anteprima conta di piu'. */
+  @media (max-height: 860px) {
+    .onboarding-card--larga .onboarding-mascot-wrap {
+      display: none;
+    }
+  }
+
   .onboarding-title {
     font-size: 22px;
     font-weight: 700;
@@ -1372,4 +1385,19 @@ textarea,
   -webkit-user-select: text !important;
   -moz-user-select: text !important;
   -ms-user-select: text !important;
+}
+
+/* I campi di testo di NextUI nascondono la barra di scorrimento finche' non
+   credono di aver raggiunto `maxRows`: con `minRows` uguale o piu' grande di
+   `maxRows` (la Prescrizione ha 10 righe, il massimo predefinito e' 8) non ci
+   arrivavano mai, e il testo in piu' restava nascosto senza una barra per
+   scorrerlo. Ora la barra c'e' sempre che il testo non ci stia. Il selettore
+   e' piu' specifico di `data-[hide-scroll=true]:scrollbar-hide`. */
+textarea[data-slot="input"][data-hide-scroll="true"] {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  -ms-overflow-style: auto;
+}
+textarea[data-slot="input"][data-hide-scroll="true"]::-webkit-scrollbar {
+  display: block;
 }

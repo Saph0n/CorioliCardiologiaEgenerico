@@ -28,7 +28,8 @@ import {
 import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
-import { Visit, Patient } from "../../types/Storage";
+import { Visit, Patient, type ModelloStampa } from "../../types/Storage";
+import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
 import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -78,6 +79,8 @@ export default function Visite() {
   const rowsPerPage = 10;
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(null);
+  /** Il modello scelto nell'anteprima, solo per questa stampa (vedi `SceltaModelloStampa`). */
+  const [modelloStampa, setModelloStampa] = useState<ModelloStampa | undefined>();
   const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [patientForPreview, setPatientForPreview] = useState<Patient | null>(null);
@@ -114,6 +117,7 @@ export default function Visite() {
 
   useEffect(() => {
     if (!isOpen || !selectedVisit || !patientForPreview) {
+      setModelloStampa(undefined);
       setPreviewPdfBlobUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -128,7 +132,7 @@ export default function Visite() {
         const blob = await PdfService.generateVisitPDF(
           patientForPreview,
           selectedVisit,
-          { includeImages: true },
+          { includeImages: true, modello: modelloStampa },
         );
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
@@ -149,7 +153,7 @@ export default function Visite() {
       });
       setPreviewPdfLoading(false);
     };
-  }, [isOpen, selectedVisit?.id, patientForPreview?.id]);
+  }, [isOpen, selectedVisit?.id, patientForPreview?.id, modelloStampa]);
 
   useEffect(() => {
     const load = async () => {
@@ -227,6 +231,7 @@ export default function Visite() {
     try {
       const blob = await PdfService.generateVisitPDF(patientForPreview, visit, {
         includeImages,
+        modello: modelloStampa,
       });
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
@@ -282,7 +287,7 @@ export default function Visite() {
     if (!patientForPreview) return;
     setPdfLoading(true);
     try {
-      const blob = await PdfService.generateVisitPDF(patientForPreview, visit);
+      const blob = await PdfService.generateVisitPDF(patientForPreview, visit, { modello: modelloStampa });
       if (!blob) {
         showToast("Impossibile generare il PDF.", "error");
         return;
@@ -542,11 +547,18 @@ export default function Visite() {
         <ModalContent>
           {selectedVisit && (
             <>
-              <ModalHeader className="flex flex-col gap-0.5 pr-10">
-                <h2 className="text-xl font-bold">Anteprima referto</h2>
-                <p className="text-sm font-normal text-default-600">
-                  {selectedVisit.patientName} · {new Date(selectedVisit.dataVisita).toLocaleDateString("it-IT")}
-                </p>
+              <ModalHeader className="flex flex-wrap items-center justify-between gap-3 pr-12">
+                <div className="flex flex-col gap-0.5">
+                  <h2 className="text-xl font-bold">Anteprima referto</h2>
+                  <p className="text-sm font-normal text-default-600">
+                    {selectedVisit.patientName} · {new Date(selectedVisit.dataVisita).toLocaleDateString("it-IT")}
+                  </p>
+                </div>
+                <SceltaModelloStampa
+                  documento="referto"
+                  scelto={modelloStampa}
+                  onScegli={setModelloStampa}
+                />
               </ModalHeader>
               <ModalBody>
                 {previewPdfLoading ? (

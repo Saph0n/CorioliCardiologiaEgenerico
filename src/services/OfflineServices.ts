@@ -2,7 +2,8 @@ import { storageService } from './StorageServiceFallback';
 import { todayIsoDate } from '../utils/dateUtils';
 import { validateBackupData } from '../utils/backupValidation';
 import { createBackupFile } from './BackupFileService';
-import { Patient, Visit, VisitRevision, Doctor, Document, AppData, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
+import { Patient, Visit, VisitRevision, Doctor, Document, AppData, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente, ArchivioModelliStampa, DocumentoStampa, ModelloStampa } from '../types/Storage';
+import { CHIAVE_MODELLI_STAMPA, modelloInUso, normalizzaArchivio } from '../utils/modelliStampa';
 
 // Servizio per gestire i pazienti offline
 export class PatientService {
@@ -280,6 +281,34 @@ export class PreferenceService {
 
   static async setRecentPatientSearches(json: string): Promise<void> {
     await storageService.setPreference('recent_patient_searches', json);
+  }
+}
+
+/**
+ * Modelli di stampa: un valore solo nell'archivio chiave/valore, come i
+ * modelli di testo. Sono pochi e si salvano di rado, e il logo che portano non
+ * pesa su niente che si scriva a ogni battuta.
+ */
+export class ModelliStampaService {
+  static async getArchivio(): Promise<ArchivioModelliStampa> {
+    const raw = await storageService.getPreference(CHIAVE_MODELLI_STAMPA);
+    if (!raw) return { modelli: [], inUso: {} };
+    try {
+      return normalizzaArchivio(JSON.parse(raw));
+    } catch {
+      return { modelli: [], inUso: {} };
+    }
+  }
+
+  static async salvaArchivio(archivio: ArchivioModelliStampa): Promise<ArchivioModelliStampa> {
+    const pulito = normalizzaArchivio(archivio);
+    await storageService.setPreference(CHIAVE_MODELLI_STAMPA, JSON.stringify(pulito));
+    return pulito;
+  }
+
+  /** Il modello con cui stampare il documento: quello in uso o il predefinito. */
+  static async getModelloInUso(documento: DocumentoStampa): Promise<ModelloStampa> {
+    return modelloInUso(await this.getArchivio(), documento);
   }
 }
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Button } from "@nextui-org/react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Button, Spinner } from "@nextui-org/react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import {
   setupAppLock,
@@ -24,6 +24,9 @@ import DoctorProfileSetupFields, {
   type DoctorProfileFormValues,
 } from "./DoctorProfileSetupFields";
 
+// pdf.js e il motore dei PDF servono solo a questo passo: non pesano sull'avvio.
+const SceltaStileIniziale = lazy(() => import("../modelliStampa/SceltaStileIniziale"));
+
 const PIN_LENGTH = 4;
 // Altezza comune del corpo card per i passi profilo/PIN → niente "scatto" tra uno e l'altro
 const STEP_BODY_MIN_HEIGHT = 372;
@@ -32,7 +35,12 @@ type Props = {
   onComplete: () => void;
 };
 
-type Step = "profile" | "pin" | "recovery";
+/**
+ * "documenti" solo alla prima configurazione: lo stile di referti e ricette si
+ * sceglie una volta, dopo i dati che finiscono nell'intestazione. Chi aggiorna
+ * da una versione vecchia stampa gia' come vuole.
+ */
+type Step = "profile" | "documenti" | "pin" | "recovery";
 
 export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [step, setStep] = useState<Step>("profile");
@@ -107,6 +115,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     if (step === "profile") {
       return mode === "first-run" ? "Configurazione profilo medico" : "Completamento profilo";
     }
+    if (step === "documenti") return "I tuoi documenti";
     if (step === "pin") {
       return mode === "migration" ? "Configurazione accesso sicuro" : "Accesso sicuro";
     }
@@ -119,6 +128,9 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         ? "Inserisci i tuoi dati professionali per personalizzare l'app."
         : "Completa i dati del profilo medico prima di procedere.";
     }
+    if (step === "documenti") {
+      return "Scegli come escono referti, ricette e certificati. Potrai cambiarlo quando vuoi in Impostazioni → Modelli di stampa.";
+    }
     if (step === "pin") {
       return mode === "migration"
         ? "Scegli un PIN a 4 cifre per proteggere i dati clinici."
@@ -129,12 +141,14 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
 
   const stepProgress = useMemo(() => {
     const order: Step[] =
-      step === "profile" || profileFieldsToShow.length > 0
-        ? ["profile", "pin", "recovery"]
-        : ["pin", "recovery"];
+      mode === "first-run"
+        ? ["profile", "documenti", "pin", "recovery"]
+        : step === "profile" || profileFieldsToShow.length > 0
+          ? ["profile", "pin", "recovery"]
+          : ["pin", "recovery"];
     const idx = order.indexOf(step);
     return { current: idx + 1, total: order.length };
-  }, [step, profileFieldsToShow.length]);
+  }, [step, mode, profileFieldsToShow.length]);
 
   const handleProfileContinue = async () => {
     setError(null);
@@ -158,7 +172,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       if (navigator.onLine) {
         void sendHeartbeat(doctor, "corioli-cardiologia").catch(() => {});
       }
-      setStep("pin");
+      setStep(mode === "first-run" ? "documenti" : "pin");
     } catch {
       setError("Impossibile salvare il profilo.");
     } finally {
@@ -236,10 +250,12 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   // Dispiaciuto quando entrambi sono inseriti ma NON coincidono
   const pinMascotMismatch = bothFilled && !pinsMatch;
 
+  // Dal PIN si torna al passo prima: lo stile dei documenti alla prima
+  // configurazione, il profilo negli altri casi.
   const handleBackToProfile = () => {
     setError(null);
     setActiveField(null);
-    setStep("profile");
+    setStep(mode === "first-run" ? "documenti" : "profile");
   };
 
   // Ogni spunta dei consensi → il gufo fa un cenno; tutti dati → resta sorridente
@@ -309,6 +325,33 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
             onComplete();
           }}
         />
+      </AppLockShell>
+    );
+  }
+
+  if (step === "documenti") {
+    return (
+      <AppLockShell
+        title={title}
+        subtitle={subtitle}
+        icon="user"
+        mascot={<DoctorMascot nodSignal={mascotNod} size={72} />}
+        stepProgress={stepProgress}
+        larga
+      >
+        <Suspense
+          fallback={
+            <div className="flex min-h-[420px] items-center justify-center">
+              <Spinner color="primary" size="lg" />
+            </div>
+          }
+        >
+          <SceltaStileIniziale
+            onIndietro={() => setStep("profile")}
+            onContinua={() => setStep("pin")}
+            onScelta={() => setMascotNod((n) => n + 1)}
+          />
+        </Suspense>
       </AppLockShell>
     );
   }

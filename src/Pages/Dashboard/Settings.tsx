@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardBody,
@@ -49,6 +49,7 @@ import {
   Pill,
   ChevronUp,
   ChevronDown,
+  Printer,
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
@@ -182,6 +183,29 @@ const VOCI_INDICE_IMPOSTAZIONI: { id: string; label: string }[] = [
 
 const SettingsScreen = () => {
   const navigate = useNavigate();
+  const [parametriUrl] = useSearchParams();
+
+  /**
+   * `?sezione=impostazioni-firma` porta alla sezione: ci arriva l'editor dei
+   * modelli di stampa, quando dice "carica la firma" o "completa il profilo".
+   * La pagina si costruisce mentre carica i dati, quindi si riprova per un
+   * paio di secondi finche' la sezione non c'e'.
+   */
+  useEffect(() => {
+    const sezione = parametriUrl.get("sezione");
+    if (!sezione) return;
+    let tentativi = 0;
+    const timer = window.setInterval(() => {
+      const el = document.getElementById(sezione);
+      tentativi++;
+      if (el || tentativi > 15) {
+        window.clearInterval(timer);
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, [parametriUrl]);
+
   const mostraSicurezza =
     isAppLockAvailable() ||
     typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined";
@@ -2154,6 +2178,36 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody className="space-y-4">
+              {/* L'impaginazione dei PDF ha una pagina sua: l'anteprima del
+                  foglio accanto alle impostazioni non sta in una card. */}
+              <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Printer className="mt-0.5 h-6 w-6 shrink-0 text-brand-700" />
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-gray-900">
+                        Modelli di stampa
+                      </p>
+                      <p className="mt-1 text-sm text-default-600">
+                        Come escono referto, ricetta, certificato e richiesta:
+                        cinque modelli pronti a colori o in bianco e nero, o
+                        uno tuo con logo, carta intestata, colori, ordine delle
+                        sezioni e firma.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="lg"
+                    color="primary"
+                    className="shrink-0"
+                    startContent={<Printer size={18} />}
+                    onPress={() => navigate("/modelli-stampa")}
+                  >
+                    Apri l&apos;editor
+                  </Button>
+                </div>
+              </div>
+
               <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -2318,6 +2372,10 @@ const SettingsScreen = () => {
               <div className="rounded-lg border border-default-200 p-4 space-y-3">
                 <p className="text-sm font-medium text-gray-800">
                   Dati dottore nel PDF
+                </p>
+                <p className="text-xs text-default-500">
+                  Spenti qui, non si stampano su nessun documento, qualunque
+                  sia il modello di stampa.
                 </p>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-default-700">Mostra telefono</p>

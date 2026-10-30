@@ -846,6 +846,171 @@ export interface MedicalTemplate {
   isDefault?: boolean;
 }
 
+/** I documenti che Corioli stampa, ciascuno con i suoi modelli di stampa. */
+export type DocumentoStampa = 'referto' | 'ricetta' | 'certificato' | 'richiestaEsame';
+
+/** Le tinte pronte della tavolozza, o un colore libero "#rrggbb". */
+export type ColoreStampa = 'nero' | 'blu' | 'verde' | 'bordeaux' | (string & {});
+
+/**
+ * Le sezioni del referto di visita che il medico puo' spostare, nascondere e
+ * rinominare. Le immagini allegate non ci sono: chiudono sempre il referto.
+ */
+export type SezioneReferto =
+  | 'variabili'
+  | 'anamnesi'
+  | 'motivo'
+  | 'laboratorio'
+  | 'terapiaInAtto'
+  | 'pressione'
+  | 'ecg'
+  | 'esameObiettivo'
+  | 'ecocardiogramma'
+  | 'tcCoronarica'
+  | 'testErgometrico'
+  | 'holterEcg'
+  | 'holterPressorio'
+  | 'dopplerTsa'
+  | 'inquadramento'
+  | 'accertamenti'
+  | 'conclusioni';
+
+/**
+ * Modello di stampa: come si impagina un documento, non cosa contiene.
+ *
+ * Non porta dati del medico ne' dei pazienti: nome, recapiti e firma si
+ * leggono dal profilo al momento della stampa. Cosi' un modello si puo'
+ * esportare e passare a un collega senza che i dati di chi l'ha fatto finiscano
+ * sui referti dell'altro. Le sole cose personali sono quelle che il medico ci
+ * scrive o ci carica apposta: il logo e le righe in piu' dell'intestazione.
+ */
+export interface ModelloStampa {
+  id: string;
+  documento: DocumentoStampa;
+  nome: string;
+  pagina: {
+    carattere: 'helvetica' | 'times' | 'lato';
+    /** Grandezza della prosa: quello che il medico scrive, non le tabelle. */
+    testo: 'piccolo' | 'normale' | 'grande';
+    margini: 'stretti' | 'normali' | 'larghi';
+    /** Colore principale: una tinta della tavolozza o un "#rrggbb" scelto dal medico. */
+    colore: ColoreStampa;
+    /**
+     * Secondo colore, per i particolari (specializzazione, sottotitoli, valori
+     * fuori norma): "#rrggbb", o vuoto per usare il principale.
+     */
+    accento: string;
+    /** A5 solo per ricetta, certificato e richiesta: il referto resta A4. */
+    formato: 'A4' | 'A5';
+    /**
+     * Classico: l'impaginazione di sempre. Moderno: nome grande e colorato,
+     * specializzazione in maiuscoletto, filetto singolo, etichette delle
+     * tabelle in maiuscolo, piede e firma nel colore del modello.
+     */
+    stile: 'classico' | 'moderno';
+    /** Come si segnala un valore fuori norma: in grassetto, o nel secondo colore su fondo tenue. */
+    evidenza: 'grassetto' | 'colore';
+    /** Angoli delle fasce e dei riquadri. */
+    angoli: 'vivi' | 'arrotondati';
+  };
+  intestazione: {
+    /** Si stampa su carta gia' intestata: niente intestazione, spazio vuoto. */
+    cartaIntestata: boolean;
+    /** Millimetri lasciati liberi in alto e in basso sulla carta intestata. */
+    spazioAlto: number;
+    spazioBasso: number;
+    /**
+     * Immagine della carta intestata (data URL JPEG o PNG), a foglio intero.
+     * Con `sfondoInStampa` si stampa su ogni pagina (la carta intestata
+     * digitale, per i PDF mandati per posta); senza, si vede solo
+     * nell'anteprima dell'editor e serve ad allineare il testo alla carta
+     * prestampata.
+     */
+    sfondo?: string;
+    sfondoInStampa: boolean;
+    /** "banda": nome e recapiti in bianco su una fascia piena in cima al foglio. */
+    disposizione: 'lati' | 'centro' | 'banda';
+    /** Data URL (PNG o JPEG) del logo dello studio. */
+    logo?: string;
+    grandezzaLogo: 'piccolo' | 'medio' | 'grande';
+    specializzazione: boolean;
+    /** Vuoto: l'ambulatorio "in uso" del profilo. */
+    ambulatorioId?: string;
+    ambulatorio: boolean;
+    telefono: boolean;
+    email: boolean;
+    partitaIva: boolean;
+    /** Righe libere sotto i recapiti, una per riga. */
+    righeAggiuntive: string;
+  };
+  titolo: {
+    testo: string;
+    sottotitolo: string;
+    /**
+     * "sfumato": fascia arrotondata dal colore principale al secondo, tenui.
+     * "sinistra": grande, com'e' scritto, allineato a sinistra con una barretta sotto.
+     */
+    stile: 'fascia' | 'sottolineato' | 'testo' | 'sfumato' | 'sinistra';
+  };
+  paziente: {
+    /** I dati del paziente in un riquadro col bordo, invece che fra due filetti. */
+    riquadro: boolean;
+    dataNascita: boolean;
+    luogoNascita: boolean;
+    sesso: boolean;
+    codiceFiscale: boolean;
+    residenza: boolean;
+    /** Ricetta, certificato e richiesta: la data accanto al paziente (il referto la ha sempre). */
+    data: boolean;
+  };
+  /**
+   * Ricetta, certificato e richiesta: i titoletti sopra il testo
+   * ("Prescrizione", "Si certifica che"...). Vuoto: nessun titoletto.
+   */
+  testi: { principale: string; secondario: string };
+  /** Solo referto: ordine, visibilita' e titolo (vuoto = quello di Corioli). */
+  sezioni: { id: SezioneReferto; titolo: string; visibile: boolean }[];
+  /**
+   * "barra": fascia tenue con una barretta del colore principale a sinistra.
+   * "centrate": al centro fra due filetti. "punto": un quadratino davanti,
+   * niente fasce. "piena": fascia del colore principale, titolo in bianco.
+   */
+  stileSezioni: 'fascia' | 'sottolineato' | 'barra' | 'centrate' | 'punto' | 'piena';
+  /** Solo referto: le conclusioni in un riquadro colorato, in grassetto. */
+  conclusioniInEvidenza: boolean;
+  /**
+   * Solo referto: scompenso, fibrillazione atriale e rischio cardiovascolare
+   * in riquadri affiancati, con la classe di rischio in una pillola, invece
+   * che uno sotto l'altro.
+   */
+  inquadramentoInRiquadri: boolean;
+  firma: {
+    /** L'immagine della firma dal profilo, se c'e'. */
+    immagine: boolean;
+    luogoData: boolean;
+    posizione: 'sinistra' | 'centro' | 'destra';
+    grandezza: 'piccola' | 'normale' | 'grande';
+    /** Solo referto: la riga per firmare a penna anche senza immagine. */
+    rigaAPenna: boolean;
+  };
+  piede: {
+    /** Solo referto: "Pagina 1 di 2". */
+    numeroPagina: boolean;
+    /** Solo referto: nome del paziente in cima alle pagine dopo la prima. */
+    pazienteSullePagine: boolean;
+    testo: string;
+  };
+  creatoIl: string;
+  aggiornatoIl: string;
+}
+
+/** Tutti i modelli di stampa e quello in uso per ogni documento. */
+export interface ArchivioModelliStampa {
+  modelli: ModelloStampa[];
+  /** Id del modello in uso; assente, il predefinito di Corioli. */
+  inUso: Partial<Record<DocumentoStampa, string>>;
+}
+
 export interface AppData {
   /** Versione dello schema del backup (assente nei backup prodotti prima della 1.3.2). */
   schemaVersion?: number;
@@ -863,6 +1028,8 @@ export interface AppData {
   doctor: Doctor;
   documents: Document[];
   templates?: MedicalTemplate[];
+  /** Modelli di stampa (assenti nei backup prodotti prima che ci fossero). */
+  modelliStampa?: ArchivioModelliStampa;
   lastSync?: string;
 }
 
