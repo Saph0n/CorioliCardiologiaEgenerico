@@ -414,3 +414,54 @@ describe("modello di ricetta e certificato", () => {
     expect(grande.ml).toBe(18);
   });
 });
+
+describe("inquadramento clinico in riquadri", () => {
+  const moderno = () => modelloPronto(STILI_PRONTI.find((s) => s.id === "moderno")!, "colore", "referto");
+  const scritta = (t: string) => scritte.find((s) => s.testo === t)!;
+  const conTesto = (testo: string) => ({
+    ...visitaDiProva,
+    visita: { ...visitaDiProva.visita!, scompenso: { ...visitaDiProva.visita!.scompenso!, referto: testo } },
+  });
+
+  it("nel Moderno scompenso e fibrillazione stanno affiancati, il rischio sotto per tutta la riga", async () => {
+    const r = await PdfService.impaginaVisita(pazienteDiProva, visitaDiProva, { modello: moderno() });
+    const scompenso = scritta("SCOMPENSO CARDIACO");
+    const fa = scritta("FIBRILLAZIONE ATRIALE");
+    const rischio = scritta("RISCHIO CARDIOVASCOLARE");
+    expect(fa.y).toBe(scompenso.y);
+    expect(fa.sinistra).toBeGreaterThan(105);
+    expect(scompenso.sinistra).toBeLessThan(r!.ml + 5);
+    expect(rischio.y).toBeGreaterThan(scompenso.y);
+    expect(rischio.sinistra).toBeLessThan(r!.ml + 5);
+    // La classe nella pillola, i testi del cardiologo dentro i riquadri.
+    expect(testi()).toContain("Rischio molto alto");
+    expect(testi().join(" ")).toContain("Si mantiene la sorveglianza clinica.");
+    expect(testi().join(" ")).toContain("nonostante la terapia in atto.");
+  });
+
+  it("spento, i moduli tornano uno sotto l'altro", async () => {
+    const m = moderno();
+    m.inquadramentoInRiquadri = false;
+    await PdfService.impaginaVisita(pazienteDiProva, visitaDiProva, { modello: m });
+    expect(scritta("FIBRILLAZIONE ATRIALE").y).toBeGreaterThan(scritta("SCOMPENSO CARDIACO").y);
+  });
+
+  it("un testo lungo resta nel suo riquadro, uno che non sta in una pagina esce in elenco", async () => {
+    const lungo = "Compenso emodinamico stabile in terapia con diuretico dell'ansa a basso dosaggio. ".repeat(6);
+    const r = await PdfService.impaginaVisita(pazienteDiProva, conTesto(lungo), { modello: moderno() });
+    const fa = scritta("FIBRILLAZIONE ATRIALE");
+    expect(fa.y).toBe(scritta("SCOMPENSO CARDIACO").y);
+    // Il testo dello scompenso va a capo prima della colonna accanto.
+    const righe = scritte.filter((s) => s.y > fa.y && lungo.includes(s.testo.trim()) && s.testo.trim().length > 20);
+    expect(righe.length).toBeGreaterThan(3);
+    expect(righe.every((s) => s.destra < fa.sinistra - 3)).toBe(true);
+    expect(scritte.every((s) => s.sinistra >= r!.ml - 1 && s.destra <= r!.mr + 1)).toBe(true);
+
+    scritte.length = 0;
+    const lunghissimo = Array.from({ length: 70 }, (_, i) => `${i + 1}. Riga del referto dello scompenso`).join("\n");
+    const r2 = await PdfService.impaginaVisita(pazienteDiProva, conTesto(lunghissimo), { modello: moderno() });
+    expect(scritta("FIBRILLAZIONE ATRIALE").y).not.toBe(scritta("SCOMPENSO CARDIACO").y);
+    expect(testi()).toContain("70. Riga del referto dello scompenso");
+    expect(scritte.every((s) => s.sinistra >= r2!.ml - 1 && s.destra <= r2!.mr + 1)).toBe(true);
+  });
+});

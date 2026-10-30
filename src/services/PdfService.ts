@@ -141,7 +141,7 @@ const RIQ_SPAZIO = 4;
 const RIQ_PAD = 3.5;
 const RIQ_TESTATA = 8.4;
 const RIQ_FONDO = 2.2;
-const RIQ_LH_ETICHETTA = 3.4;
+const RIQ_LH_ETICHETTA = 3.6;
 
 // ─── B&W palette ─────────────────────────────────────────────────────────────
 const K0 = [0, 0, 0] as const;
@@ -2989,27 +2989,41 @@ export class PdfService {
     // Le etichette lunghe ("ClCr (Cockcroft-Gault)") vanno a capo nella loro
     // colonna invece di allargarla: nei riquadri stretti il valore ha bisogno
     // dello spazio.
-    const colonnaEtichette = Math.min(interno * 0.36, 34);
+    const colonnaEtichette = Math.min(interno * 0.39, 34);
     const colonnaValori = interno - colonnaEtichette - 2;
     const righe = s.righe
       .filter((r) => r.value && r.value !== "-")
       .map((riga) => {
-        doc.setFont(F, "normal"); doc.setFontSize(7.6);
+        const pillola = this.pillolaDi(riga);
+        doc.setFont(F, "normal"); doc.setFontSize(8.2);
         const etichetta = doc.splitTextToSize(san(riga.label), colonnaEtichette - 1) as string[];
-        doc.setFont(F, riga.pillola || riga.forte || VALORI_GRASSETTO ? "bold" : "normal");
+        doc.setFont(F, pillola || riga.forte || VALORI_GRASSETTO ? "bold" : "normal");
         doc.setFontSize(9);
         // La pillola ha un po' d'aria a destra del testo.
         const valore = doc.splitTextToSize(
-          sanValore(riga.value), riga.pillola ? colonnaValori - 2 : colonnaValori,
+          sanValore(riga.value), pillola ? colonnaValori - 2 : colonnaValori,
         ) as string[];
         const hValore = valore.length * LH;
         const hEtichetta = etichetta.length * RIQ_LH_ETICHETTA + (LH - RIQ_LH_ETICHETTA);
-        return { riga, etichetta, valore, hValore, hEtichetta, h: Math.max(hValore, hEtichetta) + 1.6 };
+        return {
+          riga, pillola, etichetta, valore, hValore, hEtichetta,
+          h: Math.max(hValore, hEtichetta) + 1.6,
+        };
       });
     const righeTesto = this.righeBlock(doc, s.testo, interno, this.prosaScheda());
     const hTesto = righeTesto ? 0.8 + PRIMA_RIGA_PROSA + (righeTesto - 1) * LH_PROSA + 1.6 : 0;
     const h = RIQ_TESTATA + righe.reduce((a, r) => a + r.h, 0) + hTesto + RIQ_FONDO;
     return { righe, interno, colonnaEtichette, h };
+  }
+
+  /**
+   * La pillola di una riga del riquadro: la classe di rischio e, in bianco e
+   * nero, i valori fuori norma. Senza il secondo colore quelli non si
+   * distinguerebbero dagli altri, che nel moderno sono tutti in grassetto.
+   */
+  private static pillolaDi(riga: RigaScheda): RigaScheda["pillola"] {
+    if (riga.pillola) return riga.pillola;
+    return EVIDENZA_COLORE && riga.forte && this.m.pagina.colore === "nero" ? "accesa" : undefined;
   }
 
   private static disegnaScheda(
@@ -3026,7 +3040,7 @@ export class PdfService {
     // Il nome del modulo come i sottotitoli dello stile moderno, con il
     // filetto per tutta la larghezza del riquadro.
     const xi = x + RIQ_PAD;
-    doc.setFont(F, "bold"); doc.setFontSize(7.6); this.tc(doc, SECONDO);
+    doc.setFont(F, "bold"); doc.setFontSize(8.2); this.tc(doc, SECONDO);
     this.rigaCheSta(doc, san(s.titolo).toUpperCase(), imp.interno, (t) => {
       doc.text(t, xi, y + 5.4, { charSpace: 0.4 });
     }, 0.4);
@@ -3034,21 +3048,21 @@ export class PdfService {
 
     let yr = y + RIQ_TESTATA;
     const xv = xi + imp.colonnaEtichette + 2;
-    for (const { riga, etichetta, valore, hValore, hEtichetta, h: hr } of imp.righe) {
+    for (const { riga, pillola, etichetta, valore, hValore, hEtichetta, h: hr } of imp.righe) {
       // Etichetta e valore centrati l'uno sull'altro quando uno dei due va a
       // capo; su una riga sola stanno sulla stessa linea di base.
       const hc = Math.max(hValore, hEtichetta);
       const baseValore = yr + 4.1 + (hc - hValore) / 2;
       const baseEtichetta = yr + 4.1 + (hc - hEtichetta) / 2;
 
-      doc.setFont(F, "normal"); doc.setFontSize(7.6); this.tc(doc, MODERNO ? K140 : K80);
+      doc.setFont(F, "normal"); doc.setFontSize(8.2); this.tc(doc, MODERNO ? K140 : K80);
       etichetta.forEach((t, n) => doc.text(t, xi + 1, baseEtichetta + n * RIQ_LH_ETICHETTA));
 
       let colore: readonly number[] = EVIDENZA_COLORE && riga.forte ? SECONDO : K0;
-      doc.setFont(F, riga.pillola || riga.forte || VALORI_GRASSETTO ? "bold" : "normal");
+      doc.setFont(F, pillola || riga.forte || VALORI_GRASSETTO ? "bold" : "normal");
       doc.setFontSize(9);
-      if (riga.pillola) {
-        const accesa = riga.pillola === "accesa" && EVIDENZA_COLORE;
+      if (pillola) {
+        const accesa = pillola === "accesa" && EVIDENZA_COLORE;
         const largo = Math.max(...valore.map((t) => doc.getTextWidth(t)));
         const alto = hValore;
         const fondoPillola = accesa ? SECONDO_TINTA : FASCIA;
