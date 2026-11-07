@@ -956,8 +956,10 @@ describe("referto di visita: sesso non indicato", () => {
   });
 
   it("con il sesso indicato la voce c'e'", async () => {
+    // "M" e "F" come sui documenti, come in Ginecologia.
     const testo = await testoDelPdf(visita({}));
-    expect(testo).toContain("Maschile");
+    expect(testo).toContain("(Sesso)");
+    expect(testo).toContain("(M)");
   });
 });
 

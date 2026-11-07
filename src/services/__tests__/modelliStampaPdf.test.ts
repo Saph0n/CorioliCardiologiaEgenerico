@@ -443,7 +443,12 @@ describe("inquadramento clinico in riquadri", () => {
     const m = moderno();
     m.inquadramentoInRiquadri = false;
     await PdfService.impaginaVisita(pazienteDiProva, visitaDiProva, { modello: m });
-    expect(scritta("FIBRILLAZIONE ATRIALE").y).toBeGreaterThan(scritta("SCOMPENSO CARDIACO").y);
+    // Non affiancati, e la fibrillazione dopo lo scompenso. Si guarda l'ordine
+    // in cui sono scritti e non la quota: la fibrillazione puo' aprire la
+    // pagina dopo, e li' la sua quota e' piu' in alto.
+    const indice = (t: string) => scritte.findIndex((s) => s.testo === t);
+    expect(scritta("FIBRILLAZIONE ATRIALE").y).not.toBe(scritta("SCOMPENSO CARDIACO").y);
+    expect(indice("FIBRILLAZIONE ATRIALE")).toBeGreaterThan(indice("SCOMPENSO CARDIACO"));
   });
 
   it("un testo lungo resta nel suo riquadro, uno che non sta in una pagina esce in elenco", async () => {

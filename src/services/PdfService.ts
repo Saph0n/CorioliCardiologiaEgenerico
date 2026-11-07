@@ -1362,7 +1362,7 @@ export class PdfService {
     const mostra = this.m.paziente;
     const a = calcAge(patient.dataNascita);
     const nascita = patient.dataNascita
-      ? `${fd(patient.dataNascita)}${a ? `  (${a} anni)` : ""}`
+      ? `${fd(patient.dataNascita)}${a ? ` (${a} anni)` : ""}`
       : "";
 
     // Il nome prende due colonne **solo se in una non ci sta**. Allargarlo
@@ -1397,7 +1397,9 @@ export class PdfService {
       ...(mostra.sesso && patient.sesso
         ? [{
             label: "Sesso",
-            value: patient.sesso === "F" ? "Femminile" : "Maschile",
+            // "F" e "M", come sui documenti: per esteso la voce pesava piu'
+            // del dato che porta.
+            value: patient.sesso === "F" ? "F" : "M",
           }]
         : []),
       ...(opts?.showDate === false && !mostra.data
@@ -1415,6 +1417,33 @@ export class PdfService {
     ];
 
     const inizio = y;
+    // Prima si prova tutta l'anagrafica su una riga sola, con le celle larghe
+    // quanto il loro contenuto. La griglia a colonne uguali dava a "Sesso" gli
+    // stessi 43 mm del codice fiscale e mandava a capo la quinta voce: nome,
+    // nascita, sesso, data e codice fiscale su due righe, con mezzo foglio di
+    // bianco a destra della seconda (Pablo, 7 novembre 2026). Solo se non ci
+    // sta si torna alla griglia.
+    const presenti = voci.filter((v) => v.value && v.value !== "-");
+    if (mostra.riquadro) {
+      const fine = this.righeAnagrafica(doc, presenti, y + 1.5, opts?.centrato, false);
+      if (fine !== null) {
+        // Come la griglia: i 3 mm di coda di `righeAnagrafica` diventano 1,5.
+        y = fine - 3 + 1.5;
+        this.dc(doc, TENUE); doc.setLineWidth(0.35);
+        if (TONDI) doc.roundedRect(ML, inizio - 1, PW, y - inizio + 1, 2.2, 2.2, "S");
+        else doc.rect(ML, inizio - 1, PW, y - inizio + 1, "S");
+        this.segnaZona(doc, "paziente", inizio - 1.5, y + 1);
+        return y + 5;
+      }
+    } else {
+      this.rule(doc, y - 1, ML, MR, 0.2);
+      const fine = this.righeAnagrafica(doc, presenti, y, opts?.centrato, true);
+      if (fine !== null) {
+        this.segnaZona(doc, "paziente", inizio - 1.5, fine + 1);
+        return fine + 3;
+      }
+    }
+
     if (mostra.riquadro) {
       // Il riquadro sostituisce i filetti: dentro, celle senza righe, e un
       // millimetro e mezzo d'aria sopra e sotto.
@@ -1425,10 +1454,115 @@ export class PdfService {
       this.segnaZona(doc, "paziente", inizio - 1.5, y + 1);
       return y + 5;
     }
-    this.rule(doc, y - 1, ML, MR, 0.2);
     y = this.drawMisureTable(doc, y, voci, colonne, undefined, opts?.centrato, false);
     this.segnaZona(doc, "paziente", inizio - 1.5, y + 1);
     return y + 3;
+  }
+
+  /**
+   * L'anagrafica su una riga; se non ci sta (un nome di quattro parole), il
+   * nome da solo sulla prima e tutto il resto sulla seconda, ancora da filo a
+   * filo. Restituisce `null` se nemmeno cosi' ci sta: allora la griglia.
+   */
+  private static righeAnagrafica(
+    doc: jsPDF,
+    voci: { label: string; value: string; forte?: boolean }[],
+    y: number,
+    centrato = false,
+    filetti = true,
+  ): number | null {
+    const tutta = this.misuraRigaAnagrafica(doc, voci);
+    if (tutta) return this.rigaAnagrafica(doc, voci, y, centrato, filetti);
+    if (voci.length < 3 || !voci[0].forte) return null;
+    const resto = voci.slice(1);
+    if (!this.misuraRigaAnagrafica(doc, [voci[0]]) || !this.misuraRigaAnagrafica(doc, resto)) return null;
+    // Fra le due righe il filetto solo dove ci sono i filetti; nel riquadro
+    // basta l'aria.
+    const meta = this.rigaAnagrafica(doc, [voci[0]], y, centrato, filetti)! - 3 + (filetti ? 0 : 1);
+    return this.rigaAnagrafica(doc, resto, meta, centrato, filetti);
+  }
+
+  /** Se le voci stanno in una riga, con almeno 5 mm d'aria fra l'una e l'altra. */
+  private static misuraRigaAnagrafica(
+    doc: jsPDF, voci: { label: string; value: string; forte?: boolean }[],
+  ): boolean {
+    if (voci.length === 0) return false;
+    const totale = this.larghezzeAnagrafica(doc, voci).reduce((s, w) => s + w, 0);
+    return totale + 5 * (voci.length - 1) <= PW - 4;
+  }
+
+  /** Ogni voce larga quanto la piu' lunga fra etichetta e valore. */
+  private static larghezzeAnagrafica(
+    doc: jsPDF, voci: { label: string; value: string; forte?: boolean }[],
+  ): number[] {
+    return voci.map((v) => {
+      doc.setFont(F, "normal"); doc.setFontSize(7);
+      const lw = doc.getTextWidth(MODERNO ? san(v.label).toUpperCase() : san(v.label));
+      doc.setFont(F, v.forte || VALORI_GRASSETTO ? "bold" : "normal"); doc.setFontSize(9);
+      return Math.max(lw, doc.getTextWidth(sanValore(v.value)));
+    });
+  }
+
+  /**
+   * L'anagrafica in una riga sola, se ci sta: ogni voce larga quanto la piu'
+   * lunga fra etichetta e valore, e lo spazio che avanza diviso in parti
+   * uguali fra le voci, cosi' la riga va da filo a filo senza buchi. Fra una
+   * voce e l'altra un filetto verticale sottile, che separa senza pesare.
+   *
+   * Allineata a sinistra la prima voce parte dal filo e l'ultima finisce
+   * sull'altro; centrata (il referto, sotto il titolo centrato) ogni voce si
+   * centra nel suo spazio. Restituisce la quota sotto la riga, o `null` se le
+   * voci non ci stanno con almeno 5 mm d'aria fra l'una e l'altra.
+   */
+  private static rigaAnagrafica(
+    doc: jsPDF,
+    voci: { label: string; value: string; forte?: boolean }[],
+    y: number,
+    centrato = false,
+    filettoSotto = true,
+  ): number | null {
+    if (voci.length === 0) return null;
+    const BORDO = 2;
+    const ARIA_MINIMA = 5;
+    const etichetta = (l: string) => (MODERNO ? san(l).toUpperCase() : san(l));
+    const grassetto = (v: { forte?: boolean }) => v.forte || VALORI_GRASSETTO;
+    const larghezze = this.larghezzeAnagrafica(doc, voci);
+    const totale = larghezze.reduce((s, w) => s + w, 0);
+    const n = voci.length;
+    const utile = PW - 2 * BORDO;
+    if (totale + ARIA_MINIMA * (n - 1) > utile) return null;
+
+    // Senza filo a filo una voce sola resta dov'e': centrata o a sinistra.
+    const aria = centrato || n === 1
+      ? (utile - totale) / n
+      : (utile - totale) / (n - 1);
+    const RIGA = 8.4;
+    y = this.pb(doc, y, RIGA + 2);
+
+    let x = ML + BORDO + (centrato ? aria / 2 : 0);
+    voci.forEach((v, i) => {
+      const w = larghezze[i];
+      const cx = centrato ? x + w / 2 : x;
+      const allinea = centrato ? "center" : "left";
+      doc.setFont(F, "normal"); doc.setFontSize(7); this.tc(doc, MODERNO ? K140 : K80);
+      doc.text(etichetta(v.label), cx, y + 3.2, { align: allinea });
+      doc.setFont(F, grassetto(v) ? "bold" : "normal"); doc.setFontSize(9); this.tc(doc, K0);
+      doc.text(sanValore(v.value), cx, y + 7.0, { align: allinea });
+      // Con due voci sole ai due fili (la ricetta: nome e codice fiscale) un
+      // filetto in mezzo a dieci centimetri di bianco non separa niente.
+      if (i < n - 1 && aria <= 30) {
+        const sx = x + w + aria / 2;
+        this.dc(doc, MODERNO ? TENUE : K200); doc.setLineWidth(0.15);
+        doc.line(sx, y + 1.2, sx, y + RIGA - 0.6);
+      }
+      x += w + aria;
+    });
+
+    if (filettoSotto) {
+      this.dc(doc, MODERNO ? TENUE : K200); doc.setLineWidth(0.15);
+      doc.line(ML, y + RIGA, MR, y + RIGA);
+    }
+    return y + RIGA + 3;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
