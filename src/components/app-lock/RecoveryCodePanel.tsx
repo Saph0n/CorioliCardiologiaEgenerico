@@ -81,7 +81,7 @@ export default function RecoveryCodePanel({
         </p>
       ) : (
         <p className="text-xs text-default-500">
-          Potrai rivederlo da Impostazioni → Sicurezza, con il PIN.
+          Potrai rivederlo da Impostazioni → Account Corioli, con il PIN.
         </p>
       )}
       <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/80 px-4 py-3">

@@ -23,6 +23,10 @@ import DoctorProfileSetupFields, {
   getMissingProfileFieldKeys,
   type DoctorProfileFormValues,
 } from "./DoctorProfileSetupFields";
+import VerificaEmailDialog from "../profilo/VerificaEmailDialog";
+import CampoPassword, { RegolePassword } from "./CampoPassword";
+import { erroreFormatoPassword } from "../../services/AppLockService";
+import { emailConfermata } from "../../services/VerificaEmailService";
 
 // pdf.js e il motore dei PDF servono solo a questo passo: non pesano sull'avvio.
 const SceltaStileIniziale = lazy(() => import("../modelliStampa/SceltaStileIniziale"));
@@ -40,7 +44,7 @@ type Props = {
  * sceglie una volta, dopo i dati che finiscono nell'intestazione. Chi aggiorna
  * da una versione vecchia stampa gia' come vuole.
  */
-type Step = "profile" | "documenti" | "pin" | "recovery";
+type Step = "profile" | "documenti" | "password" | "pin" | "recovery";
 
 export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [step, setStep] = useState<Step>("profile");
@@ -55,6 +59,15 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [profileFieldsToShow, setProfileFieldsToShow] = useState<
     Array<keyof DoctorProfileFormValues>
   >(["nome", "cognome", "email", "telefono", "specializzazione"]);
+
+  // Conferma dell'email con il codice (passo profilo).
+  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [verificaSalvata, setVerificaSalvata] = useState<{ email: string } | null>(null);
+  const [verificaAperta, setVerificaAperta] = useState(false);
+
+  // Password dell'account: si sceglie prima del PIN e si salva con il PIN.
+  const [password, setPassword] = useState("");
+  const [passwordConferma, setPasswordConferma] = useState("");
 
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -81,6 +94,8 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         const doctor = await DoctorService.getDoctor();
         // Edizione generale: nessuna specializzazione precompilata, la sceglie il medico.
         const values = doctorValuesFromProfile(doctor);
+        setDoctorId(doctor?.id ?? null);
+        setVerificaSalvata(doctor?.emailVerificata ? { email: doctor.emailVerificata } : null);
         setProfileValues(values);
 
         if (mode === "first-run") {
@@ -101,7 +116,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
           );
           setStep("profile");
         } else {
-          setStep("pin");
+          setStep("password");
         }
       } catch {
         setStep("profile");
@@ -116,6 +131,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       return mode === "first-run" ? "Configurazione profilo medico" : "Completamento profilo";
     }
     if (step === "documenti") return "I tuoi documenti";
+    if (step === "password") return "Password dell'account";
     if (step === "pin") {
       return mode === "migration" ? "Configurazione accesso sicuro" : "Accesso sicuro";
     }
@@ -131,6 +147,9 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     if (step === "documenti") {
       return "Scegli come escono referti, ricette e certificati. Potrai cambiarlo quando vuoi in Impostazioni → Modelli di stampa.";
     }
+    if (step === "password") {
+      return "Ti servirà per cambiare il PIN. Se la dimentichi, la reimposti con un codice alla tua email.";
+    }
     if (step === "pin") {
       return mode === "migration"
         ? "Scegli un PIN a 4 cifre per proteggere i dati clinici."
@@ -142,10 +161,10 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const stepProgress = useMemo(() => {
     const order: Step[] =
       mode === "first-run"
-        ? ["profile", "documenti", "pin", "recovery"]
+        ? ["profile", "documenti", "password", "pin", "recovery"]
         : step === "profile" || profileFieldsToShow.length > 0
-          ? ["profile", "pin", "recovery"]
-          : ["pin", "recovery"];
+          ? ["profile", "password", "pin", "recovery"]
+          : ["password", "pin", "recovery"];
     const idx = order.indexOf(step);
     return { current: idx + 1, total: order.length };
   }, [step, mode, profileFieldsToShow.length]);
@@ -160,6 +179,21 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       setError(validationError);
       return;
     }
+    // L'email va confermata con il codice prima di andare avanti, a meno che
+    // non sia già quella confermata.
+    if (
+      profileFieldsToShow.includes("email") &&
+      !emailConfermata({ email: profileValues.email, emailVerificata: verificaSalvata?.email })
+    ) {
+      setVerificaAperta(true);
+      return;
+    }
+    await salvaProfiloEProsegui();
+  };
+
+  const salvaProfiloEProsegui = async (
+    verificata?: { email: string; prova: string },
+  ) => {
     setLoading(true);
     try {
       const doctor = await DoctorService.updateDoctor({
@@ -168,11 +202,16 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         email: profileValues.email.trim().toLowerCase(),
         telefono: profileValues.telefono.trim(),
         specializzazione: profileValues.specializzazione.trim(),
+        ...(verificata
+          ? { emailVerificata: verificata.email, emailVerificataProva: verificata.prova }
+          : {}),
       });
+      if (verificata) setVerificaSalvata({ email: verificata.email });
+      setVerificaAperta(false);
       if (navigator.onLine) {
         void sendHeartbeat(doctor, "corioli-cardiologia").catch(() => {});
       }
-      setStep(mode === "first-run" ? "documenti" : "pin");
+      setStep(mode === "first-run" ? "documenti" : "password");
     } catch {
       setError("Impossibile salvare il profilo.");
     } finally {
@@ -204,7 +243,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       if (status?.configured) {
         // PIN cambiato → aggiorna usando il vecchio PIN (il codice di recupero resta valido)
         if (configuredPin && a !== configuredPin) {
-          const changed = await changeAppLockPin(configuredPin, a);
+          const changed = await changeAppLockPin(configuredPin, a, password || undefined);
           if (!changed.ok) {
             setError(changed.error || "Impossibile aggiornare il PIN.");
             return;
@@ -222,7 +261,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         return;
       }
 
-      const result = await setupAppLock(a);
+      const result = await setupAppLock(a, password);
       if (!result.ok || !result.recoveryCode) {
         setError(result.error || "Impossibile configurare il PIN.");
         return;
@@ -243,19 +282,37 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const pinsMatch =
     bothFilled && pin.replace(/\D/g, "") === pinConfirm.replace(/\D/g, "");
 
-  const canGoBackToProfile = profileFieldsToShow.length > 0;
+  // Dal PIN si torna sempre alla password.
+  const canGoBackToProfile = true;
+  // Dalla password si torna allo stile dei documenti (prima configurazione)
+  // o al profilo, se c'era da completarlo.
+  const canGoBackFromPassword = mode === "first-run" || profileFieldsToShow.length > 0;
+  const errorePassword = password ? erroreFormatoPassword(password) : null;
+  const passwordPronta = Boolean(password) && !errorePassword && password === passwordConferma;
+
+  const handlePasswordContinue = () => {
+    setError(null);
+    const err = erroreFormatoPassword(password);
+    if (err) {
+      setError(err);
+      return;
+    }
+    if (password !== passwordConferma) {
+      setError("Le due password non coincidono.");
+      return;
+    }
+    setStep("pin");
+  };
 
   // Felice SOLO quando entrambi i PIN sono inseriti e coincidono
   const pinMascotComplete = pinsMatch;
   // Dispiaciuto quando entrambi sono inseriti ma NON coincidono
   const pinMascotMismatch = bothFilled && !pinsMatch;
 
-  // Dal PIN si torna al passo prima: lo stile dei documenti alla prima
-  // configurazione, il profilo negli altri casi.
   const handleBackToProfile = () => {
     setError(null);
     setActiveField(null);
-    setStep(mode === "first-run" ? "documenti" : "profile");
+    setStep("password");
   };
 
   // Ogni spunta dei consensi → il gufo fa un cenno; tutti dati → resta sorridente
@@ -329,6 +386,75 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     );
   }
 
+  if (step === "password") {
+    return (
+      <AppLockShell
+        title={title}
+        subtitle={subtitle}
+        icon="key"
+        mascot={<DoctorMascot activeField={activeField} />}
+        stepProgress={stepProgress}
+        bodyMinHeight={STEP_BODY_MIN_HEIGHT}
+      >
+        <div className="space-y-4">
+          <CampoPassword
+            label="Password"
+            value={password}
+            onValueChange={(v) => {
+              setPassword(v);
+              setError(null);
+            }}
+            autoFocus
+            autoComplete="new-password"
+          />
+          <RegolePassword password={password} />
+          <CampoPassword
+            label="Ripeti la password"
+            value={passwordConferma}
+            onValueChange={(v) => {
+              setPasswordConferma(v);
+              setError(null);
+            }}
+            autoComplete="new-password"
+            onEnter={handlePasswordContinue}
+            errorMessage={
+              passwordConferma && password && passwordConferma !== password
+                ? "Le due password non coincidono."
+                : null
+            }
+          />
+          {error ? (
+            <p className="text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {canGoBackFromPassword ? (
+            <Button
+              variant="light"
+              className="onboarding-back-btn w-full"
+              onPress={() => {
+                setError(null);
+                setStep(mode === "first-run" ? "documenti" : "profile");
+              }}
+              startContent={<ArrowLeft size={16} />}
+            >
+              Indietro
+            </Button>
+          ) : null}
+          <Button
+            color="primary"
+            className="onboarding-cta-btn w-full"
+            isDisabled={!passwordPronta}
+            onPress={handlePasswordContinue}
+            endContent={<ArrowRight size={18} />}
+          >
+            Continua
+          </Button>
+        </div>
+      </AppLockShell>
+    );
+  }
+
   if (step === "documenti") {
     return (
       <AppLockShell
@@ -348,7 +474,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         >
           <SceltaStileIniziale
             onIndietro={() => setStep("profile")}
-            onContinua={() => setStep("pin")}
+            onContinua={() => setStep("password")}
             onScelta={() => setMascotNod((n) => n + 1)}
           />
         </Suspense>
@@ -397,6 +523,15 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
             Continua
           </Button>
         </div>
+        <VerificaEmailDialog
+          isOpen={verificaAperta}
+          clientId={doctorId}
+          email={profileValues.email.trim().toLowerCase()}
+          onConfermata={(esito) => salvaProfiloEProsegui(esito)}
+          onClose={() => setVerificaAperta(false)}
+          // Senza connessione si prosegue: l'email resta "da confermare" nel profilo.
+          onPiuTardi={() => void salvaProfiloEProsegui()}
+        />
       </AppLockShell>
     );
   }

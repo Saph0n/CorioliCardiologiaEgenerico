@@ -514,14 +514,29 @@ const biometricBridge = {
 
 const appLock = createAppLockHandlers(kvGet, kvSet, biometricBridge);
 ipcMain.handle("appLock:status", () => appLock.getStatus());
-ipcMain.handle("appLock:setup", (_e, pin) => appLock.setup(pin));
+ipcMain.handle("appLock:setup", (_e, pin, password) => appLock.setup(pin, password));
 ipcMain.handle("appLock:verifyPin", (_e, pin) => appLock.verifyPin(pin));
 ipcMain.handle("appLock:revealRecovery", (_e, pin) => appLock.revealRecovery(pin));
 ipcMain.handle("appLock:regenerateRecovery", (_e, pin) =>
   appLock.regenerateRecovery(pin),
 );
 ipcMain.handle("appLock:changePin", (_e, payload) =>
-  appLock.changePin(payload?.currentPin, payload?.newPin),
+  appLock.changePin(payload?.currentPin, payload?.newPin, payload?.password),
+);
+ipcMain.handle("appLock:setPassword", (_e, payload) =>
+  appLock.setPassword(payload?.pin, payload?.password),
+);
+ipcMain.handle("appLock:changePassword", (_e, payload) =>
+  appLock.changePassword(payload?.currentPassword, payload?.newPassword),
+);
+ipcMain.handle("appLock:resetPasswordWithEmail", (_e, payload) =>
+  appLock.resetPasswordWithEmail(
+    payload?.clientId,
+    payload?.email,
+    payload?.otp,
+    payload?.ticket,
+    payload?.newPassword,
+  ),
 );
 ipcMain.handle("appLock:resetPinWithRecovery", (_e, payload) =>
   appLock.resetPinWithRecovery(payload?.recoveryCode, payload?.newPin),

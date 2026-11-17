@@ -1,6 +1,7 @@
 import axios from "axios";
 import { Doctor } from "../types/Storage";
 import { conteggiArchivioReale } from "./StorageServiceFallback";
+import { salvaLicenza, type LicenzaServer } from "./AbbonamentoService";
 
 interface HeartbeatResult {
   blocked: boolean | null;
@@ -60,6 +61,13 @@ export const sendHeartbeat = async (
       patients: archivio.pazienti,
       visits: archivio.visite,
     });
+
+    // Licenza dell'abbonamento: i backend precedenti non la mandano, e allora
+    // resta quella salvata l'ultima volta.
+    const license = result.data?.license as LicenzaServer | null | undefined;
+    if (license && typeof license.required === "boolean") {
+      await salvaLicenza(license);
+    }
 
     return {
       blocked: Boolean(result.data?.blocked),

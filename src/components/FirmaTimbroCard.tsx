@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Button, Card, CardBody, CardHeader, Switch } from "@nextui-org/react";
-import { ImageUp, PenLine, Signature, Trash2 } from "lucide-react";
+import { Button, Switch } from "@nextui-org/react";
+import { ImageUp, Info, PenLine, Signature, Trash2 } from "lucide-react";
+import { SezioneImpostazioni } from "./impostazioni/SezioneImpostazioni";
 import { DoctorService } from "../services/OfflineServices";
 import { SignatureStampCropModal } from "./SignatureStampCropModal";
 import { FirmaAManoModal } from "./FirmaAManoModal";
@@ -81,14 +82,12 @@ export function FirmaTimbroCard({
   };
 
   return (
-    <Card id="impostazioni-firma" className="shadow-lg w-full scroll-mt-32">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-3">
-          <Signature className="w-5 h-5 text-primary" />
-          <h2 className="text-xl font-semibold text-gray-900">Firma olografica</h2>
-        </div>
-      </CardHeader>
-      <CardBody className="gap-5">
+    <SezioneImpostazioni
+      id="impostazioni-firma"
+      icon={Signature}
+      titolo="Firma olografica"
+      descrizione="Stampata in calce a ricette, certificati e richieste di esame, e se vuoi al referto. L'immagine resta su questo computer."
+    >
         {avviso ? (
           <div
             role="status"
@@ -101,13 +100,6 @@ export function FirmaTimbroCard({
             {avviso.testo}
           </div>
         ) : null}
-
-        <p className="text-base text-default-700">
-          Corioli stampa la tua firma in calce a ricette, certificati e
-          richieste di esame, e se vuoi anche al referto della visita. Puoi
-          caricare la foto della tua firma su un foglio bianco oppure
-          firmare direttamente sullo schermo.
-        </p>
 
         {immagine ? (
           <div className="flex flex-wrap items-center gap-5">
@@ -193,12 +185,12 @@ export function FirmaTimbroCard({
           </div>
         )}
 
-        <div className="flex items-start justify-between gap-4 rounded-lg border border-default-200 p-4">
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-default-200 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-base font-medium text-gray-800">
+            <p className="text-sm font-medium text-foreground">
               Firma anche il referto della visita
             </p>
-            <p className="mt-1 text-sm text-default-600">
+            <p className="mt-0.5 text-sm text-default-500">
               In calce a destra, dopo le conclusioni. Spento, il referto si
               chiude sulle conclusioni e lo firmi a mano sul foglio.
             </p>
@@ -214,12 +206,14 @@ export function FirmaTimbroCard({
           />
         </div>
 
-        <p className="text-sm text-default-600">
-          È l&apos;immagine della tua firma, non una firma digitale: un PDF che
-          deve avere valore legale quando parte per posta elettronica va
-          firmato digitalmente (smart card o firma remota).
+        <p className="flex gap-2.5 rounded-xl bg-default-50 px-4 py-3 text-sm leading-relaxed text-default-600">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-default-500" aria-hidden />
+          <span>
+            È l&apos;immagine della tua firma, non una firma digitale: un PDF che
+            deve avere valore legale quando parte per posta elettronica va
+            firmato digitalmente (smart card o firma remota).
+          </span>
         </p>
-      </CardBody>
 
       <SignatureStampCropModal
         isOpen={daRitagliare !== null}
@@ -232,6 +226,6 @@ export function FirmaTimbroCard({
         onClose={() => setAMano(false)}
         onConfirm={(dataUrl) => void salva(dataUrl)}
       />
-    </Card>
+    </SezioneImpostazioni>
   );
 }

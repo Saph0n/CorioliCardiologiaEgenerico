@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, Input } from "@nextui-org/react";
 import { ChevronLeft, KeyRound, Mail, WifiOff } from "lucide-react";
 import {
+  changeAppLockPin,
+  getAppLockStatus,
   resetPinWithRecovery,
   resetPinWithOnlineGrant,
 } from "../../services/AppLockService";
+import CampoPassword from "./CampoPassword";
 import {
   requestPinRecoveryOtp,
   verifyPinRecoveryOtp,
@@ -23,7 +26,7 @@ type Props = {
   onUnlocked: (newPin?: string) => void;
 };
 
-type View = "choose" | "code" | "email" | "email-otp" | "email-pin";
+type View = "choose" | "password" | "code" | "email" | "email-otp" | "email-pin";
 
 export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Props) {
   const [view, setView] = useState<View>("choose");
@@ -40,9 +43,14 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
   const [pinShake, setPinShake] = useState(false);
   const [confirmShake, setConfirmShake] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
+  // Con la password dell'account il PIN si reimposta anche offline; il codice
+  // CORI resta solo per chi non ha ancora creato la password.
+  const [passwordConfigured, setPasswordConfigured] = useState<boolean | null>(null);
+  const [password, setPassword] = useState("");
 
   const resetState = () => {
     setView("choose");
+    setPassword("");
     setRecoveryCode("");
     setOtp("");
     setGrant(null);
@@ -62,6 +70,7 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
       setClientId(doctor?.id ?? "");
       setEmail(values.email);
     });
+    void getAppLockStatus().then((s) => setPasswordConfigured(Boolean(s?.passwordConfigured)));
   }, [isOpen]);
 
   useEffect(() => {
@@ -117,6 +126,32 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
       const result = await resetPinWithRecovery(recoveryCode, a);
       if (!result.ok) {
         setError(result.error || "Recupero non riuscito.");
+        return;
+      }
+      close();
+      onUnlocked(a);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    setError(null);
+    if (!password) {
+      setError("Scrivi la password del tuo account.");
+      return;
+    }
+    const pinErr = validateNewPin();
+    if (pinErr) {
+      setError(pinErr);
+      return;
+    }
+    setLoading(true);
+    try {
+      const a = newPin.replace(/\D/g, "");
+      const result = await changeAppLockPin(undefined, a, password);
+      if (!result.ok) {
+        setError(result.error || "Impossibile impostare il nuovo PIN.");
         return;
       }
       close();
@@ -205,6 +240,13 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
         icon: "lock" as const,
       };
     }
+    if (view === "password") {
+      return {
+        title: "Recupero con la password",
+        subtitle: "Scrivi la password del tuo account, poi scegli un nuovo PIN.",
+        icon: "key" as const,
+      };
+    }
     if (view === "code") {
       return {
         title: "Codice CORI-…",
@@ -245,21 +287,34 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
     <AppLockShell title={title} subtitle={subtitle} icon={icon} overlay>
       {view === "choose" ? (
         <div className="space-y-3">
-          <RecoveryOptionCard
-            icon={<KeyRound className="h-5 w-5 text-primary" />}
-            title="Ho il codice CORI-…"
-            description="Salvato durante la configurazione del PIN. Funziona anche offline."
-            onPress={() => {
-              setError(null);
-              setView("code");
-            }}
-          />
+          {passwordConfigured === false ? (
+            <RecoveryOptionCard
+              icon={<KeyRound className="h-5 w-5 text-primary" />}
+              title="Ho il codice CORI-…"
+              description="Salvato durante la configurazione del PIN. Funziona anche offline."
+              onPress={() => {
+                setError(null);
+                setView("code");
+              }}
+            />
+          ) : (
+            <RecoveryOptionCard
+              icon={<KeyRound className="h-5 w-5 text-primary" />}
+              title="Usa la password"
+              description="La password del tuo account. Funziona anche offline."
+              disabled={passwordConfigured === null}
+              onPress={() => {
+                setError(null);
+                setView("password");
+              }}
+            />
+          )}
           <RecoveryOptionCard
             icon={<Mail className="h-5 w-5 text-primary" />}
-            title="Recupero via email"
+            title="Non ricordo la password"
             description={
               online
-                ? "Codice inviato all'email del profilo medico."
+                ? "Ti mandiamo un codice all'email del tuo account."
                 : "Richiede connessione internet."
             }
             disabled={!online}
@@ -272,7 +327,9 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
             <div className="flex items-start gap-2 rounded-xl border border-warning-200 bg-warning-50 px-3 py-2.5">
               <WifiOff className="h-4 w-4 text-warning-700 shrink-0 mt-0.5" />
               <p className="text-xs text-warning-800 leading-relaxed">
-                Sei offline. Usa il codice CORI-… oppure un backup dei dati.
+                {passwordConfigured === false
+                  ? "Sei offline. Usa il codice CORI-… oppure un backup dei dati."
+                  : "Sei offline. Usa la password del tuo account."}
               </p>
             </div>
           ) : null}
@@ -283,6 +340,57 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
           >
             Annulla
           </button>
+        </div>
+      ) : null}
+
+      {view === "password" ? (
+        <div className="space-y-5">
+          <div className="space-y-1">
+            <CampoPassword
+              label="Password dell'account"
+              value={password}
+              onValueChange={(v) => {
+                setPassword(v);
+                setError(null);
+              }}
+              autoFocus
+              isDisabled={loading}
+            />
+            <button
+              type="button"
+              className="text-xs text-primary font-medium hover:underline disabled:opacity-50"
+              disabled={!online}
+              onClick={() => {
+                setError(null);
+                setView("email");
+              }}
+            >
+              {online
+                ? "Non ricordi la password? Recupera via email"
+                : "Non ricordi la password? Serve internet per il recupero via email"}
+            </button>
+          </div>
+          <PinPairInputs
+            newPin={newPin}
+            newPinConfirm={newPinConfirm}
+            onNewPin={setNewPin}
+            onConfirm={setNewPinConfirm}
+            pinShake={pinShake}
+            confirmShake={confirmShake}
+            disabled={loading}
+            onComplete={() => void handlePasswordReset()}
+          />
+          {error ? <AlertMessage tone="danger">{error}</AlertMessage> : null}
+          <Button
+            color="primary"
+            className="w-full font-medium"
+            isLoading={loading}
+            isDisabled={!pinReady || !password}
+            onPress={() => void handlePasswordReset()}
+          >
+            Imposta nuovo PIN
+          </Button>
+          <NavBack onPress={goBack} />
         </div>
       ) : null}
 

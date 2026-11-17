@@ -211,6 +211,9 @@ export class DoctorService {
     telefono?: string;
     specializzazione?: string;
     partitaIva?: string;
+    emailDocumenti?: string;
+    emailVerificata?: string;
+    emailVerificataProva?: string;
     ambulatori?: any[];
     profileImage?: string;
     signatureStampImage?: string;

@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardBody,
-  CardHeader,
   Button,
   Select,
   SelectItem,
@@ -50,11 +49,19 @@ import {
   ChevronUp,
   ChevronDown,
   Printer,
+  CreditCard,
+  Signature,
+  Stethoscope,
+  Info,
+  HardDrive,
+  Cloud,
+  UserRound,
+  type LucideIcon,
 } from "lucide-react";
+import { SezioneImpostazioni } from "../../components/impostazioni/SezioneImpostazioni";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
-import AppLockSettingsCard from "../../components/app-lock/AppLockSettingsCard";
-import { isAppLockAvailable } from "../../services/AppLockService";
+import SezioneAccount from "../../components/account/SezioneAccount";
 import { PageHeader } from "../../components/PageHeader";
 import BackupManager from "../../components/BackupManager";
 import { TemplateEditorModal } from "../../components/TemplateEditorModal";
@@ -83,11 +90,10 @@ import {
   type ModuliVisitaAttivi,
 } from "../../utils/moduliVisita";
 import { doveCompareModello } from "../../utils/sezioniModelli";
-import {
-  getMissingDoctorProfileFields,
-  titoloMedico,
-  TITOLI_MEDICO,
-} from "../../utils/doctorProfile";
+import { useRegisterUnsavedChanges } from "../../contexts/UnsavedChangesContext";
+import AnteprimaIntestazione from "../../components/profilo/AnteprimaIntestazione";
+import { getMissingDoctorProfileFields, TITOLI_MEDICO, titoloMedico } from "../../utils/doctorProfile";
+import { normalizzaPartitaIva, validatePartitaIva } from "../../utils/formValidation";
 import {
   AnamnesiConfig,
   AnamnesiVisitType,
@@ -104,11 +110,12 @@ import {
   genAnamnesiCustomKey,
 } from "../../utils/anamnesiStrutturata";
 import { AppModal } from "../../components/AppModal";
-import {
-  normalizzaPartitaIva,
-  validatePartitaIva,
-} from "../../utils/formValidation";
 import { formatPatientDisplayName } from "../../utils/patientDisplay";
+import { useAbbonamento } from "../../contexts/useAbbonamento";
+
+/** Campi obbligatori del profilo senza l'email, che sta nella sezione Account. */
+const mancantiProfilo = (p: Parameters<typeof getMissingDoctorProfileFields>[0]) =>
+  getMissingDoctorProfileFields(p).filter((campo) => campo !== "Email");
 
 type SettingsNoticeScope = "profilo" | "ambulatori" | "dati" | "modelli" | "duplicati";
 
@@ -168,18 +175,46 @@ function SettingsSectionNotice({
   );
 }
 
-/** Le voci dell'indice a sinistra, nell'ordine della pagina. */
-const VOCI_INDICE_IMPOSTAZIONI: { id: string; label: string }[] = [
-  { id: "impostazioni-sicurezza", label: "Sicurezza" },
-  { id: "impostazioni-profilo", label: "Profilo" },
-  { id: "impostazioni-firma", label: "Firma olografica" },
-  { id: "impostazioni-ambulatori", label: "Ambulatori" },
-  { id: "impostazioni-dati", label: "Dati e backup" },
-  { id: "impostazioni-visita", label: "Visita e referto" },
-  { id: "impostazioni-doppioni", label: "Pazienti doppi" },
-  { id: "impostazioni-modelli", label: "Modelli dei referti" },
-  { id: "impostazioni-info", label: "Informazioni" },
+/** L'indice a sinistra, a gruppi, nell'ordine della pagina. */
+const GRUPPI_INDICE_IMPOSTAZIONI: {
+  gruppo: string;
+  voci: { id: string; label: string; icon: LucideIcon }[];
+}[] = [
+  {
+    gruppo: "Account",
+    voci: [
+      { id: "impostazioni-account", label: "Account Corioli", icon: UserRound },
+    ],
+  },
+  {
+    gruppo: "Studio",
+    voci: [
+      { id: "impostazioni-profilo", label: "Profilo", icon: User },
+      { id: "impostazioni-ambulatori", label: "Ambulatori", icon: Building2 },
+      { id: "impostazioni-firma", label: "Firma olografica", icon: Signature },
+    ],
+  },
+  {
+    gruppo: "Referti",
+    voci: [
+      { id: "impostazioni-visita", label: "Visita e referto", icon: Stethoscope },
+      { id: "impostazioni-modelli", label: "Modelli dei referti", icon: FileText },
+    ],
+  },
+  {
+    gruppo: "Dati",
+    voci: [
+      { id: "impostazioni-dati", label: "Dati e backup", icon: Database },
+      { id: "impostazioni-doppioni", label: "Pazienti doppi", icon: Users },
+    ],
+  },
+  {
+    gruppo: "Corioli",
+    voci: [{ id: "impostazioni-info", label: "Informazioni", icon: Info }],
+  },
 ];
+
+const VOCI_INDICE_IMPOSTAZIONI = GRUPPI_INDICE_IMPOSTAZIONI.flatMap((g) => g.voci);
 
 const SettingsScreen = () => {
   const navigate = useNavigate();
@@ -206,9 +241,8 @@ const SettingsScreen = () => {
     return () => window.clearInterval(timer);
   }, [parametriUrl]);
 
-  const mostraSicurezza =
-    isAppLockAvailable() ||
-    typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined";
+  // L'abbonamento compare solo quando il server chiede la licenza.
+  const mostraAbbonamento = useAbbonamento().stato.tipo !== "libero";
 
   /**
    * La sezione che si sta leggendo, evidenziata nell'indice: senza, in una
@@ -217,14 +251,19 @@ const SettingsScreen = () => {
   const [sezioneAttiva, setSezioneAttiva] = useState<string | null>(null);
   useEffect(() => {
     const aggiorna = () => {
+      const presenti = VOCI_INDICE_IMPOSTAZIONI.filter((v) => document.getElementById(v.id));
       let attiva: string | null = null;
-      for (const v of VOCI_INDICE_IMPOSTAZIONI) {
+      for (const v of presenti) {
         const el = document.getElementById(v.id);
         // Attiva e' la sezione che occupa la parte alta dello schermo: con una
         // soglia fissa appena sotto la navbar l'indice restava indietro di una.
         if (el && el.getBoundingClientRect().top <= window.innerHeight * 0.4) attiva = v.id;
       }
-      setSezioneAttiva(attiva ?? VOCI_INDICE_IMPOSTAZIONI[0].id);
+      // In fondo alla pagina l'ultima sezione, corta, non arriva mai in alto.
+      const inFondo =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+      if (inFondo && presenti.length > 0) attiva = presenti[presenti.length - 1].id;
+      setSezioneAttiva(attiva ?? presenti[0]?.id ?? null);
     };
     aggiorna();
     window.addEventListener("scroll", aggiorna, { passive: true });
@@ -280,6 +319,8 @@ const SettingsScreen = () => {
     telefono: string;
     specializzazione: string;
     partitaIva: string;
+    /** Email stampata sui documenti (es. segreteria); vuota = email dell'account. */
+    emailDocumenti: string;
   }>({
     titolo: "Dott.",
     nome: "",
@@ -288,9 +329,48 @@ const SettingsScreen = () => {
     telefono: "",
     specializzazione: "",
     partitaIva: "",
+    emailDocumenti: "",
   });
   /** Errore della partita IVA, mostrato uscendo dal campo o al salvataggio. */
   const [errorePartitaIva, setErrorePartitaIva] = useState<string | null>(null);
+  // Il profilo si mostra in sola lettura: i campi si aprono solo con "Modifica",
+  // così non si cambiano per sbaglio. "Annulla" torna all'ultimo salvato.
+  const [profiloSalvato, setProfiloSalvato] = useState<typeof doctorInfo | null>(null);
+  const [modificaProfilo, setModificaProfilo] = useState(false);
+  // Uscire dalla pagina col profilo modificato e non salvato: l'avviso dice
+  // quali campi e riporta qui per salvarli.
+  const CAMPI_PROFILO = {
+    titolo: "Titolo",
+    nome: "Nome",
+    cognome: "Cognome",
+    specializzazione: "Specializzazione",
+    telefono: "Telefono",
+    partitaIva: "Partita IVA",
+    emailDocumenti: "Email sui documenti",
+  } as const;
+  const campiNonSalvati = modificaProfilo
+    ? (Object.keys(CAMPI_PROFILO) as (keyof typeof CAMPI_PROFILO)[])
+        .filter((k) =>
+          profiloSalvato
+            ? (doctorInfo[k] ?? "").trim() !== (profiloSalvato[k] ?? "").trim()
+            : k !== "titolo" && (doctorInfo[k] ?? "").trim() !== "",
+        )
+        .map((k) => CAMPI_PROFILO[k])
+    : [];
+  useRegisterUnsavedChanges("impostazioni-profilo", campiNonSalvati.length > 0, {
+    dove: "Profilo del medico",
+    cosa: campiNonSalvati,
+    mostra: () => {
+      const sezione = document.getElementById("impostazioni-profilo");
+      sezione?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Un attimo di evidenza, per far capire dove guardare.
+      sezione?.classList.add("ring-2", "ring-warning-400");
+      window.setTimeout(() => sezione?.classList.remove("ring-2", "ring-warning-400"), 2200);
+    },
+  });
+  // Email confermata con il codice: un'email nuova si salva solo dopo la conferma.
+  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [emailVerificata, setEmailVerificata] = useState<string | null>(null);
 
   // Template State
   const [templates, setTemplates] = useState<MedicalTemplate[]>([]);
@@ -565,7 +645,7 @@ const SettingsScreen = () => {
     try {
       const doctor = await DoctorService.getDoctor();
       if (doctor) {
-        setDoctorInfo({
+        const profilo = {
           titolo: titoloMedico(doctor),
           nome: doctor.nome,
           cognome: doctor.cognome,
@@ -573,9 +653,18 @@ const SettingsScreen = () => {
           telefono: doctor.telefono || "",
           specializzazione: doctor.specializzazione || "",
           partitaIva: doctor.partitaIva || "",
-        });
+          emailDocumenti: doctor.emailDocumenti || "",
+        };
+        setDoctorInfo(profilo);
+        setProfiloSalvato(profilo);
+        setDoctorId(doctor.id);
+        setEmailVerificata(doctor.emailVerificata ?? null);
+        // Profilo incompleto (primo avvio): si apre direttamente da compilare.
+        setModificaProfilo(mancantiProfilo(profilo).length > 0);
         setAmbulatori(doctor.ambulatori || []);
         setSignatureStampImage(doctor.signatureStampImage || "");
+      } else {
+        setModificaProfilo(true);
       }
     } catch (error) {
       console.error("Errore nel caricamento dati dottore:", error);
@@ -1501,7 +1590,7 @@ const SettingsScreen = () => {
       telefono: doctorInfo.telefono.trim(),
       specializzazione: doctorInfo.specializzazione.trim(),
     };
-    const missingFields = getMissingDoctorProfileFields(profileToValidate);
+    const missingFields = mancantiProfilo(profileToValidate);
     if (missingFields.length > 0) {
       showNotice(
         "profilo",
@@ -1520,22 +1609,42 @@ const SettingsScreen = () => {
       return;
     }
     const partitaIva = normalizzaPartitaIva(doctorInfo.partitaIva);
+    // Stringa vuota e non undefined: cancellandola si torna all'email dell'account.
+    const emailDocumenti = doctorInfo.emailDocumenti.trim().toLowerCase();
+    if (emailDocumenti && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDocumenti)) {
+      showNotice("profilo", "error", "L'email sui documenti non è valida.", 5000);
+      setIsLoading(false);
+      return;
+    }
 
     try {
+      // L'email non si cambia da qui: sta nella sezione Account, con il codice.
       await DoctorService.updateDoctor({
         titolo: doctorInfo.titolo,
         nome: doctorInfo.nome.trim(),
         cognome: doctorInfo.cognome.trim(),
-        email: doctorInfo.email.trim(),
         telefono: doctorInfo.telefono.trim(),
         specializzazione: doctorInfo.specializzazione.trim(),
         // Stringa vuota e non undefined: se il medico la cancella, deve
         // sparire anche dal profilo salvato e dai referti.
         partitaIva,
+        emailDocumenti,
         ambulatori: ambulatori,
         signatureStampImage: signatureStampImage || undefined,
       });
-      setDoctorInfo((prev) => ({ ...prev, partitaIva }));
+      const salvato = {
+        ...doctorInfo,
+        nome: doctorInfo.nome.trim(),
+        cognome: doctorInfo.cognome.trim(),
+        email: doctorInfo.email.trim(),
+        telefono: doctorInfo.telefono.trim(),
+        specializzazione: doctorInfo.specializzazione.trim(),
+        partitaIva,
+        emailDocumenti,
+      };
+      setDoctorInfo(salvato);
+      setProfiloSalvato(salvato);
+      setModificaProfilo(false);
 
       savePreferences();
       window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
@@ -1554,123 +1663,140 @@ const SettingsScreen = () => {
   };
 
   return (
-    <div className="corioli-page space-y-6 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        icon={SettingsIcon}
         title="Impostazioni"
+        subtitle="Profilo, studio, referti e dati. L'archivio dei pazienti resta su questo computer."
+        icon={SettingsIcon}
       />
 
-      {/* Indice a sinistra e una colonna sola. Prima erano due colonne di
-          card affiancate: le altezze non coincidevano mai e lasciavano grandi
-          vuoti (la card degli ambulatori si allungava per pareggiare il
-          profilo), e per trovare una voce bisognava scorrere tutta la pagina. */}
-      <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+      {/* Indice a sinistra e una colonna sola, come in Corioli Cardiologia:
+          con due colonne di card affiancate le altezze non coincidevano mai,
+          e per trovare una voce bisognava scorrere tutta la pagina. */}
+      <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-10">
         <nav
           aria-label="Sezioni delle impostazioni"
           className="hidden lg:block"
         >
-          <ul className="sticky top-[calc(8rem_+_var(--barra-finestra))] space-y-0.5 text-sm">
-            {VOCI_INDICE_IMPOSTAZIONI.filter(
-              (v) => v.id !== "impostazioni-sicurezza" || mostraSicurezza,
-            ).map((v) => (
-              <li key={v.id}>
-                <a
-                  href={`#${v.id}`}
-                  onClick={(e) => {
-                    // L'app usa l'hash per le rotte: l'ancora si fa a mano.
-                    e.preventDefault();
-                    document.getElementById(v.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
-                  aria-current={sezioneAttiva === v.id ? "location" : undefined}
-                  className={`block rounded-lg px-3 py-1.5 transition-colors hover:bg-default-100 hover:text-foreground ${
-                    sezioneAttiva === v.id
-                      ? "bg-default-100 font-medium text-foreground"
-                      : "text-default-600"
-                  }`}
-                >
-                  {v.label}
-                </a>
-              </li>
-            ))}
-            <li className="mt-3 border-t border-default-200 pt-3">
-              <button
-                type="button"
-                onClick={() => navigate("/documents")}
-                className="block w-full rounded-lg px-3 py-1.5 text-left text-default-600 transition-colors hover:bg-default-100 hover:text-foreground"
-              >
-                Documenti personali →
-              </button>
-            </li>
-          </ul>
+          <div className="sticky top-[calc(8rem_+_var(--barra-finestra))] space-y-5">
+            {GRUPPI_INDICE_IMPOSTAZIONI.map((g) => {
+              const voci = g.voci;
+              return (
+                <div key={g.gruppo}>
+                  <p className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-default-400">
+                    {g.gruppo}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {voci.map((v) => {
+                      const attiva = sezioneAttiva === v.id;
+                      const Icona = v.icon;
+                      return (
+                        <li key={v.id}>
+                          <a
+                            href={`#${v.id}`}
+                            onClick={(e) => {
+                              // L'app usa l'hash per le rotte: l'ancora si fa a mano.
+                              e.preventDefault();
+                              document.getElementById(v.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                            aria-current={attiva ? "location" : undefined}
+                            className={`group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                              attiva
+                                ? "bg-white font-medium text-foreground shadow-sm ring-1 ring-default-200"
+                                : "text-default-600 hover:bg-white/70 hover:text-foreground"
+                            }`}
+                          >
+                            <Icona
+                              aria-hidden
+                              className={`h-4 w-4 shrink-0 ${
+                                attiva ? "text-brand-700" : "text-default-400 group-hover:text-default-600"
+                              }`}
+                            />
+                            {v.label}
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         </nav>
         <div className="min-w-0 space-y-8">
 
-      {/* ── Sicurezza & Aggiornamenti ── */}
-      {mostraSicurezza ? (
-        <div id="impostazioni-sicurezza" className="scroll-mt-32">
-          <p className="section-label">Sicurezza</p>
-          <Card className="shadow-sm border border-default-200 overflow-hidden">
-            <CardBody className="p-0">
-              {isAppLockAvailable() ? <AppLockSettingsCard /> : null}
+      <SezioneAccount
+        clientId={doctorId}
+        email={doctorInfo.email}
+        emailVerificata={emailVerificata}
+        onEmailAggiornata={({ email, emailVerificata: verificata }) => {
+          setDoctorInfo((prev) => ({ ...prev, email }));
+          setProfiloSalvato((prev) => (prev ? { ...prev, email } : prev));
+          setEmailVerificata(verificata);
+        }}
+      />
 
-              {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" ? (
-                <div className="settings-row">
-                  <div
-                    className="flex items-center justify-center shrink-0 rounded-lg"
-                    style={{ width: 30, height: 30, background: "#e1f5ee" }}
-                  >
-                    <ArrowUpCircle size={16} color="#0f6e56" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-[500] text-foreground leading-snug">
-                      Controlla aggiornamenti
-                    </p>
-                    <p className="text-[12px] leading-snug mt-0.5">
-                      <span style={{ color: "var(--color-text-secondary)", fontWeight: 500 }}>
-                        Microsoft Store
-                      </span>
-                      <span style={{ color: "var(--color-text-tertiary)" }}>
-                        {" "}→ Libreria → Corioli Cardiologia
-                      </span>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="settings-ghost-btn settings-ghost-btn--teal"
-                    onClick={() => void openCorioliMicrosoftStore()}
-                  >
-                    <ExternalLink size={13} />
-                    Apri Store
-                  </button>
-                </div>
-              ) : null}
-            </CardBody>
-          </Card>
-        </div>
-      ) : null}
-
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 gap-8">
-          {/* Profilo del medico */}
-          <Card
+          {/* Profilo Dottore */}
+          <SezioneImpostazioni
             id="impostazioni-profilo"
-            className="shadow-lg w-full scroll-mt-32"
-            classNames={{
-              base: "h-full flex flex-col min-h-0",
-              body: "flex flex-1 flex-col gap-6 min-h-0",
-            }}
+            icon={User}
+            titolo="Profilo del medico"
+            descrizione="Come compari nell'intestazione di referti, ricette e certificati. Nome e recapiti li riceve anche l'assistenza Corioli."
+            extra={
+              modificaProfilo ? null : (
+                <Button
+                  className="bg-brand-700 font-medium text-white shadow-sm"
+                  startContent={<Edit size={16} />}
+                  onPress={() => {
+                    clearNotice("profilo");
+                    setModificaProfilo(true);
+                  }}
+                >
+                  Modifica profilo
+                </Button>
+              )
+            }
           >
-            <CardHeader className="pb-2 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <User className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Profilo del medico
-                </h2>
-              </div>
-            </CardHeader>
-            <CardBody>
               <SettingsSectionNotice scope="profilo" notice={notice} />
-              <div className="grid grid-cols-1 gap-4 py-1 md:grid-cols-2">
+              <AnteprimaIntestazione profilo={doctorInfo} />
+              {!modificaProfilo ? (
+                <ul className="-mt-1 space-y-1.5 text-xs leading-relaxed text-default-500">
+                  {!doctorInfo.emailDocumenti?.trim() && doctorInfo.email ? (
+                    <li>
+                      L&apos;email è quella del tuo account. Se sui documenti ne vuoi un&apos;altra (per esempio
+                      della segreteria), scrivila con Modifica.
+                    </li>
+                  ) : null}
+                  <li>
+                    L&apos;indirizzo dello studio è in{" "}
+                    <button
+                      type="button"
+                      className="text-brand-700 underline"
+                      onClick={() =>
+                        document.getElementById("impostazioni-ambulatori")?.scrollIntoView({ behavior: "smooth", block: "start" })
+                      }
+                    >
+                      Ambulatori
+                    </button>
+                    ; logo, colori e disposizione nell&apos;editor dei modelli, da{" "}
+                    <button
+                      type="button"
+                      className="text-brand-700 underline"
+                      onClick={() =>
+                        document.getElementById("impostazioni-visita")?.scrollIntoView({ behavior: "smooth", block: "start" })
+                      }
+                    >
+                      Visita e referto
+                    </button>
+                    .
+                  </li>
+                </ul>
+              ) : (
+              <>
+              <div className="space-y-5 py-1">
+              <fieldset className="space-y-3">
+                <legend className="text-xs font-semibold uppercase tracking-wider text-default-400">Chi sei</legend>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)]">
                 <Select
                   label="Titolo"
                   selectedKeys={[doctorInfo.titolo]}
@@ -1703,26 +1829,7 @@ const SettingsScreen = () => {
                   }
                   variant="bordered"
                 />
-                <Input
-                  label="Email" placeholder=" "
-                  type="email"
-                  value={doctorInfo.email}
-                  isRequired
-                  onValueChange={(value) =>
-                    handleDoctorInfoChange("email", value)
-                  }
-                  variant="bordered"
-                />
-                <Input
-                  label="Telefono"
-                  value={doctorInfo.telefono}
-                  isRequired
-                  onValueChange={(value) =>
-                    handleDoctorInfoChange("telefono", value)
-                  }
-                  variant="bordered"
-                  placeholder=" "
-                />
+                </div>
                 <Input
                   label="Specializzazione"
                   value={doctorInfo.specializzazione}
@@ -1732,6 +1839,20 @@ const SettingsScreen = () => {
                   }
                   variant="bordered"
                   placeholder="Es. Cardiologia"
+                />
+              </fieldset>
+              <fieldset className="space-y-3">
+                <legend className="text-xs font-semibold uppercase tracking-wider text-default-400">Recapiti sui documenti</legend>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  label="Telefono"
+                  value={doctorInfo.telefono}
+                  isRequired
+                  onValueChange={(value) =>
+                    handleDoctorInfoChange("telefono", value)
+                  }
+                  variant="bordered"
+                  placeholder="3331234567"
                 />
                 <Input
                   label="Partita IVA"
@@ -1745,54 +1866,62 @@ const SettingsScreen = () => {
                   }
                   isInvalid={!!errorePartitaIva}
                   errorMessage={errorePartitaIva ?? undefined}
-                  description="Facoltativa. Se compilata, compare nell'intestazione di referti e documenti."
                   variant="bordered"
                   inputMode="numeric"
                   maxLength={16}
                   placeholder="11 cifre"
                 />
+                <Input
+                  label="Email sui documenti"
+                  type="email"
+                  value={doctorInfo.emailDocumenti}
+                  onValueChange={(value) => handleDoctorInfoChange("emailDocumenti", value)}
+                  variant="bordered"
+                  placeholder={doctorInfo.email || "segreteria@studio.it"}
+                />
+                </div>
+              </fieldset>
               </div>
 
-              <div className="flex justify-end">
-                <Button
-                  color="primary"
-                  className="corioli-cta"
-                  onPress={saveDoctorInfo}
-                  isLoading={isLoading}
-                >
-                  {isLoading ? "Salvataggio..." : "Salva profilo"}
-                </Button>
+              <div className="-mx-6 -mb-5 flex flex-wrap items-center justify-between gap-3 border-t border-default-100 bg-default-50/60 px-6 py-4">
+                <p className="text-xs text-default-500">I campi con * sono obbligatori.</p>
+                <div className="flex flex-wrap gap-2">
+                  {profiloSalvato && mancantiProfilo(profiloSalvato).length === 0 ? (
+                    <Button
+                      variant="light"
+                      isDisabled={isLoading}
+                      onPress={() => {
+                        setDoctorInfo(profiloSalvato);
+                        setErrorePartitaIva(null);
+                        clearNotice("profilo");
+                        setModificaProfilo(false);
+                      }}
+                    >
+                      Annulla
+                    </Button>
+                  ) : null}
+                  <Button
+                    color="primary"
+                    className="corioli-cta"
+                    onPress={() => void saveDoctorInfo()}
+                    isLoading={isLoading}
+                  >
+                    {isLoading ? "Salvando..." : "Salva profilo"}
+                  </Button>
+                </div>
               </div>
-            </CardBody>
-          </Card>
-
-          <FirmaTimbroCard
-            immagine={signatureStampImage}
-            onImmagineChange={setSignatureStampImage}
-            firmaSulReferto={preferences.firmaSulReferto !== false}
-            onFirmaSulRefertoChange={(value) =>
-              handlePreferenceChange("firmaSulReferto", value)
-            }
-          />
+              </>
+              )}
+          </SezioneImpostazioni>
 
           {/* Ambulatori */}
-          <Card
+          <SezioneImpostazioni
             id="impostazioni-ambulatori"
-            className="shadow-lg w-full scroll-mt-32"
-            classNames={{
-              base: "h-full flex flex-col min-h-0",
-              body: "flex flex-1 flex-col gap-3 min-h-0",
-            }}
+            icon={Building2}
+            titolo="Ambulatori"
+            descrizione="Le sedi dove visiti. Quella in uso compare su referti e documenti."
+            corpoClassName="flex flex-col gap-4 px-6 py-5"
           >
-            <CardHeader className="pb-2 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <Building2 className="w-5 h-5 text-primary shrink-0" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Ambulatori
-                </h2>
-              </div>
-            </CardHeader>
-            <CardBody>
               <SettingsSectionNotice scope="ambulatori" notice={notice} />
               {/* Lista ambulatori — scroll solo se > 2 sedi */}
               <div className="rounded-lg border border-default-200 bg-default-50/50 p-3 flex-shrink-0">
@@ -2029,155 +2158,25 @@ const SettingsScreen = () => {
                   {savingAmbulatori ? "Salvataggio..." : "Aggiungi ambulatorio"}
                 </Button>
               </div>
-            </CardBody>
-          </Card>
-        </div>
+          </SezioneImpostazioni>
 
-        <div className="grid grid-cols-1 gap-8">
-          {/* Backup e dati */}
-          <Card id="impostazioni-dati" className="shadow-lg scroll-mt-32">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <Database className="w-5 h-5 text-primary shrink-0" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Backup e dati
-                </h2>
-              </div>
-            </CardHeader>
-            <CardBody className="flex flex-col space-y-4">
-              <SettingsSectionNotice scope="dati" notice={notice} />
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
-                    <p className="text-xs text-primary-600 font-semibold uppercase tracking-wider">
-                      Pazienti
-                    </p>
-                    <p className="text-2xl font-bold text-primary-700 mt-1">
-                      {patientCount}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
-                    <p className="text-xs text-primary-600 font-semibold uppercase tracking-wider">
-                      Visite
-                    </p>
-                    <p className="text-2xl font-bold text-primary-700 mt-1">
-                      {visitCount}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-default-50 rounded-lg border border-default-200">
-                    <p className="text-xs text-default-600 font-semibold uppercase tracking-wider">
-                      Doc
-                    </p>
-                    <p className="text-2xl font-bold text-default-700 mt-1">
-                      {docCount}
-                    </p>
-                  </div>
-                </div>
+          <FirmaTimbroCard
+            immagine={signatureStampImage}
+            onImmagineChange={setSignatureStampImage}
+            firmaSulReferto={preferences.firmaSulReferto !== false}
+            onFirmaSulRefertoChange={(value) =>
+              handlePreferenceChange("firmaSulReferto", value)
+            }
+          />
 
-                {/* Lo stato del backup con l'azione accanto. Prima "Mai
-                    eseguito" stava da solo, e il backup vero era tre clic piu'
-                    in la': Gestione dati completa, scheda Backup, Esporta. */}
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default-200 bg-default-50/30 p-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <RefreshCw className="w-4 h-4 text-default-600" />
-                    <span className="text-default-700">Ultimo backup:</span>
-                    <span
-                      className={`font-semibold ${!lastBackupDate ? "text-warning-700" : "corioli-text-brand"}`}
-                    >
-                      {lastBackupDate
-                        ? new Date(lastBackupDate).toLocaleDateString() +
-                          " " +
-                          new Date(lastBackupDate).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "mai eseguito"}
-                    </span>
-                  </div>
-                  <Button
-                    color="primary"
-                    className="corioli-cta"
-                    startContent={!backupInCorso ? <Download className="w-4 h-4" /> : undefined}
-                    isLoading={backupInCorso}
-                    onPress={async () => {
-                      setBackupInCorso(true);
-                      try {
-                        await BackupService.downloadBackup();
-                        showNotice("dati", "success", "Backup salvato nella cartella dei download.");
-                      } catch (error) {
-                        console.error("Errore backup:", error);
-                        showNotice("dati", "error", "Backup non riuscito: " + (error as Error).message, 6000);
-                      } finally {
-                        setBackupInCorso(false);
-                      }
-                    }}
-                  >
-                    Fai un backup ora
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-default-200 p-4 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
-                    <Shield className="w-4 h-4 text-primary shrink-0" />
-                    Privacy e diritti
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="bordered"
-                    startContent={<Download className="w-3.5 h-3.5" />}
-                    onPress={() => void ExportService.exportDataAccessPackage()}
-                  >
-                    Esporta dati (JSON)
-                  </Button>
-                </div>
-                <p className="text-xs text-default-500">
-                  Esporta il pacchetto per il diritto di accesso. Richieste
-                  privacy:{" "}
-                  <a
-                    href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
-                    className="text-primary font-medium hover:underline"
-                  >
-                    {PRIVACY_CONTACT_EMAIL}
-                  </a>{" "}
-                  &middot;{" "}
-                  <a
-                    href={PRIVACY_POLICY_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
-                  >
-                    Informativa <ExternalLink className="w-3 h-3" />
-                  </a>
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <BackupManager />
-                <p className="text-xs text-default-600">
-                  Ripristino da backup, importazione CSV, eliminazioni e cronologia delle visite.
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-
-          {/* Visita e referto */}
-          <Card id="impostazioni-visita" className="shadow-lg scroll-mt-32">
-            <CardHeader className="pb-1">
-              <div className="flex items-center gap-3">
-                <SettingsIcon className="w-5 h-5 text-primary" />
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Visita e referto
-                  </h2>
-                  <p className="text-xs text-default-500">
-                    Configura comportamento visite e contenuto PDF
-                  </p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardBody className="space-y-4">
+          {/* Funzionalita Visite */}
+          <SezioneImpostazioni
+            id="impostazioni-visita"
+            icon={Stethoscope}
+            titolo="Visita e referto"
+            descrizione="Cosa compare nella pagina della visita e nei PDF che stampi."
+            corpoClassName="flex flex-col gap-4 px-6 py-5"
+          >
               {/* L'impaginazione dei PDF ha una pagina sua: l'anteprima del
                   foglio accanto alle impostazioni non sta in una card. */}
               <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-4">
@@ -2445,230 +2444,18 @@ const SettingsScreen = () => {
                   </Select>
                 </div>
               </div>
-            </CardBody>
-          </Card>
+          </SezioneImpostazioni>
 
-        </div>
-      </div>
-
-      {/* Sezione dedicata: Qualità dei dati */}
-      <div id="impostazioni-doppioni" className="space-y-3 scroll-mt-32">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">
-            Qualità dei dati
-          </h2>
-          <p className="text-sm text-gray-600">
-            Area dedicata al controllo dei possibili pazienti duplicati.
-          </p>
-        </div>
-
-        <Card className="shadow-lg border border-warning-200">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between w-full gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-warning" />
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Controllo dei doppioni
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <Chip color="warning" variant="flat">
-                  Gruppi: {duplicateGroups.length}
-                </Chip>
-                <Chip color="primary" variant="flat">
-                  Record:{" "}
-                  {duplicateGroups.reduce(
-                    (acc, g) => acc + g.patients.length,
-                    0,
-                  )}
-                </Chip>
-                <Button
-                  size="sm"
-                  variant="flat"
-                  color="warning"
-                  onPress={loadDuplicateGroups}
-                  isLoading={loadingDuplicates && !duplicateCheckProgress}
-                >
-                  {duplicateCheckProgress
-                    ? `Analisi: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total}`
-                    : "Controlla"}
-                </Button>
-                <Button
-                  size="sm"
-                  color="warning"
-                  onPress={mergeAllDuplicateGroups}
-                  isLoading={mergingAll}
-                  isDisabled={
-                    loadingDuplicates ||
-                    duplicateGroups.length === 0 ||
-                    !!processingDuplicateGroupKey
-                  }
-                >
-                  {mergingAll ? "Unione in corso..." : "Unisci tutto"}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardBody className="space-y-4">
-            <SettingsSectionNotice scope="duplicati" notice={notice} />
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
-              <Input
-                label="Ricerca nei sospetti doppioni"
-                placeholder="Cerca per nome, cognome, codice fiscale, email o telefono"
-                variant="bordered"
-                value={duplicateSearch}
-                onValueChange={setDuplicateSearch}
-                startContent={<Search size={16} className="text-default-500" />}
-              />
-              {duplicateSearch && (
-                <Button
-                  variant="flat"
-                  onPress={() => setDuplicateSearch("")}
-                  className="md:mb-1"
-                >
-                  Pulisci ricerca
-                </Button>
-              )}
-            </div>
-
-            {loadingDuplicates ? (
-              <div className="py-6 space-y-3 flex flex-col items-stretch">
-                <span className="text-sm text-gray-500 text-center">
-                  {duplicateCheckProgress
-                    ? `Analisi doppioni: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total} pazienti`
-                    : "Analisi doppioni in corso..."}
-                </span>
-                {duplicateCheckProgress && (
-                  <Progress
-                    size="md"
-                    value={
-                      (duplicateCheckProgress.current /
-                        Math.max(1, duplicateCheckProgress.total)) *
-                      100
-                    }
-                    color="warning"
-                    className="max-w-full"
-                    aria-label={`Analisi doppioni ${duplicateCheckProgress.current}/${duplicateCheckProgress.total}`}
-                  />
-                )}
-              </div>
-            ) : filteredDuplicateGroups.length === 0 ? (
-              <div className="py-6 text-sm text-gray-500">
-                {duplicateGroups.length === 0
-                  ? "Nessun doppione sospetto trovato."
-                  : "Nessun risultato per la ricerca corrente."}
-              </div>
-            ) : (
-              <div className="space-y-4 overflow-y-auto overflow-x-hidden max-h-[28rem] md:max-h-[40rem] pr-1 md:pr-2">
-                {filteredDuplicateGroups.map((group, gIdx) => (
-                  <Card
-                    key={group.key}
-                    className="bg-warning-50 border border-warning-200"
-                  >
-                    <CardBody className="space-y-3">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <p className="font-medium text-warning-800">
-                          Gruppo sospetto #{gIdx + 1} • {group.patients.length}{" "}
-                          record
-                        </p>
-                        <Button
-                          size="sm"
-                          color="warning"
-                          onPress={() =>
-                            mergeDuplicateGroup(group.key, group.patients)
-                          }
-                          isLoading={processingDuplicateGroupKey === group.key}
-                          isDisabled={group.patients.length < 2}
-                        >
-                          Unisci gruppo
-                        </Button>
-                      </div>
-
-                      <Table aria-label={`Duplicati gruppo ${gIdx + 1}`}>
-                        <TableHeader>
-                          <TableColumn>PAZIENTE</TableColumn>
-                          <TableColumn>CF / NASCITA</TableColumn>
-                          <TableColumn>CONTATTI</TableColumn>
-                          <TableColumn><span className="sr-only">Azioni</span></TableColumn>
-                        </TableHeader>
-                        <TableBody>
-                          {group.patients.map((p) => (
-                            <TableRow key={p.id}>
-                              <TableCell>
-                                <p className="font-medium text-gray-900">
-                                  {formatPatientDisplayName(p) ?? "Senza nome"}
-                                </p>
-                              </TableCell>
-                              <TableCell>
-                                <p className="text-sm text-gray-700">
-                                  CF:{" "}
-                                  <CodiceFiscaleValue
-                                    value={p.codiceFiscale}
-                                    placeholder="—"
-                                    generatedFromImport={Boolean(
-                                      p.codiceFiscaleGenerato,
-                                    )}
-                                  />
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Nascita: {p.dataNascita || "—"}
-                                </p>
-                              </TableCell>
-                              <TableCell>
-                                <p className="text-sm text-gray-700">
-                                  Tel: {p.telefono || "—"}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Email: {p.email || "—"}
-                                </p>
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  size="sm"
-                                  color="danger"
-                                  variant="flat"
-                                  onPress={() =>
-                                    requestDeleteDuplicatePatient(
-                                      p.id,
-                                      p.nome,
-                                      p.cognome,
-                                    )
-                                  }
-                                  isLoading={processingDuplicateId === p.id}
-                                  isDisabled={
-                                    processingDuplicateGroupKey === group.key
-                                  }
-                                >
-                                  Elimina record
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardBody>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Gestione Modelli */}
-      <Card id="impostazioni-modelli" className="shadow-lg scroll-mt-32">
-        {/* `data-guida`: la guida di primo avvio illumina testata e
-            categorie, poi fa premere "Nuovo modello". */}
-        <CardHeader className="pb-2" data-guida="modelli-categorie">
-          <div className="flex items-center gap-3">
-            <FileText className="w-5 h-5 text-primary shrink-0" />
-            <h2 className="text-xl font-semibold text-gray-900">
-              Modelli dei referti
-            </h2>
-          </div>
-        </CardHeader>
-        <CardBody className="space-y-6">
+      {/* Gestione Modelli. `guida`: la guida di primo avvio illumina testata
+          e categorie dei modelli. */}
+      <SezioneImpostazioni
+        id="impostazioni-modelli"
+        icon={FileText}
+        titolo="Modelli dei referti"
+        descrizione="Testi pronti da richiamare mentre scrivi, divisi per categoria."
+        guida="modelli-categorie"
+        corpoClassName="flex flex-col gap-6 px-6 py-5"
+      >
           <SettingsSectionNotice scope="modelli" notice={notice} />
           <div className="flex flex-col gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 min-w-0">
@@ -2825,24 +2612,409 @@ const SettingsScreen = () => {
                 })}
             </TableBody>
           </Table>
-        </CardBody>
-      </Card>
+      </SezioneImpostazioni>
+
+          {/* Backup e Dati */}
+          <SezioneImpostazioni
+            id="impostazioni-dati"
+            icon={Database}
+            titolo="Dati e backup"
+            descrizione="L'archivio è salvato su questo computer. Con il backup ne tieni una copia dove vuoi tu."
+          >
+              <dl className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Pazienti", valore: patientCount },
+                  { label: "Visite", valore: visitCount },
+                  { label: "Documenti", valore: docCount },
+                ].map((d) => (
+                  <div
+                    key={d.label}
+                    className="rounded-xl border border-default-200 bg-default-50/60 px-4 py-3"
+                  >
+                    <dt className="text-xs font-medium text-default-500">{d.label}</dt>
+                    <dd className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                      {d.valore}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              <SettingsSectionNotice scope="dati" notice={notice} />
+              <div className="flex flex-col gap-3">
+                {/* Lo stato del backup con l'azione accanto: senza, il backup vero
+                    era tre clic piu' in la' (Gestione dati, scheda Backup, Esporta). */}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-default-200 px-4 py-3">
+                  <span className="flex items-center gap-2 text-sm text-default-600">
+                    <RefreshCw className="h-4 w-4" aria-hidden />
+                    Ultimo backup:
+                    <span
+                      className={`font-semibold ${!lastBackupDate ? "text-warning-600" : "corioli-text-brand"}`}
+                    >
+                      {lastBackupDate
+                        ? new Date(lastBackupDate).toLocaleDateString() +
+                          " " +
+                          new Date(lastBackupDate).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "mai eseguito"}
+                    </span>
+                  </span>
+                  <Button
+                    color="primary"
+                    className="corioli-cta"
+                    startContent={!backupInCorso ? <Download className="w-4 h-4" /> : undefined}
+                    isLoading={backupInCorso}
+                    onPress={async () => {
+                      setBackupInCorso(true);
+                      try {
+                        await BackupService.downloadBackup();
+                        showNotice("dati", "success", "Backup salvato nella cartella dei download.");
+                      } catch (error) {
+                        console.error("Errore backup:", error);
+                        showNotice("dati", "error", "Backup non riuscito: " + (error as Error).message, 6000);
+                      } finally {
+                        setBackupInCorso(false);
+                      }
+                    }}
+                  >
+                    Fai un backup ora
+                  </Button>
+                </div>
+                <div className="w-full [&>button]:w-full">
+                  <BackupManager />
+                </div>
+                <p className="text-center text-xs text-default-400">
+                  Gestione avanzata permette importazioni, cancellazioni e reset.
+                </p>
+              </div>
+
+              {/* Trasparenza: cosa resta sul computer e cosa no. Va tenuto
+                  allineato a quello che l'app manda davvero (HeartbeatService,
+                  SupportChatService, AbbonamentoService). */}
+              <div className="rounded-xl border border-default-200">
+                <p className="border-b border-default-100 px-4 py-3 text-sm font-semibold text-foreground">
+                  Dove sono i tuoi dati
+                </p>
+                <ul className="divide-y divide-default-100">
+                  <li className="flex gap-3 px-4 py-3">
+                    <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">Su questo computer</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-default-500">
+                        Pazienti, visite, referti, documenti, firma e impostazioni.
+                        Non vengono inviati a Corioli: per averne una copia altrove
+                        usa il backup.
+                      </p>
+                    </div>
+                  </li>
+                  <li className="flex gap-3 px-4 py-3">
+                    <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">Al server Corioli</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-default-500">
+                        Il tuo profilo (nome, email, telefono, specializzazione), la
+                        versione dell&apos;app e il numero di pazienti e visite, solo
+                        i totali. Più i messaggi che mandi all&apos;assistenza.
+                        Servono per assistenza e aggiornamenti
+                        {mostraAbbonamento ? " e per l'abbonamento" : ""}.
+                      </p>
+                    </div>
+                  </li>
+                  {mostraAbbonamento ? (
+                    <li className="flex gap-3 px-4 py-3">
+                      <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" aria-hidden />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">A Stripe</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-default-500">
+                          Carta e fatturazione dell&apos;abbonamento. Corioli non vede
+                          né conserva i dati della carta.
+                        </p>
+                      </div>
+                    </li>
+                  ) : null}
+                </ul>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-default-200 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Shield className="h-4 w-4 shrink-0 text-brand-700" aria-hidden />
+                    Privacy e diritti
+                  </p>
+                  <p className="mt-0.5 text-xs text-default-500">
+                    Esporta il pacchetto per il diritto di accesso. Richieste
+                    privacy:{" "}
+                    <a
+                      href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
+                      className="text-primary font-medium hover:underline"
+                    >
+                      {PRIVACY_CONTACT_EMAIL}
+                    </a>{" "}
+                    &middot;{" "}
+                    <a
+                      href={PRIVACY_POLICY_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
+                    >
+                      Informativa <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="bordered"
+                  startContent={<Download className="w-3.5 h-3.5" />}
+                  onPress={() => void ExportService.exportDataAccessPackage()}
+                >
+                  Esporta dati (JSON)
+                </Button>
+              </div>
+          </SezioneImpostazioni>
+
+      {/* Sezione dedicata: Qualità Dati Pazienti */}
+      <SezioneImpostazioni
+        id="impostazioni-doppioni"
+        icon={Users}
+        titolo="Pazienti doppi"
+        descrizione="Trova le schede dello stesso paziente inserite più volte e uniscile, scegliendo quali dati tenere."
+        corpoClassName="flex flex-col gap-4 px-6 py-5"
+        extra={
+          <>
+            <Chip size="sm" color={duplicateGroups.length > 0 ? "warning" : "default"} variant="flat">
+              Gruppi: {duplicateGroups.length}
+            </Chip>
+            <Chip size="sm" variant="flat">
+              Record:{" "}
+              {duplicateGroups.reduce(
+                (acc, g) => acc + g.patients.length,
+                0,
+              )}
+            </Chip>
+            <Button
+              size="sm"
+              variant="bordered"
+              onPress={loadDuplicateGroups}
+              isLoading={loadingDuplicates && !duplicateCheckProgress}
+            >
+              {duplicateCheckProgress
+                ? `Analisi: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total}`
+                : "Controlla"}
+            </Button>
+            <Button
+              size="sm"
+              color="warning"
+              onPress={mergeAllDuplicateGroups}
+              isLoading={mergingAll}
+              isDisabled={
+                loadingDuplicates ||
+                duplicateGroups.length === 0 ||
+                !!processingDuplicateGroupKey
+              }
+            >
+              {mergingAll ? "Unione in corso..." : "Unisci tutto"}
+            </Button>
+          </>
+        }
+      >
+            <SettingsSectionNotice scope="duplicati" notice={notice} />
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+              <Input
+                label="Ricerca nei sospetti doppioni"
+                placeholder="Cerca per nome, cognome, codice fiscale, email o telefono"
+                variant="bordered"
+                value={duplicateSearch}
+                onValueChange={setDuplicateSearch}
+                startContent={<Search size={16} className="text-default-400" />}
+              />
+              {duplicateSearch && (
+                <Button
+                  variant="flat"
+                  onPress={() => setDuplicateSearch("")}
+                  className="md:mb-1"
+                >
+                  Pulisci ricerca
+                </Button>
+              )}
+            </div>
+
+            {loadingDuplicates ? (
+              <div className="py-6 space-y-3 flex flex-col items-stretch">
+                <span className="text-sm text-gray-500 text-center">
+                  {duplicateCheckProgress
+                    ? `Analisi doppioni: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total} pazienti`
+                    : "Analisi doppioni in corso..."}
+                </span>
+                {duplicateCheckProgress && (
+                  <Progress
+                    size="md"
+                    value={
+                      (duplicateCheckProgress.current /
+                        Math.max(1, duplicateCheckProgress.total)) *
+                      100
+                    }
+                    color="warning"
+                    className="max-w-full"
+                    aria-label={`Analisi doppioni ${duplicateCheckProgress.current}/${duplicateCheckProgress.total}`}
+                  />
+                )}
+              </div>
+            ) : filteredDuplicateGroups.length === 0 ? (
+              <div className="py-6 text-sm text-gray-500">
+                {duplicateGroups.length === 0
+                  ? "Nessun doppione sospetto trovato."
+                  : "Nessun risultato per la ricerca corrente."}
+              </div>
+            ) : (
+              <div className="space-y-4 overflow-y-auto overflow-x-hidden max-h-[28rem] md:max-h-[40rem] pr-1 md:pr-2">
+                {filteredDuplicateGroups.map((group, gIdx) => (
+                  <Card
+                    key={group.key}
+                    className="bg-warning-50 border border-warning-200"
+                  >
+                    <CardBody className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="font-medium text-warning-800">
+                          Gruppo sospetto #{gIdx + 1} • {group.patients.length}{" "}
+                          record
+                        </p>
+                        <Button
+                          size="sm"
+                          color="warning"
+                          onPress={() =>
+                            mergeDuplicateGroup(group.key, group.patients)
+                          }
+                          isLoading={processingDuplicateGroupKey === group.key}
+                          isDisabled={group.patients.length < 2}
+                        >
+                          Unisci gruppo
+                        </Button>
+                      </div>
+
+                      <Table aria-label={`Duplicati gruppo ${gIdx + 1}`}>
+                        <TableHeader>
+                          <TableColumn>PAZIENTE</TableColumn>
+                          <TableColumn>CF / NASCITA</TableColumn>
+                          <TableColumn>CONTATTI</TableColumn>
+                          <TableColumn>AZIONI</TableColumn>
+                        </TableHeader>
+                        <TableBody>
+                          {group.patients.map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell>
+                                <p className="font-medium text-gray-900">
+                                  {formatPatientDisplayName(p) ?? "Senza nome"}
+                                </p>
+                              </TableCell>
+                              <TableCell>
+                                <p className="text-sm text-gray-700">
+                                  CF:{" "}
+                                  <CodiceFiscaleValue
+                                    value={p.codiceFiscale}
+                                    placeholder="—"
+                                    generatedFromImport={Boolean(
+                                      p.codiceFiscaleGenerato,
+                                    )}
+                                  />
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Nascita: {p.dataNascita || "—"}
+                                </p>
+                              </TableCell>
+                              <TableCell>
+                                <p className="text-sm text-gray-700">
+                                  Tel: {p.telefono || "—"}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Email: {p.email || "—"}
+                                </p>
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  color="danger"
+                                  variant="flat"
+                                  onPress={() =>
+                                    requestDeleteDuplicatePatient(
+                                      p.id,
+                                      p.nome,
+                                      p.cognome,
+                                    )
+                                  }
+                                  isLoading={processingDuplicateId === p.id}
+                                  isDisabled={
+                                    processingDuplicateGroupKey === group.key
+                                  }
+                                >
+                                  Elimina record
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardBody>
+                  </Card>
+                ))}
+              </div>
+            )}
+      </SezioneImpostazioni>
 
       {/* Info App */}
-      <Card id="impostazioni-info" className="shadow-lg scroll-mt-32">
-        <CardBody>
-          <div className="text-center space-y-2">
-            <h3 className="font-semibold text-gray-900">Corioli Cardiologia Desktop</h3>
-            <div className="flex justify-center gap-4 text-sm text-gray-600 flex-wrap">
-              <span>Versione {appVersion || "—"}</span>
-              <span>•</span>
-              <span>{isOnline ? "Modalità online" : "Modalità offline"}</span>
-              <span>•</span>
-              <span>Dati locali</span>
-            </div>
+      <SezioneImpostazioni
+        id="impostazioni-info"
+        icon={Info}
+        titolo="Informazioni"
+        descrizione="La versione installata, lo stato della connessione e gli aggiornamenti."
+      >
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-default-200 bg-default-50/60 px-4 py-3">
+            <dt className="text-xs font-medium text-default-500">Versione</dt>
+            <dd className="mt-1 text-sm font-semibold text-foreground">
+              Corioli Cardiologia {appVersion || "—"}
+            </dd>
           </div>
-        </CardBody>
-      </Card>
+          <div className="rounded-xl border border-default-200 bg-default-50/60 px-4 py-3">
+            <dt className="text-xs font-medium text-default-500">Connessione</dt>
+            <dd className="mt-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+              <span
+                aria-hidden
+                className={`h-2 w-2 rounded-full ${isOnline ? "bg-success-500" : "bg-default-400"}`}
+              />
+              {isOnline ? "Online" : "Offline"}
+            </dd>
+          </div>
+          <div className="rounded-xl border border-default-200 bg-default-50/60 px-4 py-3">
+            <dt className="text-xs font-medium text-default-500">Archivio</dt>
+            <dd className="mt-1 text-sm font-semibold text-foreground">Su questo computer</dd>
+          </div>
+        </dl>
+        {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" ? (
+          <div className="flex flex-wrap items-center gap-4">
+            <span
+              aria-hidden
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-default-100 text-default-600"
+            >
+              <ArrowUpCircle size={18} strokeWidth={1.75} />
+            </span>
+            <div className="min-w-0 flex-1 basis-52">
+              <p className="text-sm font-medium text-foreground">Aggiornamenti</p>
+              <p className="mt-0.5 text-xs text-default-500">
+                Arrivano dal Microsoft Store: Libreria → Corioli Cardiologia.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="bordered"
+              startContent={<ExternalLink size={14} />}
+              onPress={() => void openCorioliMicrosoftStore()}
+            >
+              Apri lo Store
+            </Button>
+          </div>
+        ) : null}
+      </SezioneImpostazioni>
         </div>
       </div>
 

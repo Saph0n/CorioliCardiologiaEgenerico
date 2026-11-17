@@ -17,6 +17,8 @@ type Props = {
   /** Notifica focus/blur del campo PIN — usato dalla mascotte */
   onFocusChange?: (focused: boolean) => void;
   showHint?: boolean;
+  /** Mostra le cifre invece dei pallini: per i codici ricevuti via email. */
+  visibile?: boolean;
   "aria-label"?: string;
 };
 
@@ -31,6 +33,7 @@ export default function PinDigitInput({
   onComplete,
   onFocusChange,
   showHint = length == null,
+  visibile = false,
   "aria-label": ariaLabel = "PIN",
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -86,7 +89,7 @@ export default function PinDigitInput({
           disabled ? "opacity-60 pointer-events-none" : "",
         ].join(" ")}
       >
-        <div className="flex justify-center" style={{ gap: "12px" }}>
+        <div className="flex justify-center" style={{ gap: boxCount > 4 ? "8px" : "12px" }}>
           {Array.from({ length: boxCount }, (_, i) => {
             const filled = i < trimmed.length;
             const active = focused && !disabled && i === activeIndex;
@@ -113,8 +116,8 @@ export default function PinDigitInput({
               <div
                 key={i}
                 style={{
-                  width: 56,
-                  height: 64,
+                  width: boxCount > 4 ? 48 : 56,
+                  height: boxCount > 4 ? 58 : 64,
                   borderRadius: 14,
                   border: borderStyle,
                   boxShadow,
@@ -126,7 +129,18 @@ export default function PinDigitInput({
                 }}
                 aria-hidden
               >
-                {filled ? (
+                {filled && visibile ? (
+                  <span
+                    style={{
+                      fontSize: 26,
+                      fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                      color: isInvalid ? "#e24b4a" : "var(--color-text-primary, #0f172a)",
+                    }}
+                  >
+                    {trimmed[i]}
+                  </span>
+                ) : filled ? (
                   <span
                     style={{
                       display: "block",
@@ -144,7 +158,7 @@ export default function PinDigitInput({
       </div>
       <input
         ref={inputRef}
-        type="password"
+        type={visibile ? "text" : "password"}
         inputMode="numeric"
         pattern="[0-9]*"
         autoComplete={

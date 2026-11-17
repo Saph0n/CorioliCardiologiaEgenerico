@@ -8,6 +8,8 @@ import {
 } from "./components/AppStartupSkeleton";
 import { storageService } from "./services/StorageServiceFallback";
 import { GuidaPrimoAvvioProvider } from "./components/guida/GuidaPrimoAvvio";
+import { AbbonamentoProvider } from "./contexts/AbbonamentoContext";
+import SoloConAbbonamento from "./components/abbonamento/SoloConAbbonamento";
 
 // Lazy loaded routes per ottimizzare il bundle iniziale
 const Home = lazy(() => import("./Pages/Dashboard/Home"));
@@ -84,6 +86,7 @@ const App: React.FC = () => {
         <Route
           path="/*"
           element={
+            <AbbonamentoProvider>
             <GuidaPrimoAvvioProvider>
               <DesktopShell>
                 <Suspense fallback={<RoutePageSkeleton />}>
@@ -92,10 +95,10 @@ const App: React.FC = () => {
                     <Route element={<PatientList />} path="/pazienti" />
                     <Route element={<PazientiARischio />} path="/pazienti-a-rischio" />
                     <Route element={<AboutUs />} path="/about-us" />
-                    <Route element={<AddPatient />} path="/add-patient" />
+                    <Route element={<SoloConAbbonamento><AddPatient /></SoloConAbbonamento>} path="/add-patient" />
                     <Route element={<CheckPatientOpener />} path="/check-patient" />
-                    <Route element={<AddVisit />} path="/add-visit" />
-                    <Route element={<AddVisit />} path="/edit-visit/:visitId" />
+                    <Route element={<SoloConAbbonamento><AddVisit /></SoloConAbbonamento>} path="/add-visit" />
+                    <Route element={<SoloConAbbonamento><AddVisit /></SoloConAbbonamento>} path="/edit-visit/:visitId" />
                     <Route element={<Visite />} path="/visite" />
                     <Route element={<GruppiRicerca />} path="/gruppi-ricerca" />
                     <Route element={<Documents />} path="/documents" />
@@ -108,6 +111,7 @@ const App: React.FC = () => {
                 </Suspense>
               </DesktopShell>
             </GuidaPrimoAvvioProvider>
+            </AbbonamentoProvider>
           }
         />
       </Routes>

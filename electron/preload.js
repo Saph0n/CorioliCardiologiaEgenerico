@@ -63,11 +63,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   backupOpenFolder: () => ipcRenderer.invoke('backup:openFolder'),
 
   appLockStatus: () => ipcRenderer.invoke('appLock:status'),
-  appLockSetup: (pin) => ipcRenderer.invoke('appLock:setup', pin),
+  appLockSetup: (pin, password) => ipcRenderer.invoke('appLock:setup', pin, password),
   appLockVerifyPin: (pin) => ipcRenderer.invoke('appLock:verifyPin', pin),
   appLockRevealRecovery: (pin) => ipcRenderer.invoke('appLock:revealRecovery', pin),
   appLockRegenerateRecovery: (pin) => ipcRenderer.invoke('appLock:regenerateRecovery', pin),
   appLockChangePin: (payload) => ipcRenderer.invoke('appLock:changePin', payload),
+  appLockSetPassword: (payload) => ipcRenderer.invoke('appLock:setPassword', payload),
+  appLockChangePassword: (payload) => ipcRenderer.invoke('appLock:changePassword', payload),
+  appLockResetPasswordWithEmail: (payload) =>
+    ipcRenderer.invoke('appLock:resetPasswordWithEmail', payload),
   appLockResetPinWithRecovery: (payload) =>
     ipcRenderer.invoke('appLock:resetPinWithRecovery', payload),
   appLockResetPinWithOnlineGrant: (payload) =>

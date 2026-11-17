@@ -1473,7 +1473,77 @@ class LocalStorageFallbackService implements StorageService {
   }
 }
 
-const archivioReale = new LocalStorageFallbackService(chiaviReali, recordReali);
+/**
+ * Sola lettura, ad abbonamento scaduto (`AbbonamentoService`): l'archivio vero
+ * non accetta pazienti, visite e documenti nuovi né modifiche, ma si legge, si
+ * stampa e si esporta sempre, e il reset completo resta possibile. Profilo,
+ * modelli e preferenze non sono dati clinici e restano modificabili.
+ */
+let solaLettura = false;
+
+export const MESSAGGIO_SOLA_LETTURA =
+  "Corioli è in sola lettura perché l'abbonamento non è attivo: puoi consultare, stampare ed esportare i dati, ma per salvare modifiche serve l'abbonamento.";
+
+/** Lanciato sulla window quando una scrittura viene rifiutata dalla sola lettura. */
+export const EVENTO_SCRITTURA_BLOCCATA = "corioli-scrittura-bloccata";
+
+export class ErroreSolaLettura extends Error {
+  constructor() {
+    super(MESSAGGIO_SOLA_LETTURA);
+    this.name = "ErroreSolaLettura";
+  }
+}
+
+export function impostaSolaLettura(attiva: boolean): void {
+  solaLettura = attiva;
+}
+
+export function archivioInSolaLettura(): boolean {
+  return solaLettura;
+}
+
+function cambiaDatiClinici(op: StoreOp): boolean {
+  return (
+    op.type === "put" ||
+    op.type === "delete" ||
+    op.type === "deleteByPatient" ||
+    op.type === "replaceCollection"
+  );
+}
+
+/** I record dell'archivio vero, con il controllo della sola lettura sulle scritture. */
+class RecordConSolaLettura implements RecordBackend {
+  constructor(private readonly scegli: () => RecordBackend) {}
+
+  getAll<T>(collection: RecordCollection, options?: { withoutImages?: boolean }): Promise<T[]> {
+    return this.scegli().getAll<T>(collection, options);
+  }
+
+  getById<T>(collection: RecordCollection, id: string): Promise<T | null> {
+    return this.scegli().getById<T>(collection, id);
+  }
+
+  getByPatient<T>(collection: RecordCollection, patientId: string): Promise<T[]> {
+    return this.scegli().getByPatient<T>(collection, patientId);
+  }
+
+  count(collection: RecordCollection): Promise<number> {
+    return this.scegli().count(collection);
+  }
+
+  async batch(ops: StoreOp[]): Promise<void> {
+    if (solaLettura && ops.some(cambiaDatiClinici)) {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new CustomEvent(EVENTO_SCRITTURA_BLOCCATA));
+      }
+      throw new ErroreSolaLettura();
+    }
+    await this.scegli().batch(ops);
+  }
+}
+
+const recordRealiControllati = new RecordConSolaLettura(recordReali);
+const archivioReale = new LocalStorageFallbackService(chiaviReali, () => recordRealiControllati);
 let archivioProva: LocalStorageFallbackService | null = null;
 
 /** Quello che l'archivio di prova contiene appena aperto. */

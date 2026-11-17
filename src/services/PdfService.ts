@@ -25,7 +25,7 @@ import {
 } from "../utils/anamnesiStrutturata";
 import { getRicettaTesto } from "../utils/ricettaTemplate";
 import { MARCATORE_GRASSETTO } from "../utils/grassettoReferto";
-import { titoloMedico } from "../utils/doctorProfile";
+import { emailSuiDocumenti, titoloMedico } from "../utils/doctorProfile";
 import {
   calcolaCaloNotturno,
   calcolaClearanceCockcroftGault,
@@ -343,6 +343,11 @@ interface VisitPdfOptions {
   includeImages?: boolean;
   /** Il modello con cui stamparlo; senza, quello in uso. */
   modello?: ModelloStampa;
+  /**
+   * Il medico da stampare; senza, quello salvato. Serve all'anteprima del
+   * profilo nelle Impostazioni, che mostra le modifiche prima del salvataggio.
+   */
+  doctor?: Doctor | null;
 }
 
 /**
@@ -1024,8 +1029,8 @@ export class PdfService {
     if (vis?.showDoctorPhoneInPdf !== false && int.telefono && doctor?.telefono) {
       contatti.push(`Tel ${san(doctor.telefono)}`);
     }
-    if (vis?.showDoctorEmailInPdf !== false && int.email && doctor?.email) {
-      contatti.push(san(doctor.email));
+    if (vis?.showDoctorEmailInPdf !== false && int.email && emailSuiDocumenti(doctor)) {
+      contatti.push(san(emailSuiDocumenti(doctor)));
     }
     if (contatti.length) recapiti.push(contatti.join(MODERNO ? "  ·  " : "   -   "));
     // La partita IVA chiude i recapiti, su una riga sua: in coda a telefono
@@ -3629,7 +3634,7 @@ export class PdfService {
     const vis = nv.visita;
 
     const [doctor, prefs] = await Promise.all([
-      DoctorService.getDoctor(),
+      options?.doctor !== undefined ? options.doctor : DoctorService.getDoctor(),
       PreferenceService.getPreferences(),
     ]);
     const fo: FooterVisibilityOptions = {

@@ -784,6 +784,18 @@ export interface Doctor {
    * nell'intestazione di referti e documenti, sotto i recapiti.
    */
   partitaIva?: string;
+  /**
+   * Email da stampare su referti e documenti (es. quella della segreteria).
+   * Facoltativa: se vuota si stampa `email`, quella dell'account.
+   */
+  emailDocumenti?: string;
+  /**
+   * Ultima email confermata con il codice ricevuto (minuscola). Se diversa
+   * da `email`, l'email del profilo non è ancora confermata.
+   */
+  emailVerificata?: string;
+  /** Prova firmata dal server per `emailVerificata`. */
+  emailVerificataProva?: string;
   ambulatori?: Ambulatorio[];
   /** Data URL (base64) della foto profilo */
   profileImage?: string;

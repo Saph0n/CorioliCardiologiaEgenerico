@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { safeStorage } from "electron";
-import { consumePinRecoveryGrant } from "./pinRecoveryClient.js";
+import { consumePinRecoveryGrant, verifyEmailCode } from "./pinRecoveryClient.js";
 
 export const APP_LOCK_CONFIG_KEY = "app_lock_config_v1";
 export const APP_LOCK_RECOVERY_ENC_KEY = "app_lock_recovery_enc_v1";
@@ -14,6 +14,13 @@ const RECOVERY_SEGMENT = 4;
 
 function scryptHash(secret, salt) {
   return crypto.scryptSync(secret, salt, HASH_KEYLEN, SCRYPT_PARAMS);
+}
+
+// Stessa chiave con cui StorageServiceFallback salva il profilo del medico.
+const DOCTOR_KV_KEY = "AppDottori_doctor";
+
+function normalizeEmail(email) {
+  return String(email ?? "").trim().toLowerCase();
 }
 
 function normalizePin(pin) {
@@ -35,6 +42,24 @@ export function validatePinFormat(pin) {
     };
   }
   return { ok: true, normalized: n };
+}
+
+const PASSWORD_MIN = 8;
+
+/**
+ * Password dell'account: serve per cambiare il PIN. Almeno 8 caratteri, con
+ * almeno una lettera e un numero.
+ */
+export function validatePasswordFormat(password) {
+  const p = String(password ?? "");
+  if (p.length < PASSWORD_MIN) {
+    return { ok: false, error: `La password deve avere almeno ${PASSWORD_MIN} caratteri.` };
+  }
+  if (p.length > 128) return { ok: false, error: "La password è troppo lunga." };
+  if (!/[A-Za-zÀ-ÿ]/.test(p) || !/\d/.test(p)) {
+    return { ok: false, error: "La password deve contenere almeno una lettera e un numero." };
+  }
+  return { ok: true, value: p };
 }
 
 function hashSecret(secret, saltHex) {
@@ -85,6 +110,16 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
     }
   }
 
+  /** Email del profilo già confermata con il codice (campo `emailVerificata`). */
+  async function readVerifiedProfileEmail() {
+    try {
+      const raw = await kvGet(DOCTOR_KV_KEY);
+      return normalizeEmail(raw ? JSON.parse(raw)?.emailVerificata : "");
+    } catch {
+      return "";
+    }
+  }
+
   async function writeConfig(config) {
     await kvSet(APP_LOCK_CONFIG_KEY, JSON.stringify(config));
   }
@@ -120,6 +155,22 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
       Buffer.from(hash, "hex"),
       Buffer.from(config.pinHash, "hex"),
     );
+  }
+
+  function verifyPasswordAgainstConfig(password, config) {
+    if (!config?.passwordHash || !config?.passwordSalt) return false;
+    const hash = hashSecret(String(password ?? ""), config.passwordSalt);
+    try {
+      return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(config.passwordHash, "hex"));
+    } catch {
+      return false;
+    }
+  }
+
+  function applyPassword(config, password) {
+    config.passwordSalt = createSalt();
+    config.passwordHash = hashSecret(password, config.passwordSalt);
+    config.passwordUpdatedAt = new Date().toISOString();
   }
 
   function verifyRecoveryAgainstConfig(code, config) {
@@ -161,6 +212,7 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
       const pref = await readBiometricPref();
       return {
         configured: Boolean(config),
+        passwordConfigured: Boolean(config?.passwordHash),
         canRevealRecovery:
           Boolean(config) && safeStorage.isEncryptionAvailable(),
         biometricAvailable: Boolean(bio?.available),
@@ -171,10 +223,14 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
       };
     },
 
-    async setup(pin) {
+    async setup(pin, password) {
       const pinCheck = validatePinFormat(pin);
       if (!pinCheck.ok) {
         return { ok: false, error: pinCheck.error };
+      }
+      const passwordCheck = password == null ? null : validatePasswordFormat(password);
+      if (passwordCheck && !passwordCheck.ok) {
+        return { ok: false, error: passwordCheck.error };
       }
 
       const existing = await readConfig();
@@ -194,6 +250,7 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
         recoveryHash: hashSecret(recoveryNormalized, recoverySalt),
         createdAt: new Date().toISOString(),
       };
+      if (passwordCheck) applyPassword(config, passwordCheck.value);
 
       await writeConfig(config);
       const stored = await storeRecoveryEncrypted(
@@ -256,10 +313,18 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
       };
     },
 
-    async changePin(currentPin, newPin) {
+    /**
+     * Cambio PIN: con la password dell'account se c'è; chi non l'ha ancora
+     * creata (profili precedenti) conferma con il PIN attuale.
+     */
+    async changePin(currentPin, newPin, password) {
       const config = await readConfig();
       if (!config) return { ok: false, error: "PIN non configurato." };
-      if (!verifyPinAgainstConfig(currentPin, config)) {
+      if (config.passwordHash) {
+        if (!verifyPasswordAgainstConfig(password, config)) {
+          return { ok: false, error: "Password non corretta." };
+        }
+      } else if (!verifyPinAgainstConfig(currentPin, config)) {
         return { ok: false, error: "PIN attuale non corretto." };
       }
 
@@ -271,6 +336,57 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
       const pinSalt = createSalt();
       config.pinSalt = pinSalt;
       config.pinHash = hashSecret(pinCheck.normalized, pinSalt);
+      await writeConfig(config);
+      return { ok: true };
+    },
+
+    /** Prima creazione: si conferma con il PIN (appena scelto, o quello attuale). */
+    async setPassword(pin, password) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (config.passwordHash) return { ok: false, error: "La password è già impostata: usa \"Cambia password\"." };
+      if (!verifyPinAgainstConfig(pin, config)) return { ok: false, error: "PIN non corretto." };
+      const check = validatePasswordFormat(password);
+      if (!check.ok) return { ok: false, error: check.error };
+      applyPassword(config, check.value);
+      await writeConfig(config);
+      return { ok: true };
+    },
+
+    async changePassword(currentPassword, newPassword) {
+      const config = await readConfig();
+      if (!config?.passwordHash) return { ok: false, error: "Password non ancora impostata." };
+      if (!verifyPasswordAgainstConfig(currentPassword, config)) {
+        return { ok: false, error: "Password attuale non corretta." };
+      }
+      const check = validatePasswordFormat(newPassword);
+      if (!check.ok) return { ok: false, error: check.error };
+      applyPassword(config, check.value);
+      await writeConfig(config);
+      return { ok: true };
+    },
+
+    /**
+     * Password dimenticata: il codice mandato all'email del profilo viene
+     * verificato dal server da qui (processo principale), poi si salva la nuova.
+     */
+    async resetPasswordWithEmail(clientId, email, otp, ticket, newPassword) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      const check = validatePasswordFormat(newPassword);
+      if (!check.ok) return { ok: false, error: check.error };
+      // Il codice vale solo se l'indirizzo è quello già confermato nel profilo:
+      // l'email arriva dalla pagina e non basta a dimostrare che sia del medico.
+      const profileEmail = await readVerifiedProfileEmail();
+      if (!profileEmail || profileEmail !== normalizeEmail(email)) {
+        return {
+          ok: false,
+          error: "L'email non corrisponde a quella confermata nel profilo.",
+        };
+      }
+      const verified = await verifyEmailCode(clientId, profileEmail, otp, ticket);
+      if (!verified.ok) return { ok: false, error: verified.error };
+      applyPassword(config, check.value);
       await writeConfig(config);
       return { ok: true };
     },

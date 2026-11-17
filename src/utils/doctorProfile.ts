@@ -10,6 +10,16 @@ export function titoloMedico(doctor?: Pick<Doctor, "titolo"> | null): TitoloMedi
   return doctor?.titolo ?? "Dott.";
 }
 
+/**
+ * Email da stampare sui documenti: quella scelta per i documenti (es. la
+ * segreteria) o, se manca, quella dell'account.
+ */
+export function emailSuiDocumenti(
+  doctor?: Pick<Doctor, "email" | "emailDocumenti"> | null,
+): string {
+  return doctor?.emailDocumenti?.trim() || doctor?.email?.trim() || "";
+}
+
 type DoctorProfileLike = Pick<
   Doctor,
   "nome" | "cognome" | "email" | "telefono" | "specializzazione"

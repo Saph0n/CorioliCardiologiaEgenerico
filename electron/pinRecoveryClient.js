@@ -37,6 +37,40 @@ function loadBuildEnv() {
   return out;
 }
 
+/**
+ * Verifica col server il codice mandato all'email del profilo (rotta
+ * /email-verification/verify). Fatta dal processo principale, così il reset
+ * della password non si può fingere chiamando l'IPC dalla pagina.
+ */
+export async function verifyEmailCode(clientId, email, otp, ticket) {
+  const { apiUrl, clientSecret } = loadBuildEnv();
+  if (!apiUrl || !clientSecret) {
+    return { ok: false, error: "API cloud non configurata nell'app." };
+  }
+  try {
+    const res = await fetch(`${apiUrl}/email-verification/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${clientSecret}`,
+      },
+      body: JSON.stringify({
+        id: String(clientId),
+        email: String(email ?? "").trim().toLowerCase(),
+        otp: String(otp ?? "").replace(/\D/g, ""),
+        ticket: String(ticket ?? ""),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.verified !== true) {
+      return { ok: false, error: data?.error || "Codice non valido." };
+    }
+    return { ok: true, email: data.email, proof: data.proof };
+  } catch (err) {
+    return { ok: false, error: err?.message || "Errore di connessione al server." };
+  }
+}
+
 export async function consumePinRecoveryGrant(clientId, grant) {
   const { apiUrl, clientSecret } = loadBuildEnv();
   if (!apiUrl || !clientSecret) {

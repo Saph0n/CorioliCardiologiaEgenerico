@@ -414,7 +414,7 @@ export default function HelpAndFeedback() {
           id: "modelli-referti-gestione",
           title: "Come se ne crea uno?",
           content:
-            "Impostazioni → Gestione Modelli Referti → Nuovo modello.\n\nScegli la categoria giusta (scheda Tipo): è lei a decidere dove comparirà il modello. Dai un nome breve per il menu e scrivi il contenuto.\n\nMatita = modifica · Cestino = elimina.",
+            "Impostazioni → Modelli dei referti → Nuovo modello.\n\nScegli la categoria giusta (scheda Tipo): è lei a decidere dove comparirà il modello. Dai un nome breve per il menu e scrivi il contenuto.\n\nMatita = modifica · Cestino = elimina.",
           node: <CreaModelloSteps />,
         },
         {
@@ -536,7 +536,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come faccio il backup dei dati?",
           content:
-            "Vai su «Impostazioni > Backup e Dati». Clicca su «Esporta Backup» per scaricare un file unico (.json) contenente tutti i pazienti, visite e impostazioni. Puoi usare questo file per ripristinare i dati su un altro computer o per sicurezza.",
+            "Vai su «Impostazioni > Dati e backup». Clicca su «Esporta Backup» per scaricare un file unico (.json) contenente tutti i pazienti, visite e impostazioni. Puoi usare questo file per ripristinare i dati su un altro computer o per sicurezza.",
         },
       ],
     },
@@ -551,12 +551,12 @@ export default function HelpAndFeedback() {
         {
           title: "Come installare l'aggiornamento?",
           content:
-            "Su Windows, gli aggiornamenti arrivano dal Microsoft Store (Libreria → aggiornamenti per Corioli Cardiologia, oppure in automatico). Prima di reinstallare o aggiornare, esegui sempre un backup da Impostazioni → Backup e dati.",
+            "Su Windows, gli aggiornamenti arrivano dal Microsoft Store (Libreria → aggiornamenti per Corioli Cardiologia, oppure in automatico). Prima di reinstallare o aggiornare, esegui sempre un backup da Impostazioni → Dati e backup.",
         },
         {
           title: "PIN, profilo, biometria e recupero",
           content:
-            "Alla prima configurazione (o dopo un aggiornamento) Corioli Cardiologia chiede i dati del profilo medico (nome, cognome, email, telefono, specializzazione) e un PIN. L'uso quotidiano funziona senza internet. Se dimentichi il PIN puoi usare il codice CORI-… salvato alla configurazione oppure, con connessione, il recupero via email all'indirizzo del profilo. Il riconoscimento biometrico (impronta o volto) è opzionale in Impostazioni → Sicurezza.",
+            "Alla prima configurazione (o dopo un aggiornamento) Corioli Cardiologia chiede i dati del profilo medico (nome, cognome, email, telefono, specializzazione) e un PIN. L'uso quotidiano funziona senza internet. Se dimentichi il PIN puoi usare il codice CORI-… salvato alla configurazione oppure, con connessione, il recupero via email all'indirizzo del profilo. Il riconoscimento biometrico (impronta o volto) è opzionale in Impostazioni → Account Corioli.",
         },
       ],
     },
