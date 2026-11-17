@@ -67,7 +67,6 @@ import {
   type DocumentoStampa,
   type ModelloStampa,
 } from "../../types/Storage";
-import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
 import type { LucideIcon } from "lucide-react";
 import { getRicettaTesto } from "../../utils/ricettaTemplate";
 import { senzaMarcatori } from "../../utils/grassettoReferto";
@@ -2007,11 +2006,6 @@ export default function PatientHistory() {
             <>
               <ModalHeader className="flex flex-wrap items-center justify-between gap-3 pr-12">
                 <h2 className="text-xl font-bold">Anteprima referto</h2>
-                <SceltaModelloStampa
-                  documento="referto"
-                  scelto={sceltaStampa.referto}
-                  onScegli={(m) => scegliStampa("referto", m)}
-                />
               </ModalHeader>
               <ModalBody
                 className={previewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}
@@ -2134,13 +2128,6 @@ export default function PatientHistory() {
                     <FlaskConical size={22} className="text-primary-700" />
                     <h2 className="text-xl font-bold">Anteprima esame</h2>
                   </div>
-                  <div className="pr-8">
-                    <SceltaModelloStampa
-                      documento="richiestaEsame"
-                      scelto={sceltaStampa.richiestaEsame}
-                      onScegli={(m) => scegliStampa("richiestaEsame", m)}
-                    />
-                  </div>
                 </div>
               </ModalHeader>
               <ModalBody className={esamePreviewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}>
@@ -2195,11 +2182,6 @@ export default function PatientHistory() {
                     <h2 className="text-xl font-bold">Anteprima certificato</h2>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pr-8">
-                    <SceltaModelloStampa
-                      documento="certificato"
-                      scelto={sceltaStampa.certificato}
-                      onScegli={(m) => scegliStampa("certificato", m)}
-                    />
                     <Chip size="sm" variant="flat" color="warning">{getCertificatoTipoLabel(selectedCertificatoPreview.tipo)}</Chip>
                   </div>
                 </div>
@@ -2489,11 +2471,6 @@ export default function PatientHistory() {
                     <h2 className="text-xl font-bold">Anteprima ricetta</h2>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pr-8">
-                    <SceltaModelloStampa
-                      documento="ricetta"
-                      scelto={sceltaStampa.ricetta}
-                      onScegli={(m) => scegliStampa("ricetta", m)}
-                    />
                     <Chip size="sm" variant="flat" color="primary">{getRicettaTipoLabel(selectedRicettaPreview.tipo)}</Chip>
                   </div>
                 </div>

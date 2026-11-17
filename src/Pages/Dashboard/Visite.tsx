@@ -29,7 +29,6 @@ import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Visit, Patient, type ModelloStampa } from "../../types/Storage";
-import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
 import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -554,11 +553,6 @@ export default function Visite() {
                     {selectedVisit.patientName} · {new Date(selectedVisit.dataVisita).toLocaleDateString("it-IT")}
                   </p>
                 </div>
-                <SceltaModelloStampa
-                  documento="referto"
-                  scelto={modelloStampa}
-                  onScegli={setModelloStampa}
-                />
               </ModalHeader>
               <ModalBody>
                 {previewPdfLoading ? (
